@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/svq.css">
+<title>Survival Quiz</title>
+</head>
+<body>
+<div id="stage"></div>
+<header>
+  <h1>❓ Survival Quiz ⚔</h1>
+  <div id="banner"></div>
+  <div id="instr">&#128070; Tap to move &middot; find the gold &#10067; to answer quizzes &middot; <a href="?host=1">&#128241; host a room</a></div>
+</header>
+<div id="roundpop"><div class="rib r-Yellow"><i class="rl"></i><span class="rm"></span><i class="rr"></i></div></div>
+<div id="quizbox"><div id="qq"></div><div id="qopts"></div><div id="qres"></div></div>
+<div id="lobby">
+  <h2>&#128241; Scan to join the island</h2>
+  <div id="qrbox"></div>
+  <div id="joinurl"></div>
+  <div>room code: <b id="roomcode"></b></div>
+  <div id="lobbynames"></div>
+  <button id="startbtn">&#9654; Start game</button>
+</div>
+<div id="joinbox">
+  <h2>&#9876; Join the battle</h2>
+  <input id="jname" maxlength="14" placeholder="Your name" autocomplete="off">
+  <button id="jbtn">Join</button>
+  <div id="jstatus"></div>
+</div>
+<div id="podium"><div id="lenbox"><span class="lb-ico">&#9203;</span><label for="lenin">Quiz time</label><input id="lenin" type="number" min="5" max="300" step="5"><span class="lb-s">s</span></div><div class="ribhold"><div class="rib r-Blue"><i class="rl"></i><span class="rm">&#127942; Leaderboard</span><i class="rr"></i></div></div><div id="ranking"></div><a id="again" href="">&#8635; New game</a></div>
+<script src="/vendor/pixi.min.js"></script>
+<script src="/vendor/qr.js"></script>
+<script src="/js/svq.js"></script>
+</body>
+</html>

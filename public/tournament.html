@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tiny Kingdom Tournament</title>
+<style>
+  :root { --ink:#2b2b3d; }
+  * { box-sizing:border-box; }
+  body { margin:0; overflow:hidden; font-family:Georgia, "Times New Roman", serif; color:#fff; background:#78bd68; }
+  #scene { position:fixed; inset:0; background:url(/img/grass.png); background-size:64px 64px; overflow:hidden; }
+  .px { image-rendering:pixelated; position:absolute; pointer-events:none; }
+  header { position:fixed; top:0; left:0; right:0; z-index:1000; text-align:center; padding:12px 10px 4px; text-shadow:0 2px 0 var(--ink); pointer-events:none; }
+  header a { pointer-events:auto; }
+  h1 { margin:0; font-size:28px; letter-spacing:1px; }
+  #banner { font-size:19px; font-weight:bold; color:#ffd24a; margin-top:4px; min-height:24px; }
+  #controls { font-size:14px; margin-top:2px; }
+  #controls a { color:#fff; margin:0 5px; }
+  #controls a.on { color:#ffd24a; font-weight:bold; }
+  #roundpop { position:fixed; left:50%; top:42%; z-index:900; font-size:46px; font-weight:bold; color:#ffd24a;
+              text-shadow:0 3px 0 var(--ink); pointer-events:none; opacity:0; white-space:nowrap; }
+  #roundpop.pop { animation:rpop 2s both; }
+  @keyframes rpop { 0%{ transform:translate(-50%,-50%) scale(2.6); opacity:0 } 18%{ transform:translate(-50%,-50%) scale(1); opacity:1 }
+                    75%{ opacity:1 } 100%{ transform:translate(-50%,-50%) scale(.9); opacity:0 } }
+  /* scenery: trees & bushes are STATIC variants (background-position picks the variant) */
+  .tree { width:192px; height:256px; background:url(/img/tree1.png) no-repeat; image-rendering:pixelated; position:absolute; pointer-events:none; }
+  .tree.v2 { background-image:url(/img/tree2.png); }
+  .bush { width:128px; height:128px; background:url(/img/bush1.png) no-repeat; image-rendering:pixelated; position:absolute; pointer-events:none; }
+  .bush.v2 { background-image:url(/img/bush2.png); }
+  .sheep { width:128px; height:128px; background:url(/img/sheep_idle.png) 0 0 no-repeat; animation:sheepa 1.5s steps(6) infinite, graze 26s ease-in-out infinite alternate; image-rendering:pixelated; position:absolute; pointer-events:none; }
+  @keyframes sheepa { to { background-position:-768px 0 } }
+  @keyframes graze { to { margin-left:140px } }
+  .cloud { position:absolute; opacity:.8; animation:drift linear infinite; pointer-events:none; z-index:850; }
+  @keyframes drift { from { transform:translateX(-40vw) } to { transform:translateX(115vw) } }
+  /* fighters: .f anchors the feet; sprites are stepped from JS each frame */
+  .f { position:absolute; width:0; height:0; }
+  .fs { transform:scale(var(--s,.8)); transform-origin:0 0; }
+  .hold { transition:opacity .8s; }
+  .hold.mir { transform:scaleX(-1); }
+  .hold.ko { opacity:.35; transform:rotate(96deg) translateY(4px); transition:opacity .8s, transform .7s; }
+  .hold.mir.ko { transform:scaleX(-1) rotate(96deg) translateY(4px); }
+  .hold.winner { animation:hop .5s 2; }
+  @keyframes hop { 30%{ transform:translateY(-22px) } 60%{ transform:translateY(0) } }
+  .hold.mir.winner { animation:hopm .5s 2; }
+  @keyframes hopm { 30%{ transform:scaleX(-1) translateY(-22px) } 60%{ transform:scaleX(-1) translateY(0) } }
+  .spr { position:absolute; left:-96px; top:-142px; width:192px; height:192px; background:no-repeat; image-rendering:pixelated; }
+  .spr.hit { filter:brightness(2.4) saturate(.5); }
+  .lab { position:absolute; left:-70px; top:-152px; width:140px; text-align:center; pointer-events:none; }
+  .lab .nm { font-size:14px; font-weight:bold; text-shadow:0 2px 0 var(--ink); white-space:nowrap; }
+  .lab .hp { height:8px; width:78px; margin:2px auto 0; background:rgba(43,43,61,.55); border:2px solid var(--ink); border-radius:5px; overflow:hidden; }
+  .lab .hp i { display:block; height:100%; width:100%; background:linear-gradient(#7ef17e,#3fbf3f); transition:width .2s; }
+  .lab .hp i.low { background:linear-gradient(#ffb14a,#e2622b); }
+  .dmg { position:absolute; left:-18px; top:-165px; font-weight:bold; font-size:22px; color:#fff; text-shadow:0 2px 0 var(--ink); animation:dfloat 1s both; pointer-events:none; }
+  .dmg.crit { color:#ffd24a; font-size:29px; }
+  @keyframes dfloat { to { transform:translateY(-54px); opacity:0 } }
+  .kostar { position:absolute; left:-14px; top:-110px; font-size:34px; animation:kopop .9s both; pointer-events:none; }
+  @keyframes kopop { 0%{ transform:scale(.3); opacity:1 } 100%{ transform:scale(1.9) rotate(40deg); opacity:0 } }
+  .crown { position:absolute; left:-15px; top:-205px; font-size:30px; animation:crownbob 1.2s ease-in-out infinite alternate; }
+  @keyframes crownbob { to { transform:translateY(-10px) } }
+  #ranking { position:relative; }
+  #ranking .rrow { position:absolute; left:0; right:0; height:26px; transition:top .6s ease; }
+  #ranking .who { font-weight:bold; }
+  #ranking .rrow.done { opacity:.85; }
+  #ranking .pend { animation:pulse 1.2s ease-in-out infinite; color:#ffd24a; }
+  @keyframes pulse { 50% { opacity:.3 } }
+  #ranking .rrow.pop { animation:rowpop .9s; }
+  @keyframes rowpop { 0% { background:rgba(255,210,74,.5) } 100% { background:transparent } }
+  #tuner { display:none; position:fixed; left:22px; top:90px; z-index:960; width:252px; background:rgba(43,43,61,.92); border:3px solid var(--ink); border-radius:14px; padding:12px 14px; }
+  #tuner h3 { margin:0 0 6px; color:#ffd24a; font-size:17px; text-align:center; }
+  #tuner .row { display:flex; justify-content:space-between; align-items:center; padding:3px 0; font-size:13px; }
+  #tuner input { width:66px; background:rgba(255,255,255,.12); border:2px solid var(--ink); border-radius:6px; color:#fff; font:13px Georgia, serif; padding:2px 5px; }
+  #tuner .note { font-size:11px; opacity:.75; margin-top:6px; text-align:center; }
+  #tuner button { display:block; width:100%; margin-top:8px; background:#ffd24a; color:var(--ink); font-weight:bold; border:2px solid var(--ink); border-radius:8px; padding:5px 0; font:bold 13px Georgia, serif; cursor:pointer; }
+  #podium { display:none; position:fixed; right:22px; top:90px; z-index:950; width:330px; max-height:calc(100vh - 130px); overflow:auto;
+            background:rgba(43,43,61,.88); border:3px solid var(--ink); border-radius:14px; padding:14px 18px; }
+  #podium h3 { margin:2px 0 8px; color:#ffd24a; text-align:center; font-size:20px; }
+  #ranking div { padding:3px 2px; font-size:15px; border-bottom:1px solid rgba(255,255,255,.12); display:flex; justify-content:space-between; }
+  #ranking div:last-child { border-bottom:none; }
+  #again { display:block; text-align:center; margin-top:14px; background:#ffd24a; color:var(--ink); font-weight:bold; padding:8px 0; border-radius:10px; border:3px solid var(--ink); text-decoration:none; font-size:15px; }
+  .confetti { position:fixed; top:-20px; z-index:2000; animation:cfall linear both; pointer-events:none; }
+  @keyframes cfall { to { transform:translateY(110vh) rotate(720deg) } }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<header>
+  <h1>&#9876; Tiny Kingdom Tournament &#9876;</h1>
+  <div id="banner"></div>
+  <div id="controls">
+    Players:
+    <a href="?players=8">8</a><a href="?players=12">12</a><a href="?players=20">20</a><a href="?players=32">32</a>
+    &middot; <a href="#" id="tunebtn">&#9881; tune</a>
+    &middot; <a href="/survival-island">&#127965; survival island</a>
+    &middot; <a href="/archers-vs-knights">&#127993; archers vs knights</a>
+    &middot; <a href="/">&larr; back to the kingdom</a>
+  </div>
+</header>
+<div id="roundpop"></div>
+<div id="tuner"></div>
+<div id="podium"><h3>&#127942; Leaderboard</h3><div id="ranking"></div><a id="again" href="">&#8635; New tournament</a></div>
+<script>
+const rnd = (a, b) => a + Math.random() * (b - a);
+const P = Math.max(2, Math.min(32, parseInt(new URLSearchParams(location.search).get('players'), 10) || 20));
+document.querySelectorAll('#controls a').forEach(a => { if (a.search === '?players=' + P) a.classList.add('on'); });
+
+// ---------- tunable combat params (auto-saved to localStorage — survive reload) ----------
+const DEFAULTS = { total: 15, dmgMin: 24, dmgMax: 36, crit: 15, critMult: 2.1, heal: 40, cdMin: .8, cdMax: 1.3, spdMin: 175, spdMax: 215 };
+const CFG = Object.assign({}, DEFAULTS);
+try { Object.assign(CFG, JSON.parse(localStorage.getItem('tk-params') || '{}')); } catch (e) {}
+function saveCFG() { try { localStorage.setItem('tk-params', JSON.stringify(CFG)); } catch (e) {} }
+const FIELDS = [
+  ['total', 'Total battle (s)', 1],
+  ['dmgMin', 'Damage min', 1], ['dmgMax', 'Damage max', 1], ['crit', 'Crit chance %', 1], ['critMult', 'Crit multiplier', .1],
+  ['heal', 'Heal after win', 5], ['cdMin', 'Cooldown min (s)', .05], ['cdMax', 'Cooldown max (s)', .05],
+  ['spdMin', 'Run speed min', 5], ['spdMax', 'Run speed max', 5],
+];
+const tuner = document.getElementById('tuner');
+tuner.innerHTML = '<h3>&#9881; Battle tuning</h3>' + FIELDS.map(f =>
+  '<div class="row"><span>' + f[1] + '</span><input type="number" step="' + f[2] + '" data-k="' + f[0] + '" value="' + CFG[f[0]] + '"></div>').join('') +
+  '<div class="note">saved automatically &middot; survives reload</div><button id="cfgreset">Reset defaults</button>';
+function clampN(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function applyTotal(T) {
+  // one knob, calibrated against measured battles (defaults ~15s; chained bouts shorten, hence the exponent)
+  const s = Math.pow(Math.max(2, T - 5) / 10.5, .608);
+  CFG.cdMin = +clampN(.8 * s, .25, 3.2).toFixed(2);
+  CFG.cdMax = +clampN(1.3 * s, .35, 4.5).toFixed(2);
+  CFG.dmgMin = Math.round(clampN(24 / s, 4, 90));
+  CFG.dmgMax = Math.round(clampN(36 / s, 6, 99));
+  CFG.heal = DEFAULTS.heal;                              // heal stays put so bout-chain pacing scales cleanly
+  tuner.querySelectorAll('input').forEach(i => { if (i.dataset.k !== 'total') i.value = CFG[i.dataset.k]; });
+}
+tuner.addEventListener('input', e => {
+  const k = e.target.dataset.k; if (!k) return;
+  const v = parseFloat(e.target.value);
+  if (isNaN(v)) return;
+  CFG[k] = v;
+  if (k === 'total') applyTotal(v);
+  saveCFG();
+  if (k.indexOf('spd') === 0) players.forEach(q => { if (!q.dead) q.speed = rnd(CFG.spdMin, CFG.spdMax); });
+});
+document.getElementById('cfgreset').addEventListener('click', () => {
+  Object.assign(CFG, DEFAULTS); saveCFG();
+  tuner.querySelectorAll('input').forEach(i => { i.value = CFG[i.dataset.k]; });
+  players.forEach(q => { if (!q.dead) q.speed = rnd(CFG.spdMin, CFG.spdMax); });
+});
+document.getElementById('tunebtn').addEventListener('click', e => {
+  e.preventDefault(); tuner.style.display = tuner.style.display === 'block' ? 'none' : 'block';
+});
+const scene = document.getElementById('scene');
+const banner = document.getElementById('banner');
+const W = () => scene.clientWidth, H = () => scene.clientHeight;
+const BOUNDS = () => ({ x0: W() * .08, x1: W() * .9, y0: H() * .5, y1: H() * .86 });
+
+// ---------- scenery (static trees/bushes — variants, not animation) ----------
+function img(src, x, y, w, opts = {}) {
+  const el = document.createElement('img');
+  el.src = '/img/' + src; el.className = 'px';
+  el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = w + 'px';
+  el.style.zIndex = opts.z !== undefined ? opts.z : Math.round(y + (opts.base || 0));   // z anchored at the sprite's ground line
+  if (opts.op) el.style.opacity = opts.op;
+  scene.appendChild(el); return el;
+}
+function prop(cls, v2, variant, fw, x, y, scale, zbase) {
+  const el = document.createElement('div'); el.className = cls + (v2 ? ' v2' : '');
+  el.style.left = x + 'px'; el.style.top = y + 'px';
+  el.style.backgroundPosition = (-variant * fw) + 'px 0';
+  el.style.transform = 'scale(' + scale + ')'; el.style.transformOrigin = 'top left';
+  el.style.zIndex = Math.round(y + (cls.indexOf('tree') === 0 ? 256 : 128) * scale - 8); scene.appendChild(el); return el;   // exact ground line
+}
+function buildScenery() {
+  const w = W(), h = H(), cx = w / 2;
+  img('castle.png', cx - 200, 46, 400, { base: 320 });     // z anchored at the building's base line
+  img('tower.png', cx - 335, 60, 150, { base: 300 });
+  img('tower.png', cx + 185, 60, 150, { base: 300 });
+  img('house1.png', cx - 480, 170, 140, { base: 210 });
+  img('house2.png', cx + 340, 170, 140, { base: 210 });
+  // trees only hug the actual screen edges — no crop lines in the open field
+  const trees = [[-30, h*.18], [-45, h*.52], [-20, h*.78], [w-150, h*.14], [w-130, h*.5], [w-160, h*.8]];
+  trees.forEach(([x, y], i) => prop('tree', i % 2, Math.floor(rnd(0, 8)), 192, x, y, rnd(.8, 1.05), 235));
+  const bushes = [[w*.09, h*.36], [w*.88, h*.33], [w*.3, h-115], [w*.55, h-108], [w*.75, h-120]];
+  bushes.forEach(([x, y], i) => prop('bush', i % 2, Math.floor(rnd(0, 8)), 128, x, y, rnd(.7, .9), 110));
+  [['rock1.png', w*.13, h*.62, 52], ['rock2.png', w*.84, h*.58, 56], ['rock3.png', w*.32, h*.38, 46],
+   ['rock4.png', w*.6, h*.36, 50], ['rock2.png', w*.5, h*.88, 54], ['gold1.png', w*.06, h*.47, 60],
+   ['gold4.png', w*.93, h*.72, 62]].forEach(([s, x, y, sz]) => img(s, x, y, sz));
+  prop('sheep', false, 0, 128, w*.78, h*.2, .9, 100).style.backgroundPosition = '';
+  prop('sheep', false, 0, 128, w*.07, h*.83, .8, 100).style.backgroundPosition = '';
+  const c1 = img('cloud1.png', 0, 20, 300, { z:850, op:.8 }); c1.classList.add('cloud'); c1.style.animationDuration = '75s';
+  const c2 = img('cloud2.png', 0, h*.3, 240, { z:850, op:.7 }); c2.classList.add('cloud'); c2.style.animationDuration = '105s'; c2.style.animationDelay = '-40s';
+}
+
+// ---------- roster: ALL the kingdom's characters ----------
+const COLORS = ['Blue', 'Red', 'Yellow', 'Purple', 'Black'];
+const TYPES = ['Warrior', 'Archer', 'Pawn', 'Monk'];
+const FRAMES = { Warrior: { Idle: 8, Run: 6, Attack: 4 }, Archer: { Idle: 6, Run: 4 }, Pawn: { Idle: 8, Run: 6 }, Monk: { Idle: 6, Run: 4 } };
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const KITS = shuffle(COLORS.flatMap(c => TYPES.map(t => ({ c, t }))));
+const players = Array.from({ length: P }, (_, i) => {
+  const k = KITS[i % KITS.length];
+  return { name: k.c + ' ' + k.t + (i >= KITS.length ? ' II' : ''), c: k.c, t: k.t,
+           hp: 100, dmg: 0, dead: false, opp: null, state: 'wander', cd: rnd(.2, .6),
+           wx: 0, wy: 0, wt: 0, swx: 0, swy: 0, speed: rnd(CFG.spdMin, CFG.spdMax), pend: null, lunge: 0 };
+});
+
+// ---------- fighter elements + JS sprite stepping ----------
+function makeFighter(p) {
+  const f = document.createElement('div'); f.className = 'f';
+  f.innerHTML = '<div class="fs"><div class="hold"><div class="spr"></div></div>' +
+    '<div class="lab"><div class="nm">' + p.name + '</div><div class="hp"><i></i></div></div></div>';
+  scene.appendChild(f);
+  p.el = f; p.fs = f.querySelector('.fs'); p.hold = f.querySelector('.hold');
+  if (p.name.endsWith(' II')) p.hold.style.filter = 'hue-rotate(45deg) brightness(1.07)';   // clones look distinct
+  p.spr = f.querySelector('.spr'); p.bar = f.querySelector('.hp i');
+  const b = BOUNDS();
+  p.x = rnd(b.x0, b.x1); p.y = rnd(b.y0, b.y1);
+  p.animKey = ''; p.animT = 0; p.face = 1;
+  setAnim(p, 'Idle');
+}
+function setAnim(p, st) {
+  const key = p.c + '_' + p.t + '_' + st;
+  if (p.animKey === key) return;
+  p.animKey = key; p.animT = 0; p.animN = FRAMES[p.t][st]; p.animSt = st;
+  p.spr.style.backgroundImage = 'url(/img/' + key + '.png)';
+}
+function floatAt(p, text, cls) {
+  const d = document.createElement('div'); d.className = cls; d.textContent = text;
+  p.fs.appendChild(d); setTimeout(() => d.remove(), 1100);
+}
+function pop(text) { const rp = document.getElementById('roundpop'); rp.textContent = text; rp.classList.remove('pop'); void rp.offsetWidth; rp.classList.add('pop'); }
+
+// ---------- match-making: free fighters run to the NEAREST free fighter ----------
+function rematch() {
+ try {
+  const free = players.filter(p => !p.dead && !p.opp);
+  while (free.length >= 2) {
+    const a = free.shift();
+    let bi = 0, bd = 1e9;
+    for (let i = 0; i < free.length; i++) {
+      const d = Math.hypot(free[i].x - a.x, free[i].y - a.y);
+      if (d < bd) { bd = d; bi = i; }
+    }
+    const b = free.splice(bi, 1)[0];
+    a.opp = b; b.opp = a; a.state = b.state = 'seek';
+  }
+  for (const p of free) p.state = 'wander';          // odd one roams until a fight frees someone
+ } catch (e) { console.error('rematch error:', e.message, e.stack); }
+}
+
+// ---------- combat ----------
+function strike(p) {
+  const o = p.opp;
+  p.cd = rnd(CFG.cdMin, CFG.cdMax);
+  const dx = o.x - p.x, dy = o.y - p.y, dd = Math.hypot(dx, dy) || 1;
+  p.face = dx >= 0 ? 1 : -1;                                     // lock facing at the moment of the strike
+  p.lungeDir = { x: dx / dd, y: dy / dd };
+  p.lungeMax = p.t === 'Warrior' ? .42 : .38;
+  p.lunge = p.lungeMax;                                          // visible dash in and back
+  if (p.t === 'Warrior') { setAnim(p, 'Attack'); p.atkHold = .42; }
+  else setAnim(p, 'Run');
+  p.pend = { at: .26, target: o };
+}
+function applyHit(p, o) {
+  if (o.dead || p.dead || Math.hypot(o.x - p.x, o.y - p.y) > 150) return;   // no ghost hits
+  let dmg = Math.round(rnd(CFG.dmgMin, CFG.dmgMax));
+  const crit = Math.random() < CFG.crit / 100;
+  if (crit) dmg = Math.round(dmg * CFG.critMult);
+  p.dmg += dmg;
+  o.hp = Math.max(0, o.hp - dmg);
+  o.bar.style.width = o.hp + '%';
+  if (o.hp <= 35) o.bar.classList.add('low');
+  o.spr.classList.add('hit'); setTimeout(() => o.spr.classList.remove('hit'), 200);
+  o.x += (o.x >= p.x ? 5 : -5);                                   // knockback
+  floatAt(o, (crit ? '\u{1F4A5} ' : '−') + dmg, 'dmg' + (crit ? ' crit' : ''));
+  if (o.hp <= 0) kill(p, o);
+}
+const fallen = [];
+const T0 = performance.now();
+const MEDALS = { 1: '\u{1F451}', 2: '\u{1F948}', 3: '\u{1F949}' };
+function refreshBoard() {
+  // alive contenders on top (pending), then the fallen — latest death ranks highest of them
+  const list = [...players.filter(q => !q.dead), ...fallen.slice().reverse()];
+  list.forEach((q, i) => {
+    q.row.style.top = (i * 26) + 'px';
+    if (q.dead || q.final) {
+      q.row.querySelector('.rknum').textContent = MEDALS[q.finalRank] || q.finalRank + '.';
+      q.row.querySelector('.rknum').classList.remove('pend');
+      q.row.querySelector('.tt').textContent = q.surv.toFixed(1) + 's';
+      q.row.querySelector('.tt').classList.remove('pend');
+    }
+  });
+}
+function kill(p, o) {
+  o.dead = true; o.opp = null; p.opp = null;
+  o.surv = (performance.now() - T0) / 1000;
+  o.hold.classList.add('ko');
+  floatAt(o, '\u{1F4AB}', 'kostar');
+  fallen.push(o);
+  o.finalRank = players.length - fallen.length + 1;               // rank locks the moment they fall
+  refreshBoard();
+  o.row.classList.add('done'); o.row.classList.remove('pop'); void o.row.offsetWidth; o.row.classList.add('pop');
+  setTimeout(() => { o.el.style.opacity = '0'; setTimeout(() => o.el.remove(), 900); }, 2000);
+  p.hold.classList.add('winner'); setTimeout(() => p.hold.classList.remove('winner'), 1100);
+  floatAt(p, '\u{1F3C6}', 'kostar');
+  p.hp = Math.min(100, p.hp + CFG.heal);                          // fixed breather heal, tunable
+  p.bar.style.width = p.hp + '%'; if (p.hp > 35) p.bar.classList.remove('low');
+  p.state = 'wander'; p.wt = 0; p.cd = rnd(.3, .6);
+  const alive = players.filter(q => !q.dead);
+  banner.textContent = alive.length > 1 ? '⚔ ' + alive.length + ' knights remain' : '';
+  if (alive.length === 1) finale(alive[0]);
+  else setTimeout(rematch, rnd(120, 350));                       // winner immediately runs to nearest free winner
+}
+
+// ---------- the simulation loop ----------
+let last = performance.now(), over = false;
+function tick(now) {
+ try {
+  const dt = Math.min((now - last) / 1000, .05); last = now;
+  const b = BOUNDS();
+  for (const p of players) {
+    if (p.dead) { draw(p, dt); continue; }
+    if (p.pend) { p.pend.at -= dt; if (p.pend.at <= 0) { applyHit(p, p.pend.target); p.pend = null; } }
+    if (p.lunge > 0) p.lunge = Math.max(0, p.lunge - dt);
+    if (p.atkHold) { p.atkHold -= dt; if (p.atkHold <= 0) p.atkHold = 0; }
+    let vx = 0, vy = 0;
+    if (p.state === 'champion') {
+      const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
+      if (d > 8) { vx = dx / d * p.speed; vy = dy / d * p.speed; setAnim(p, 'Run'); }
+      else if (!p.crowned) { p.crowned = true; setAnim(p, 'Idle'); p.face = 1;
+        const c = document.createElement('div'); c.className = 'crown'; c.textContent = '\u{1F451}'; p.fs.appendChild(c); }
+    } else if (p.opp && !p.opp.dead) {
+      const o = p.opp, dx = o.x - p.x, dy = o.y - p.y, d = Math.hypot(dx, dy);
+      const striking = p.lunge > 0 || p.atkHold > 0;
+      if (!striking) p.face = dx >= 0 ? 1 : -1;                  // never turn mid-swing
+      if (d > 52 && !striking) {                                 // close the distance
+        p.state = 'seek';
+        p.wt -= dt; if (p.wt <= 0) { p.wt = rnd(.3, .7); p.swx = rnd(-30, 30); p.swy = rnd(-24, 24); }  // human-ish weave
+        const tx = o.x - Math.sign(dx) * 40 + (p.swx || 0), ty = o.y + (p.swy || 0);
+        const dd = Math.hypot(tx - p.x, ty - p.y) || 1;
+        vx = (tx - p.x) / dd * p.speed; vy = (ty - p.y) / dd * p.speed;
+        setAnim(p, 'Run');
+      } else {
+        p.state = 'fight';
+        if (d < 26 && !striking) { vx = -dx / (d || 1) * 50; vy = -dy / (d || 1) * 50; }   // don't stand inside each other
+        p.cd -= dt;
+        if (p.cd <= 0 && !p.pend && d <= 60) strike(p);
+        if (!striking && !(p.t === 'Warrior' && p.animSt === 'Attack' && p.animT < .4)) setAnim(p, 'Idle');
+      }
+    } else {                                                     // wander like the kingdom's own rivals
+      p.state = 'wander';
+      p.wt -= dt;
+      if (p.wt <= 0 || Math.hypot(p.wx - p.x, p.wy - p.y) < 12) {
+        p.wt = rnd(1.2, 3.5);
+        p.wx = Math.max(b.x0, Math.min(b.x1, p.x + rnd(-260, 260)));
+        p.wy = Math.max(b.y0, Math.min(b.y1, p.y + rnd(-170, 170)));
+        p.rest = Math.random() < .35;                            // sometimes just stand and look around
+      }
+      if (!p.rest) {
+        const dx = p.wx - p.x, dy = p.wy - p.y, d = Math.hypot(dx, dy) || 1;
+        vx = dx / d * p.speed * .55; vy = dy / d * p.speed * .55;
+        p.face = dx >= 0 ? 1 : -1;
+        setAnim(p, 'Run');
+      } else setAnim(p, 'Idle');
+    }
+    // gentle separation from non-opponents
+    for (const q of players) {
+      if (q === p || q.dead || q === p.opp) continue;
+      const dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy);
+      if (d > 0 && d < 46) { vx += dx / d * 70; vy += dy / d * 70; }
+    }
+    p.x = Math.max(b.x0, Math.min(b.x1, p.x + vx * dt));
+    p.y = Math.max(b.y0, Math.min(b.y1, p.y + vy * dt));
+    if (Math.abs(vx) < 4 && Math.abs(vy) < 4 && p.state === 'wander' && p.rest) setAnim(p, 'Idle');
+    draw(p, dt);
+  }
+ } catch (e) { console.error('tick error:', e.message, e.stack); }   // never let one bad frame freeze the battle
+  requestAnimationFrame(tick);
+}
+function draw(p, dt) {
+  if (!p.el.isConnected) return;
+  p.animT += dt;
+  const fps = p.animSt === 'Run' ? 10 : p.animSt === 'Attack' ? 10 : 7;
+  const fr = Math.floor(p.animT * fps) % p.animN;
+  p.spr.style.backgroundPosition = (-fr * 192) + 'px 0';
+  if (p.t === 'Warrior' && p.animSt === 'Attack' && p.animT * fps >= p.animN) setAnim(p, 'Idle');
+  let ox = 0, oy = 0;
+  if (p.lunge > 0 && p.lungeDir) {                                // out-and-back dash makes every strike visible
+    const amp = Math.sin(Math.PI * (1 - p.lunge / p.lungeMax)) * (p.t === 'Warrior' ? 14 : 30);
+    ox = p.lungeDir.x * amp; oy = p.lungeDir.y * amp;
+  }
+  p.el.style.left = (p.x + ox) + 'px'; p.el.style.top = (p.y + oy) + 'px';
+  p.el.style.zIndex = Math.round(p.y);   // feet-line depth: in front of a prop -> on top, behind -> behind
+  p.fs.style.setProperty('--s', (0.55 + 0.3 * (p.y / H())).toFixed(3));
+  p.hold.classList.toggle('mir', p.face < 0);
+}
+
+// ---------- finale ----------
+function finale(champ) {
+  over = true;
+  banner.textContent = '\u{1F451} ' + champ.name + ' rules the Tiny Kingdom!';
+  pop('\u{1F451} ' + champ.name + '!');
+  champ.state = 'champion'; champ.opp = null;
+  champ.surv = (performance.now() - T0) / 1000;
+  champ.tx = W() / 2; champ.ty = Math.max(400, H() * .52);   // always in front of the castle's ground line
+  champ.final = true; champ.finalRank = 1;
+  refreshBoard();
+  champ.row.classList.add('pop');
+  document.getElementById('again').href = location.pathname + '?players=' + P;
+  document.getElementById('again').style.display = 'block';
+  for (let i = 0; i < 90; i++) {
+    const c = document.createElement('div'); c.className = 'confetti';
+    c.style.left = rnd(0, 100) + 'vw';
+    c.style.width = c.style.height = rnd(6, 12) + 'px';
+    c.style.background = 'hsl(' + Math.floor(rnd(0, 360)) + ',85%,60%)';
+    c.style.animationDuration = rnd(2.5, 6) + 's';
+    c.style.animationDelay = rnd(0, 2.5) + 's';
+    document.body.appendChild(c);
+  }
+}
+
+// ---------- go ----------
+buildScenery();
+players.forEach(makeFighter);
+// live leaderboard: every player listed from the start; alive = pending, ranks animate as scores go final
+const rankEl = document.getElementById('ranking');
+rankEl.style.height = (players.length * 26) + 'px';
+players.forEach((q, i) => {
+  const r = document.createElement('div'); r.className = 'rrow';
+  r.innerHTML = '<span><span class="rknum pend">&#9876;</span> <span class="who">' + q.name + '</span></span><span class="tt pend">&hellip;</span>';
+  r.style.top = (i * 26) + 'px';
+  q.row = r; rankEl.appendChild(r);
+});
+document.getElementById('podium').style.display = 'block';
+document.getElementById('again').style.display = 'none';
+banner.textContent = '⚔ ' + P + ' knights enter — last one standing wins';
+setTimeout(() => { pop('⚔ FIGHT! ⚔'); rematch(); }, 900);
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
