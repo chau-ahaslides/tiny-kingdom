@@ -362,9 +362,9 @@ function showTap(x, y) {
   fx(m, .5, (o, k) => { o.scale.set(1.6 - .6 * k); }, null);
 }
 function canSteer() {
-  if (!started || over) return false;
-  if (MODE === 'client') return !!human && !human.dead && !spectate;
-  return MODE === 'solo' && !!human && !human.dead;
+  if (over || !human || human.dead) return false;
+  if (MODE === 'client') return !spectate;
+  return MODE === 'solo';
 }
 document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(g => document.addEventListener(g, e => e.preventDefault(), { passive: false }));
@@ -494,6 +494,38 @@ function kill(p, o) {
 
 // ---------- the simulation (solo & host) ----------
 let over = false;
+let phase = MODE === 'solo' ? 'battle' : 'lobby';                 // lobby = warm-up: everyone roams, nobody fights
+function wanderMove(p, dt, b) {                                   // bot autopilot: stroll, pause, look around
+  p.state = 'wander';
+  p.wt -= dt;
+  if (p.wt <= 0 || Math.hypot(p.wx - p.x, p.wy - p.y) < 12) {
+    p.wt = rnd(1.2, 3.5);
+    for (let t = 0; t < 8; t++) {
+      p.wx = Math.max(b.x0, Math.min(b.x1, p.x + rnd(-260, 260)));
+      p.wy = Math.max(b.y0, Math.min(b.y1, p.y + rnd(-170, 170)));
+      if (!inObst(p.wx, p.wy)) break;
+    }
+    p.rest = Math.random() < .35;
+  }
+  if (p.rest) { setAnim(p, 'Idle'); return [0, 0]; }
+  const dx = p.wx - p.x, dy = p.wy - p.y, d = Math.hypot(dx, dy) || 1;
+  p.face = dx >= 0 ? 1 : -1;
+  setAnim(p, 'Run');
+  return [dx / d * p.speed * .55, dy / d * p.speed * .55];
+}
+function warmTick(dt) {                                           // lobby: phones run free, bots stroll, no fighting
+  const b = BOUNDS();
+  for (const p of players) {
+    if (isCtrl(p)) steerFromTarget(p); else { p.steer.x = p.steer.y = 0; }
+    let vx = 0, vy = 0;
+    if (Math.hypot(p.steer.x, p.steer.y) > .1) {
+      vx = p.steer.x * p.speed; vy = p.steer.y * p.speed;
+      if (Math.abs(vx) > 10) p.face = vx >= 0 ? 1 : -1;
+      setAnim(p, 'Run');
+    } else { const v = wanderMove(p, dt, b); vx = v[0]; vy = v[1]; }
+    moveAndDraw(p, vx, vy, dt, b, true);
+  }
+}
 function battleTick(dt) {
   const b = BOUNDS();
   for (const p of players) {
@@ -555,25 +587,7 @@ function battleTick(dt) {
       vx = p.steer.x * p.speed * CTRL_SPD; vy = p.steer.y * p.speed * CTRL_SPD;
       p.face = Math.abs(vx) > 10 ? (vx >= 0 ? 1 : -1) : p.face;
       setAnim(p, 'Run');
-    } else {
-      p.state = 'wander';
-      p.wt -= dt;
-      if (p.wt <= 0 || Math.hypot(p.wx - p.x, p.wy - p.y) < 12) {
-        p.wt = rnd(1.2, 3.5);
-        for (let t = 0; t < 8; t++) {
-          p.wx = Math.max(b.x0, Math.min(b.x1, p.x + rnd(-260, 260)));
-          p.wy = Math.max(b.y0, Math.min(b.y1, p.y + rnd(-170, 170)));
-          if (!inObst(p.wx, p.wy)) break;
-        }
-        p.rest = Math.random() < .35;
-      }
-      if (!p.rest) {
-        const dx = p.wx - p.x, dy = p.wy - p.y, d = Math.hypot(dx, dy) || 1;
-        vx = dx / d * p.speed * .55; vy = dy / d * p.speed * .55;
-        p.face = dx >= 0 ? 1 : -1;
-        setAnim(p, 'Run');
-      } else setAnim(p, 'Idle');
-    }
+    } else { const v = wanderMove(p, dt, b); vx = v[0]; vy = v[1]; }
     moveAndDraw(p, vx, vy, dt, b, true);
   }
 }
@@ -702,25 +716,53 @@ function clearField() {
 }
 function hostReset() {
   clearField();
-  started = false; snapAcc = 0;
+  phase = 'lobby'; started = false; snapAcc = 0;
   mpAll({ t: 'reset' });
-  banner.textContent = '\u{1F4F1} waiting for players — scan to join';
+  for (const [id, name] of lobby) { const k = nextKit(); addFighter(fighterProps({ id, name, c: k.c, t: k.t, remote: true })); }
+  syncBots(); sendRoster();
   document.getElementById('lobby').style.display = 'flex';
+  document.getElementById('hostreset').style.display = 'none';
   pop('\u{1F504} NEW ROUND');
 }
+// live roster: knights exist from the moment the room opens; phones get theirs the moment they join
+let kitIdx = 0, KITS = null, botN = 0;
+function nextKit() {
+  if (!KITS) KITS = shuffle(COLORS.flatMap(c => TYPES.map(t => ({ c, t }))));
+  const k = KITS[kitIdx % KITS.length], gen = Math.floor(kitIdx / KITS.length); kitIdx++;
+  return { c: k.c, t: k.t, suffix: gen ? ' ' + 'II III IV V'.split(' ')[Math.min(3, gen - 1)] : '' };
+}
+function addFighter(p) { players.push(p); byId[p.id] = p; makeFighter(p); return p; }
+function removeFighter(p) {
+  players = players.filter(q => q !== p); delete byId[p.id];
+  if (p.cont && !p.cont.destroyed) { if (p.cont.parent) scene.removeChild(p.cont); p.cont.destroy({ children: true }); }
+}
+function syncBots() {                                             // bots fill the field: 8 minimum, phones + 5, 20 cap
+  const remotes = players.filter(p => p.remote).length;
+  const want = Math.min(20, Math.max(8, remotes + 5)) - remotes;
+  const bots = players.filter(p => !p.remote);
+  while (bots.length < want) { const k = nextKit(); bots.push(addFighter(fighterProps({ id: 'b' + (botN++), name: k.c + ' ' + LABEL[k.t] + k.suffix, c: k.c, t: k.t }))); }
+  while (bots.length > want) removeFighter(bots.pop());
+}
+const rosterMsg = () => players.map(p => [p.id, p.name, p.c, p.t]);
+function lobbyBanner() {
+  const n = players.filter(p => p.remote).length;
+  banner.textContent = '\u{1F4F1} scan to join — ' + (n ? n + ' knight' + (n > 1 ? 's' : '') + ' warming up' : 'nobody yet');
+}
+function sendRoster() { mpAll({ t: 'roster', roster: rosterMsg(), ph: phase }); lobbyBanner(); }
 
 // ---------- HOST mode ----------
 async function initHost() {
   const lobbyEl = document.getElementById('lobby');
+  lobbyEl.classList.add('side');                                  // the island stays visible: knights warm up behind the QR
   lobbyEl.style.display = 'flex';
-  banner.textContent = '\u{1F4F1} waiting for players — scan to join';
+  syncBots(); lobbyBanner();
   const res = await fetch('/api/room', { method: 'POST' });
   const { code } = await res.json();
   const joinUrl = location.origin + '/sb/' + code;
   document.getElementById('roomcode').textContent = code;
   const qr = window.qrcode(0, 'M');
   qr.addData(joinUrl); qr.make();
-  document.getElementById('qrbox').innerHTML = qr.createImgTag(5, 8);
+  document.getElementById('qrbox').innerHTML = qr.createImgTag(4, 6);
   document.getElementById('joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
   const namesEl = document.getElementById('lobbynames');
   const renderNames = () => {
@@ -735,13 +777,21 @@ async function initHost() {
     if (m.t === 'join') {
       lobby.set(m.id, m.name); renderNames();
       const back = byId[m.id];
-      if (back) { back.remote = true; back.speed = HUMAN_SPD; }    // their knight is theirs again
-      if (started) mpTo(m.id, { t: 'start', roster: players.map(p => [p.id, p.name, p.c, p.t]), late: back ? 0 : 1 });
+      if (back) { back.remote = true; back.speed = HUMAN_SPD; setBars(back); }   // their knight is theirs again
+      else if (phase === 'lobby') {                               // a knight appears the moment they join
+        const k = nextKit();
+        addFighter(fighterProps({ id: m.id, name: m.name, c: k.c, t: k.t, remote: true }));
+        syncBots();
+      }
+      if (phase === 'battle') mpTo(m.id, { t: 'start', roster: rosterMsg(), late: back ? 0 : 1 });
+      else sendRoster();
     } else if (m.t === 'leave') {
       lobby.delete(m.id); renderNames();
       const p = byId[m.id];
-      if (p && !p.dead) { p.remote = false; p.tx = p.ty = null; p.speed = rnd(CFG.spdMin, CFG.spdMax); setBars(p); }   // fights on as a bot
-    } else if (m.t === 'input' && started) {
+      if (!p) return;
+      if (phase === 'lobby') { removeFighter(p); syncBots(); sendRoster(); }
+      else if (!p.dead) { p.remote = false; p.tx = p.ty = null; p.speed = rnd(CFG.spdMin, CFG.spdMax); setBars(p); }   // fights on as a bot
+    } else if (m.t === 'input') {
       const p = byId[m.id];
       if (p && p.remote && !p.dead) {
         const b = BOUNDS();
@@ -765,27 +815,15 @@ async function initHost() {
   const resetLink = document.getElementById('hostreset');
   resetLink.addEventListener('click', e => { e.preventDefault(); if (started) hostReset(); });
   document.getElementById('startbtn').addEventListener('click', () => {
-    if (started) return;
-    started = true;
+    if (phase === 'battle') return;
+    phase = 'battle'; started = true;
     lobbyEl.style.display = 'none';
     resetLink.style.display = '';
-    const KITS = shuffle(COLORS.flatMap(c => TYPES.map(t => ({ c, t }))));
-    const remotes = [...lobby.entries()];
-    const total = Math.max(8, Math.min(20, remotes.length + 5));
-    players = [];
-    remotes.forEach(([id, name], i) => {
-      const k = KITS[i % KITS.length];
-      players.push(fighterProps({ id, name, c: k.c, t: k.t, remote: true }));
-    });
-    for (let i = remotes.length; i < total; i++) {
-      const k = KITS[i % KITS.length];
-      players.push(fighterProps({ id: 'b' + i, name: k.c + ' ' + LABEL[k.t], c: k.c, t: k.t }));
-    }
-    players.forEach(p => { byId[p.id] = p; });
-    players.forEach(makeFighter);
+    syncBots();
+    players.forEach(p => { p.opp = null; p.tx = p.ty = null; p.cd = rnd(.2, .6); });   // the warm-up knights ARE the roster
     buildBoard();
     refreshBoard();
-    mpAll({ t: 'start', roster: players.map(p => [p.id, p.name, p.c, p.t]) });
+    mpAll({ t: 'start', roster: rosterMsg() });
     beginBattle();
   });
 }
@@ -798,7 +836,7 @@ function hostNet(dt) {
     t: 'snap',
     ps: players.map(p => [p.id, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.face, ANIMI[p.animSt] || 0, p.dead ? 1 : 0,
                           Math.round(Math.max(0, Math.min(1, p.escFrac)) * 10), p.dmg]),
-    bn: banner.textContent,
+    bn: banner.textContent, ph: phase,
   });
 }
 
@@ -850,22 +888,35 @@ function initClient() {
   if (savedName) { jstatus.textContent = 'reconnecting…'; doJoin(savedName); }   // reload = seamless rejoin
   else { try { document.getElementById('jname').value = ''; } catch (e) {} }
 }
+let lobbyHinted = false;
+function syncRoster(roster) {                                      // add newcomers, drop leavers, keep everyone else
+  const ids = new Set(roster.map(r => r[0]));
+  for (const p of players) if (!ids.has(p.id)) { if (p.cont && !p.cont.destroyed) { if (p.cont.parent) scene.removeChild(p.cont); p.cont.destroy({ children: true }); } delete byId[p.id]; }
+  players = roster.map(r => byId[r[0]] || (byId[r[0]] = fighterProps({ id: r[0], name: r[1], c: r[2], t: r[3] })));
+  for (const p of players) if (!p.cont) makeFighter(p);
+  human = byId[myId] || null;
+  if (human && human.px === undefined) { human.px = human.x; human.py = human.y; setBars(human); }
+  buildBoard();
+}
 function onClientMsg(m, jb, jstatus) {
   if (m.t === 'welcome') {
     myId = m.id;
-    jstatus.innerHTML = '✅ joined as <b>' + m.name.replace(/[<>&]/g, '') + '</b><br>waiting for the host to start…';
+    jstatus.innerHTML = '✅ joined as <b>' + m.name.replace(/[<>&]/g, '') + '</b><br>loading the island…';
+  } else if (m.t === 'roster') {                                 // the warm-up field, live
+    phase = m.ph || 'lobby';
+    syncRoster(m.roster);
+    if (phase === 'lobby') {
+      spectate = false;
+      jb.style.display = 'none';
+      if (!lobbyHinted) { lobbyHinted = true; hint('🏃 warm-up — tap to run around · the host starts the battle', 8000); }
+    }
   } else if (m.t === 'start') {
-    started = true;
-    spectate = !m.roster.some(r => r[0] === myId);              // rejoining players get their own knight back
-    if (players.length) { jb.style.display = 'none'; human = byId[myId] || null; if (human) { human.px = human.x; human.py = human.y; } return; }
-    players = m.roster.map(r => fighterProps({ id: r[0], name: r[1], c: r[2], t: r[3] }));
-    players.forEach(p => { byId[p.id] = p; makeFighter(p); });
-    human = byId[myId] || null;
-    if (human) { human.px = human.x; human.py = human.y; setBars(human); }
-    buildBoard();
+    started = true; phase = 'battle';
+    syncRoster(m.roster);
+    spectate = !byId[myId];                                      // joined mid-battle: watch, play next round
     jb.style.display = 'none';
     pop(spectate ? '\u{1F440} spectating' : '⚔ FIGHT ⚔');
-    if (!spectate) hint('👆 tap where you want to run — the blue bar is your escape window', 8000);
+    hint(spectate ? '👀 battle in progress — you join the next round' : '👆 tap where you want to run — the blue bar is your escape window', 8000);
   } else if (m.t === 'snap') {
     m.at = performance.now();
     snapA = snapB; snapB = m;
@@ -890,10 +941,9 @@ function onClientMsg(m, jb, jstatus) {
     confetti();
   } else if (m.t === 'reset') {
     clearField();
-    started = false; spectate = false; snapA = snapB = null;
+    started = false; spectate = false; snapA = snapB = null; phase = 'lobby';
     banner.textContent = '';
-    jstatus.innerHTML = '\u{1F504} new round!<br>waiting for the host to start…';
-    jb.style.display = 'flex';
+    hint('\u{1F504} new round — warm up until the host starts', 6000);
   } else if (m.t === 'hostgone') {
     banner.textContent = '⚠ the host has left the island';
   }
@@ -906,6 +956,7 @@ function clientRender(dt) {
   const amap = {};
   A.ps.forEach(e => { amap[e[0]] = e; });
   if (!over) banner.textContent = B.bn || banner.textContent;
+  if (B.ph) phase = B.ph;
   for (const e of B.ps) {
     const p = byId[e[0]];
     if (!p || !p.cont || p.cont.destroyed) continue;
@@ -917,7 +968,7 @@ function clientRender(dt) {
       if (p.ptx != null) {                                        // predict your own run; the snapshot reels you back in
         const dx = p.ptx - p.px, dy = p.pty - p.py, d = Math.hypot(dx, dy);
         if (d > 10) {
-          const w = escFrac > 0 ? CTRL_SPD : CTRL_PULLED;
+          const w = phase === 'lobby' ? 1 : escFrac > 0 ? CTRL_SPD : CTRL_PULLED;
           p.px += dx / d * HUMAN_SPD * w * dt; p.py += dy / d * HUMAN_SPD * w * dt;
           if (Math.abs(dx) > 10) p.face = dx >= 0 ? 1 : -1;
           steering = true;
@@ -970,9 +1021,10 @@ app.ticker.add(() => {
   const dt = Math.min(app.ticker.deltaMS / 1000, .05);
   crownTime += dt;
   if (MODE === 'client') clientRender(dt);
-  else {
-    if (started) battleTick(dt);
-    if (MODE === 'host' && started) hostNet(dt);
+  else if (MODE === 'solo') { if (started) battleTick(dt); }
+  else if (players.length) {
+    if (phase === 'battle') battleTick(dt); else warmTick(dt);
+    hostNet(dt);
   }
   updateCamera(dt);
   fxTick(dt);
@@ -989,5 +1041,6 @@ Object.defineProperty(window, 'players', { get: () => players });
 Object.defineProperty(window, 'human', { get: () => human });
 Object.defineProperty(window, 'over', { get: () => over });
 Object.defineProperty(window, 'started', { get: () => started });
+Object.defineProperty(window, 'phase', { get: () => phase });
 Object.defineProperty(window, 'snapB', { get: () => snapB });
 })();

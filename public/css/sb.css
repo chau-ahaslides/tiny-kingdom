@@ -58,6 +58,8 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
   background:linear-gradient(#e8d9a8, #cbb877); border:3px solid var(--ink); border-radius:16px;
   box-shadow:0 6px 0 rgba(0,0,0,.35); color:var(--ink); text-align:center; }
 #lobby h2, #joinbox h2 { margin:0; font-size:24px; text-shadow:0 1px 0 rgba(255,255,255,.45); }
+#lobby.side { left:auto; right:22px; top:90px; transform:none; width:330px; padding:16px 18px 16px; gap:9px; z-index:950; }   /* presenter: QR beside the warm-up, not over it */
+#lobby.side h2 { font-size:20px; }
 #lobby .how { font-size:14px; opacity:.85; margin:-4px 0 0; }
 #qrbox img { image-rendering:pixelated; border:6px solid #fff; border-radius:8px; }
 #joinurl { font-size:13px; opacity:.8; word-break:break-all; }
