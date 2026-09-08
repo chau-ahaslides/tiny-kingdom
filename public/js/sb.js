@@ -16,8 +16,8 @@ document.querySelectorAll('#controls a').forEach(a => { if (a.search === '?playe
 // ---------- combat constants ----------
 const DEFAULTS = { total: 20, dmgMin: 24, dmgMax: 36, crit: 15, critMult: 2.1, heal: 30, cdMin: .8, cdMax: 1.3, spdMin: 175, spdMax: 215 };
 const CFG = Object.assign({}, DEFAULTS);
-const ESC_F = 1.7;          // escape window = your own cooldown × this
-const ESC_PULL = .3;        // how hard the pull still tugs while you're escaping
+const ESC_F = 2.8;          // escape window = your own cooldown × this (≈ 2.5–4.5 s)
+const ESC_PULL = .2;        // how hard the pull still tugs while you're escaping
 const CTRL_PULLED = .3;     // how much say your tap has once the pull is back in charge
 const CTRL_SPD = 1.08;      // a steered knight runs a touch faster than a bot
 const HUMAN_SPD = 225;
@@ -485,7 +485,7 @@ function kill(p, o) {
   p.hp = Math.min(100, p.hp + CFG.heal);
   setBars(p);
   p.state = 'wander'; p.wt = 0; p.cd = rnd(.3, .6);
-  if (isCtrl(p)) { p.esc = p.escMax = 1.6; p.escFrac = 1; }        // a win buys a breather: pick where you go next
+  if (isCtrl(p)) { p.esc = p.escMax = 2.5; p.escFrac = 1; }        // a win buys a breather: pick where you go next
   const alive = players.filter(q => !q.dead);
   banner.textContent = alive.length > 1 ? '⚔ ' + alive.length + ' fighters remain' : '';
   if (alive.length === 1) finale(alive[0]);
@@ -635,10 +635,12 @@ function finale(champ) {
   refreshBoard();
   if (champ.row) champ.row.classList.add('pop');
   const again = document.getElementById('again');
-  again.href = location.pathname + (MODE === 'host' ? '?host=1' : '?players=' + P);
+  if (MODE === 'host') { again.href = '#'; again.innerHTML = '&#8635; Play again &middot; same room'; }
+  else again.href = location.pathname + '?players=' + P;
   again.style.display = 'block';
   confetti();
 }
+document.getElementById('again').addEventListener('click', e => { if (MODE === 'host') { e.preventDefault(); hostReset(); } });
 function confetti() {
   for (let i = 0; i < 90; i++) {
     const c = document.createElement('div'); c.className = 'confetti';
@@ -683,6 +685,28 @@ function beginBattle() {
   pop('⚔ FIGHT ⚔');
   mpAll({ t: 'pop', txt: '⚔ FIGHT ⚔' });
   setTimeout(rematch, 900);
+}
+
+// ---------- reset: same room, same phones — back to the lobby for another round ----------
+function clearField() {
+  clearTap();
+  for (const p of players) { if (p.cont && !p.cont.destroyed) { if (p.cont.parent) scene.removeChild(p.cont); p.cont.destroy({ children: true }); } }
+  players = []; fallen.length = 0; human = null;
+  for (const k in byId) delete byId[k];
+  crowns.length = 0; FXS.length = 0;
+  document.querySelectorAll('.confetti').forEach(c => c.remove());
+  document.getElementById('podium').style.display = 'none';
+  document.getElementById('again').style.display = 'none';
+  hintEl.classList.remove('show');
+  over = false;
+}
+function hostReset() {
+  clearField();
+  started = false; snapAcc = 0;
+  mpAll({ t: 'reset' });
+  banner.textContent = '\u{1F4F1} waiting for players — scan to join';
+  document.getElementById('lobby').style.display = 'flex';
+  pop('\u{1F504} NEW ROUND');
 }
 
 // ---------- HOST mode ----------
@@ -738,10 +762,13 @@ async function initHost() {
     };
   };
   connectHost();
+  const resetLink = document.getElementById('hostreset');
+  resetLink.addEventListener('click', e => { e.preventDefault(); if (started) hostReset(); });
   document.getElementById('startbtn').addEventListener('click', () => {
     if (started) return;
     started = true;
     lobbyEl.style.display = 'none';
+    resetLink.style.display = '';
     const KITS = shuffle(COLORS.flatMap(c => TYPES.map(t => ({ c, t }))));
     const remotes = [...lobby.entries()];
     const total = Math.max(8, Math.min(20, remotes.length + 5));
@@ -805,14 +832,14 @@ function initClient() {
       onClientMsg(m, jb, jstatus);
     };
     ws.onclose = () => {
-      if (ws !== sock || over) return;                            // superseded socket, or game finished
+      if (ws !== sock) return;                                    // superseded socket
       if (!started) jstatus.textContent = '⚠ reconnecting…';
-      else banner.textContent = '⚠ reconnecting…';
+      else if (!over) banner.textContent = '⚠ reconnecting…';
       retries++;
-      setTimeout(() => { if (ws === sock && !over) doJoin(joinName); }, Math.min(5000, 800 * retries));
+      setTimeout(() => { if (ws === sock) doJoin(joinName); }, Math.min(5000, 800 * retries));   // even after a finale — the host may restart
     };
   };
-  clientReconnect = () => { if (joinName && sock && sock.readyState > 1 && !over) doJoin(joinName); };
+  clientReconnect = () => { if (joinName && sock && sock.readyState > 1) doJoin(joinName); };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) clientReconnect(); });
   document.getElementById('jbtn').addEventListener('click', () => {
     doJoin((document.getElementById('jname').value || '').trim() || 'Knight ' + Math.floor(rnd(2, 99)));
@@ -861,6 +888,12 @@ function onClientMsg(m, jb, jstatus) {
     pop('\u{1F451} ' + m.name + '!');
     banner.textContent = '\u{1F451} ' + m.name + ' rules the island!';
     confetti();
+  } else if (m.t === 'reset') {
+    clearField();
+    started = false; spectate = false; snapA = snapB = null;
+    banner.textContent = '';
+    jstatus.innerHTML = '\u{1F504} new round!<br>waiting for the host to start…';
+    jb.style.display = 'flex';
   } else if (m.t === 'hostgone') {
     banner.textContent = '⚠ the host has left the island';
   }
