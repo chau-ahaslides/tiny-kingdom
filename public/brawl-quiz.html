@@ -6,30 +6,30 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/sb.css">
-<title>Survival Brawl</title>
+<link rel="stylesheet" href="/css/bq.css">
+<title>Brawl: Quiz Mode</title>
 </head>
 <body>
 <div id="stage"></div>
 <header>
-  <h1>&#127965; Survival Brawl &#9876;</h1>
+  <h1>&#10067; Brawl &middot; Quiz Mode &#9876;</h1>
   <div id="banner"></div>
   <div id="controls">
     Fighters:
     <a href="?players=6">6</a><a href="?players=8">8</a><a href="?players=12">12</a><a href="?players=20">20</a>
     &middot; <a href="?host=1">&#128241; host a room</a><a href="#" id="hostreset" style="display:none">&#8635; reset round</a>
-    &middot; <a href="/brawl-quiz">&#10067; quiz mode</a>
-    &middot; <a href="/survival-island">&#127965; survival island</a>
+    &middot; <a href="/survival-brawl">&#127965; survival brawl</a>
     &middot; <a href="/survival-quiz">&#10067; survival quiz</a>
     &middot; <a href="/">&larr; back to the kingdom</a>
   </div>
-  <div id="instr">&#128070; Tap to move &middot; you are always pulled into the nearest fight &middot; each strike opens a short window to run</div>
+  <div id="instr">  <div id="instr">&#128070; Tap to move &middot; when two fighters meet, both get a quiz &middot; first right answer wins the duel &middot; wrong answers hurt &middot; no answer = sword fight</div>#10067; Meet a rival   <div id="instr">&#128070; Tap to move &middot; when two fighters meet, both get a quiz &middot; first right answer wins the duel &middot; wrong answers hurt &middot; no answer = sword fight</div>rarr; quiz duel   <div id="instr">&#128070; Tap to move &middot; when two fighters meet, both get a quiz &middot; first right answer wins the duel &middot; wrong answers hurt &middot; no answer = sword fight</div>middot; first right answer wins   <div id="instr">&#128070; Tap to move &middot; when two fighters meet, both get a quiz &middot; first right answer wins the duel &middot; wrong answers hurt &middot; no answer = sword fight</div>middot; wrong answers hurt   <div id="instr">&#128070; Tap to move &middot; when two fighters meet, both get a quiz &middot; first right answer wins the duel &middot; wrong answers hurt &middot; no answer = sword fight</div>middot; no answer = sword fight</div>
 </header>
 <div id="roundpop"><div class="rib r-Yellow"><i class="rl"></i><span class="rm"></span><i class="rr"></i></div></div>
 <div id="hint"></div>
+<div id="quizbox"><div id="qhead"><span>&#10067; Duel!</span><span id="qtimer"></span></div><div id="qq"></div><div id="qopts"></div><div id="qres"></div></div>
 <div id="lobby">
-  <h2>&#128241; Scan to join the brawl</h2>
-  <p class="how">Tap to move your knight from your phone &middot; bots fill the rest</p>
+  <h2>&#128241; Scan to join the quiz brawl</h2>
+  <p class="how">Answer duels from your phone &middot; bots fill the rest</p>
   <div id="qrbox"></div>
   <div id="joinurl"></div>
   <div>room code: <b id="roomcode"></b></div>
@@ -37,7 +37,7 @@
   <button id="startbtn">&#9654; Start battle</button>
 </div>
 <div id="joinbox">
-  <h2>&#9876; Join the brawl</h2>
+  <h2>&#10067; Join the quiz brawl</h2>
   <input id="jname" maxlength="14" placeholder="Your name" autocomplete="off">
   <button id="jbtn">Join</button>
   <div id="jstatus"></div>
@@ -45,6 +45,6 @@
 <div id="podium"><div id="lenbox"><span class="lb-ico">&#9203;</span><label for="lenin">Battle length</label><input id="lenin" type="number" min="6" max="120" step="1"><span class="lb-s">s</span></div><div class="ribhold"><div class="rib r-Blue"><i class="rl"></i><span class="rm">&#127942; Leaderboard</span><i class="rr"></i></div></div><div id="ranking"></div><a id="again" href="">&#8635; New battle</a></div>
 <script src="/vendor/pixi.min.js"></script>
 <script src="/vendor/qr.js"></script>
-<script src="/js/sb.js"></script>
+<script src="/js/bq.js"></script>
 </body>
 </html>

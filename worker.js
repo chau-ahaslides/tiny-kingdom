@@ -72,6 +72,8 @@ export default {
     if (join) return Response.redirect(url.origin + '/survival-quiz?join=' + join[1].toUpperCase(), 302);
     const brawl = url.pathname.match(/^\/sb\/([A-Za-z0-9]{4,8})$/);
     if (brawl) return Response.redirect(url.origin + '/survival-brawl?join=' + brawl[1].toUpperCase(), 302);
+    const bq = url.pathname.match(/^\/bq\/([A-Za-z0-9]{4,8})$/);
+    if (bq) return Response.redirect(url.origin + '/brawl-quiz?join=' + bq[1].toUpperCase(), 302);
     return new Response('Not found', { status: 404 });
   }
 };
