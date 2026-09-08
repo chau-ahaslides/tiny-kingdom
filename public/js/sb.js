@@ -1,0 +1,960 @@
+/* Survival Brawl — Survival Island where YOU steer your knight (and friends steer theirs from their phones).
+   Every fighter is always pulled toward the nearest rival and swings automatically. Right after each of your
+   own strikes an ESCAPE WINDOW opens: for a moment your tap wins over the pull and you can run toward it —
+   pick your next opponent, or dodge the swing coming at you. When the window closes the pull wins again.
+   Tap to move: the tap is where you WANT to be; the pull decides when you may go there.
+   Modes: solo (default) · host (?host=1 — desktop runs the sim, phones scan to join) · client (?join=CODE).
+   Multiplayer is host-authoritative: phones send tap targets, the host streams snapshots. */
+(async () => {
+const rnd = (a, b) => a + Math.random() * (b - a);
+const qs = new URLSearchParams(location.search);
+const MODE = qs.get('join') ? 'client' : (qs.has('host') ? 'host' : 'solo');
+const JOIN_CODE = (qs.get('join') || '').toUpperCase();
+const P = Math.max(4, Math.min(20, parseInt(qs.get('players'), 10) || 12));
+document.querySelectorAll('#controls a').forEach(a => { if (a.search === '?players=' + P) a.classList.add('on'); });
+
+// ---------- combat constants ----------
+const DEFAULTS = { total: 20, dmgMin: 24, dmgMax: 36, crit: 15, critMult: 2.1, heal: 30, cdMin: .8, cdMax: 1.3, spdMin: 175, spdMax: 215 };
+const CFG = Object.assign({}, DEFAULTS);
+const ESC_F = 1.7;          // escape window = your own cooldown × this
+const ESC_PULL = .3;        // how hard the pull still tugs while you're escaping
+const CTRL_PULLED = .3;     // how much say your tap has once the pull is back in charge
+const CTRL_SPD = 1.08;      // a steered knight runs a touch faster than a bot
+const HUMAN_SPD = 225;
+const DODGE_MARGIN = 40;    // a swing lands only if the target is still within reach + this at impact — runners can dodge
+function clampN(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function applyTotal(T) {                                          // same pacing curve as Survival Island
+  const s = Math.pow(Math.max(2, T - 5) / 10.5, .608);
+  CFG.cdMin = +clampN(.8 * s, .25, 3.2).toFixed(2);
+  CFG.cdMax = +clampN(1.3 * s, .35, 4.5).toFixed(2);
+  CFG.dmgMin = Math.round(clampN(24 / s, 4, 90));
+  CFG.dmgMax = Math.round(clampN(36 / s, 6, 99));
+}
+try { CFG.total = clampN(parseInt(localStorage.getItem('tk-sb-total') || '', 10) || DEFAULTS.total, 6, 120); } catch (e) {}
+applyTotal(CFG.total);
+const lenin = document.getElementById('lenin');
+lenin.value = CFG.total;
+lenin.addEventListener('input', () => {
+  const v = parseInt(lenin.value, 10);
+  if (isNaN(v) || v < 6) return;
+  CFG.total = v; applyTotal(v);
+  try { localStorage.setItem('tk-sb-total', String(v)); } catch (e) {}
+});
+if (MODE === 'client') {                                          // a phone is a controller, not a menu
+  document.getElementById('lenbox').style.display = 'none';
+  document.getElementById('controls').style.display = 'none';
+  document.getElementById('instr').textContent = '👆 Tap to move · each strike opens a short window to run';
+}
+const banner = document.getElementById('banner');
+const hintEl = document.getElementById('hint');
+let hintT = null;
+function hint(txt, ms) {
+  hintEl.textContent = txt; hintEl.classList.add('show');
+  clearTimeout(hintT); hintT = setTimeout(() => hintEl.classList.remove('show'), ms || 5000);
+}
+
+// ---------- kits & fighter data ----------
+const COLORS = ['Blue', 'Red', 'Yellow', 'Purple', 'Black'];
+const TYPES = ['Warrior', 'Lancer', 'Pawn'];                      // melee only — everyone gets pulled into the scrum
+const FRAMES = { Warrior: { Idle: 8, Run: 6, Attack: 4 }, Lancer: { Idle: 12, Run: 6, Attack: 3 }, Pawn: { Idle: 8, Run: 6, Attack: 6 } };
+const CELL = { Lancer: 320 };
+const MELEE = {
+  Warrior: { close: 52, reach: 60, stand: 40, hold: .42, at: .26, fps: 10, dmgF: 1.2, cdF: 1, lunge: 14 },
+  Lancer:  { close: 95, reach: 108, stand: 84, hold: .34, at: .2, fps: 9, dmgF: 1.15, cdF: 1.1, lunge: 8 },
+  Pawn:    { close: 44, reach: 50, stand: 34, hold: .45, at: .3, fps: 14, dmgF: 1, cdF: .75, lunge: 12 },
+};
+const LABEL = { Warrior: 'Knight', Lancer: 'Lancer', Pawn: 'Pawn' };
+const ANIMS = ['Idle', 'Run', 'Attack'];
+const ANIMI = { Idle: 0, Run: 1, Attack: 2 };
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function fighterProps(p) {
+  return Object.assign(p, {
+    hp: 100, dmg: 0, dead: false, opp: null, state: 'wander', cd: rnd(.2, .6),
+    wx: 0, wy: 0, wt: 0, swx: 0, swy: 0, speed: (p.human || p.remote) ? HUMAN_SPD : rnd(CFG.spdMin, CFG.spdMax),
+    pend: null, lunge: 0, lvx: 0, lvy: 0, hopT: 0, face: 1, tx: null, ty: null,
+    steer: { x: 0, y: 0 }, esc: 0, escMax: 1, escFrac: 0,
+  });
+}
+const isCtrl = p => !!(p.human || p.remote);                      // steered by a person (bots take over when a phone drops)
+let players = [];
+let human = null;                 // solo: You · client: own fighter · host: null
+const byId = {};
+
+// ---------- networking (host & client) ----------
+let sock = null, started = MODE === 'solo';
+const lobby = new Map();
+let myId = null, spectate = false, joinName = '', lastMsgAt = 0, clientReconnect = null;
+function mpAll(o) { if (sock && sock.readyState === 1) { try { sock.send(JSON.stringify(o)); } catch (e) {} } }
+function mpTo(id, o) { o.to = id; mpAll(o); }
+
+// ---------- PIXI stage: fixed world, fit or follow ----------
+PIXI.BaseTexture.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
+const app = new PIXI.Application({ resizeTo: window, background: 0x3d7fc4, antialias: false,
+  resolution: Math.min(2, window.devicePixelRatio || 1), autoDensity: true });
+document.getElementById('stage').appendChild(app.view);
+const W0 = 1440, H0 = 810;
+const world = new PIXI.Container();
+let water = null;
+let followMode = false, camZoom = 1, playW = 0;
+function fitWorld() {
+  const w = app.screen.width, h = app.screen.height;
+  const bw = w > 820 ? 372 : 0;                                   // the leaderboard owns the right edge on desktop
+  const f = Math.min((w - bw) / W0, h / H0);
+  followMode = f < .55 && MODE !== 'host';
+  playW = followMode ? w : w - bw;
+  if (followMode) {
+    camZoom = Math.max(1, h / H0, w / W0);
+    world.scale.set(camZoom);
+  } else {
+    world.scale.set(f);
+    world.x = (w - bw - W0 * f) / 2;
+    world.y = (h - H0 * f) / 2;
+  }
+  if (water) { water.width = w; water.height = h; }
+}
+function updateCamera(dt, snap) {
+  if (!followMode) return;
+  let t = human;
+  if (!t || t.dead) {
+    const alive = players.filter(p => !p.dead);
+    if (alive.length) t = alive.reduce((a, b) => (b.state === 'champion' || b.hp > a.hp) ? b : a);
+  }
+  if (!t) return;
+  const w = app.screen.width, h = app.screen.height;
+  const tx = Math.max(w - W0 * camZoom, Math.min(0, w / 2 - t.x * camZoom));
+  const ty = Math.max(h - H0 * camZoom, Math.min(0, h / 2 - (t.y - 40) * camZoom));
+  const k = snap ? 1 : Math.min(1, dt * 4);
+  world.x += (tx - world.x) * k;
+  world.y += (ty - world.y) * k;
+}
+const INK = 0x2b2b3d;
+
+// load everything — multiplayer rosters are only known at start time
+const urls = new Set(['tilemap', 'water-blue', 'foam', 'tower', 'house1', 'house2', 'tree1', 'tree2',
+  'rock1', 'rock2', 'gold1', 'bush1', 'bush2', 'sheep_idle', 'cloud1', 'cloud2']
+  .map(n => '/img/' + n + '.png'));
+COLORS.forEach(c => { TYPES.forEach(t => { for (const st in FRAMES[t]) urls.add('/img/2x/' + c + '_' + t + '_' + st + '.png'); }); urls.add('/img/ribs_' + c + '.png'); });
+await PIXI.Assets.load([...urls]);
+for (const u of urls) if (u.indexOf('/img/2x/') === 0) {
+  const t = PIXI.Assets.get(u);
+  t.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+  t.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON;
+}
+try { await document.fonts.load('bold 48px MedievalSharp'); } catch (e) {}
+
+const texCache = {};
+function frameTex(url, i, fw, fh) {
+  const key = url + '#' + i;
+  if (!texCache[key]) {
+    const t = PIXI.Assets.get(url);
+    texCache[key] = new PIXI.Texture(t.baseTexture, new PIXI.Rectangle(i * fw, 0, fw, fh));
+  }
+  return texCache[key];
+}
+const foamL = new PIXI.Container(), tileL = new PIXI.Container(),
+      scene = new PIXI.Container(), skyL = new PIXI.Container();
+scene.sortableChildren = true;
+water = new PIXI.TilingSprite(PIXI.Assets.get('/img/water-blue.png'), 10, 10);
+app.stage.addChild(water, world);
+world.addChild(foamL, tileL, scene, skyL);
+app.renderer.on('resize', fitWorld);
+
+// ---------- scenery ----------
+let ISL = null;
+const OBST = [];
+const inObst = (x, y) => OBST.some(o => x > o.x && x < o.x + o.w && y > o.y && y < o.y + o.h);
+const BOUNDS = () => ({ x0: ISL.x + 42, x1: ISL.x + ISL.w - 42, y0: ISL.y + 96, y1: ISL.y + ISL.h - 44 });
+const clouds = [];
+
+function sprite(url, x, y, w, z) {
+  const t = PIXI.Assets.get(url);
+  const sp = new PIXI.Sprite(t);
+  sp.x = x; sp.y = y;
+  sp.scale.set(w / t.width);
+  sp.zIndex = z !== undefined ? z : Math.round(y);
+  scene.addChild(sp);
+  return sp;
+}
+function variantSprite(url, fw, fh, variant, x, y, scale) {
+  const sp = new PIXI.Sprite(frameTex(url, variant, fw, fh));
+  sp.x = x; sp.y = y; sp.scale.set(scale);
+  sp.zIndex = Math.round(y + fh * scale - 8);
+  scene.addChild(sp);
+  return sp;
+}
+function buildScenery() {
+  const cols = 21, rows = 9;
+  const ix = Math.round((W0 - cols * 64) / 2), iy = 110;
+  ISL = { x: ix, y: iy, w: cols * 64, h: rows * 64 };
+  const foamFrames = Array.from({ length: 16 }, (_, i) => frameTex('/img/foam.png', i, 192, 192));
+  const foam = (x, y) => {
+    const f = new PIXI.AnimatedSprite(foamFrames);
+    f.x = x - 64; f.y = y - 64;
+    f.animationSpeed = (16 / 1.8) / 60;
+    f.gotoAndPlay(Math.floor(rnd(0, 16)));
+    foamL.addChild(f);
+  };
+  for (let c = 0; c < cols; c++) { foam(ix + c * 64, iy); foam(ix + c * 64, iy + (rows - 1) * 64); }
+  for (let r = 1; r < rows - 1; r++) { foam(ix, iy + r * 64); foam(ix + (cols - 1) * 64, iy + r * 64); }
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
+      const tc = c === 0 ? 0 : c === cols - 1 ? 2 : 1, tr = r === 0 ? 0 : r === rows - 1 ? 2 : 1;
+      const t = PIXI.Assets.get('/img/tilemap.png');
+      const sp = new PIXI.Sprite(new PIXI.Texture(t.baseTexture, new PIXI.Rectangle(tc * 64, tr * 64, 64, 64)));
+      sp.x = ix + c * 64; sp.y = iy + r * 64;
+      tileL.addChild(sp);
+    }
+  sprite('/img/tower.png', ix + 34, iy + 14, 120, iy + 14 + 240);
+  sprite('/img/tower.png', ix + ISL.w - 154, iy + 14, 120, iy + 14 + 240);
+  sprite('/img/house1.png', ix + 60, iy + ISL.h - 250, 116, iy + ISL.h - 250 + 174);
+  sprite('/img/house2.png', ix + ISL.w - 180, iy + ISL.h - 250, 116, iy + ISL.h - 250 + 174);
+  const rnd8 = () => Math.floor(rnd(0, 8));
+  variantSprite('/img/tree1.png', 192, 256, rnd8(), ix + 20, iy + ISL.h - 296, .85);
+  variantSprite('/img/tree2.png', 192, 256, rnd8(), ix + ISL.w - 205, iy + ISL.h - 306, .9);
+  sprite('/img/rock1.png', ix + ISL.w * .3, iy + ISL.h - 82, 46);
+  sprite('/img/rock2.png', ix + ISL.w * .64, iy + ISL.h - 72, 50);
+  sprite('/img/gold1.png', ix + 96, iy + ISL.h - 128, 52);
+  variantSprite('/img/bush1.png', 128, 128, rnd8(), ix + ISL.w * .44, iy + ISL.h - 112, .75);
+  variantSprite('/img/bush2.png', 128, 128, rnd8(), ix + ISL.w * .8, iy + 148, .7);
+  const sheepFr = Array.from({ length: 6 }, (_, i) => frameTex('/img/sheep_idle.png', i, 128, 128));
+  const sheep = new PIXI.AnimatedSprite(sheepFr);
+  sheep.x = ix + ISL.w * .12; sheep.y = iy + 156; sheep.scale.set(.8);
+  sheep.animationSpeed = (6 / 1.5) / 60; sheep.play();
+  sheep.zIndex = Math.round(iy + 156 + 128 * .8 - 8);
+  scene.addChild(sheep);
+  const mkCloud = (n, y, w2, sp2, op) => {
+    const c = new PIXI.Sprite(PIXI.Assets.get('/img/' + n + '.png'));
+    c.y = y; c.x = rnd(-300, W0); c.alpha = op;
+    c.scale.set(w2 / c.texture.width);
+    skyL.addChild(c);
+    clouds.push({ c, sp: sp2 });
+  };
+  mkCloud('cloud1', 8, 300, 1.55 * W0 / 75, .8);
+  mkCloud('cloud2', H0 * .78, 240, 1.55 * W0 / 105, .7);
+  OBST.length = 0;
+  OBST.push({ x: ix + 34, y: iy + 164, w: 120, h: 92 });
+  OBST.push({ x: ix + ISL.w - 154, y: iy + 164, w: 120, h: 92 });
+  OBST.push({ x: ix + 60, y: iy + ISL.h - 166, w: 116, h: 92 });
+  OBST.push({ x: ix + ISL.w - 180, y: iy + ISL.h - 166, w: 116, h: 92 });
+  OBST.push({ x: ix + 80, y: iy + ISL.h - 143, w: 44, h: 60 });
+  OBST.push({ x: ix + ISL.w - 142, y: iy + ISL.h - 144, w: 47, h: 63 });
+  OBST.push({ x: ix + ISL.w * .3, y: iy + ISL.h - 74, w: 46, h: 32 });
+  OBST.push({ x: ix + ISL.w * .64, y: iy + ISL.h - 62, w: 50, h: 34 });
+  OBST.push({ x: ix + 96, y: iy + ISL.h - 114, w: 52, h: 34 });
+}
+
+// ---------- FX ----------
+const FXS = [];
+function fx(o, dur, fn, end) { FXS.push({ o, t: 0, dur, fn, end }); }
+function fxTick(dt) {
+  for (let i = FXS.length - 1; i >= 0; i--) {
+    const f = FXS[i];
+    if (f.o && f.o.destroyed) { FXS.splice(i, 1); continue; }
+    f.t += dt;
+    const k = Math.min(1, f.t / f.dur);
+    f.fn(f.o, k);
+    if (k >= 1) { if (f.end) f.end(f.o); FXS.splice(i, 1); }
+  }
+}
+const TXT = (str, size, fill) => {
+  const t = new PIXI.Text(str, {
+    fontFamily: 'MedievalSharp, Georgia, serif', fontSize: size, fontWeight: 'bold',
+    fill, stroke: INK, strokeThickness: Math.max(3, size / 7),
+  });
+  t.texture.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+  return t;
+};
+function floatTxt(p, text, color, size) {
+  if (!p || !p.ui || p.ui.destroyed) return;
+  const t = TXT(text, size || 22, color);
+  t.anchor.set(.5); t.y = -165;
+  p.ui.addChild(t);
+  fx(t, 1, (o, k) => { o.y = -165 - 54 * k; o.alpha = 1 - k * k; }, o => o.destroy());
+}
+function star(p, ch) {
+  if (!p || !p.ui || p.ui.destroyed) return;
+  const t = TXT(ch, 34, 0xffffff);
+  t.anchor.set(.5); t.y = -110;
+  p.ui.addChild(t);
+  fx(t, .9, (o, k) => { o.scale.set(.3 + 1.6 * k); o.rotation = .7 * k; o.alpha = 1 - k; }, o => o.destroy());
+}
+let crownTime = 0;
+const crowns = [];
+function addCrown(p) {
+  const t = TXT('\u{1F451}', 30, 0xffd24a);
+  t.anchor.set(.5); t.y = -205;
+  p.ui.addChild(t);
+  crowns.push(t);
+}
+
+// ---------- fighters ----------
+function setBars(p) {
+  const g = p.hpg;
+  g.clear();
+  const ctrl = isCtrl(p) || (MODE === 'client' && p.id === myId);
+  g.beginFill(INK, .8).drawRoundedRect(-43, -136, 86, ctrl ? 22 : 16, 6).endFill();
+  const col = p.hp <= 35 ? 0xe2792b : 0x4fcf4f;
+  if (p.hp > 0) g.beginFill(col).drawRoundedRect(-39, -132, Math.max(2, 78 * p.hp / 100), 6, 3).endFill();
+  if (ctrl) {                                                     // escape meter: how long your tap still wins
+    const f = Math.max(0, Math.min(1, p.escFrac));
+    if (f > 0) g.beginFill(0x5ec8ff).drawRoundedRect(-39, -123, Math.max(2, 78 * f), 5, 2).endFill();
+    else g.beginFill(0x6b6b80, .6).drawRoundedRect(-39, -123, 78, 5, 2).endFill();
+  }
+}
+function makeFighter(p) {
+  const cont = new PIXI.Container();
+  const body = new PIXI.Container();
+  const ui = new PIXI.Container();
+  const cell = CELL[p.t] || 192;
+  const spr = new PIXI.Sprite(frameTex('/img/2x/' + p.c + '_' + p.t + '_Idle.png', 0, cell * 2, cell * 2));
+  spr.anchor.set(.5, cell === 320 ? 203 / 320 : 142 / 192);
+  spr.scale.set(.5);
+  body.addChild(spr);
+  const ribTex = PIXI.Assets.get('/img/ribs_' + p.c + '.png');
+  ribTex.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+  const plane = new PIXI.NineSlicePlane(ribTex, 40, 0, 40, 0);
+  const isMe = p.human || (MODE === 'client' && p.id === myId);
+  const nameT = TXT(p.name, 17, isMe ? 0xffd24a : 0xffffff);
+  nameT.anchor.set(.5);
+  const pw = Math.max(102, nameT.width + 86);
+  plane.width = pw; plane.height = 44;
+  nameT.x = pw / 2; nameT.y = 18;
+  const ribC = new PIXI.Container();
+  ribC.addChild(plane, nameT);
+  ribC.pivot.set(pw / 2, 0);
+  ribC.y = -182;
+  const hpg = new PIXI.Graphics();
+  ui.addChild(ribC, hpg);
+  const ring = new PIXI.Graphics();                               // glows under your feet while the escape window is open
+  ring.lineStyle(3, 0x5ec8ff, .95).drawEllipse(0, 0, 30, 12);
+  ring.beginFill(0x5ec8ff, .18).drawEllipse(0, 0, 30, 12).endFill();
+  ring.visible = false;
+  cont.addChild(ring, body, ui);
+  scene.addChild(cont);
+  p.cont = cont; p.body = body; p.ui = ui; p.spr = spr; p.hpg = hpg; p.cell = cell; p.ring = ring;
+  setBars(p);
+  const b = BOUNDS();
+  if (p.x === undefined) {
+    for (let t = 0; t < 25; t++) { p.x = rnd(b.x0, b.x1); p.y = rnd(b.y0, b.y1); if (!inObst(p.x, p.y)) break; }
+  }
+  p.animKey = ''; p.animT = 0;
+  setAnim(p, 'Idle');
+  draw(p, 0);
+}
+function setAnim(p, st, force) {
+  const key = p.c + '_' + p.t + '_' + st;
+  if (p.animKey === key && !force) return;
+  p.animKey = key; p.animT = 0; p.animN = FRAMES[p.t][st]; p.animSt = st;
+  p.sheet = '/img/2x/' + key + '.png';
+}
+function pop(text) { const rp = document.getElementById('roundpop'); rp.querySelector('.rm').textContent = text; rp.classList.remove('pop'); void rp.offsetWidth; rp.classList.add('pop'); }
+
+// ---------- tap-to-move: a tap is where you WANT to be; the pull decides when you may go ----------
+let tapMark = null;
+function clearTap() { if (tapMark) { if (tapMark.parent) scene.removeChild(tapMark); tapMark.destroy(); tapMark = null; } }
+function showTap(x, y) {
+  clearTap();
+  const m = new PIXI.Graphics();
+  m.lineStyle(3, 0x5ec8ff, .95).drawEllipse(0, 0, 16, 7);
+  m.beginFill(0x5ec8ff, .2).drawEllipse(0, 0, 16, 7).endFill();
+  m.x = x; m.y = y; m.zIndex = 5;
+  scene.addChild(m); tapMark = m;
+  fx(m, .5, (o, k) => { o.scale.set(1.6 - .6 * k); }, null);
+}
+function canSteer() {
+  if (!started || over) return false;
+  if (MODE === 'client') return !!human && !human.dead && !spectate;
+  return MODE === 'solo' && !!human && !human.dead;
+}
+document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+['gesturestart', 'gesturechange', 'gestureend'].forEach(g => document.addEventListener(g, e => e.preventDefault(), { passive: false }));
+app.view.addEventListener('pointerdown', e => {
+  if (!canSteer()) return;
+  const r = app.view.getBoundingClientRect();
+  const wx = (e.clientX - r.left - world.x) / world.scale.x;
+  const wy = (e.clientY - r.top - world.y) / world.scale.y;
+  const b = BOUNDS();
+  const tx = Math.max(b.x0, Math.min(b.x1, wx)), ty = Math.max(b.y0, Math.min(b.y1, wy));
+  if (MODE === 'client') {
+    mpAll({ t: 'input', x: Math.round(tx), y: Math.round(ty) });
+    human.ptx = tx; human.pty = ty;                               // predict yourself — everyone else is playback
+  } else { human.tx = tx; human.ty = ty; }
+  showTap(tx, ty);
+});
+function steerFromTarget(p) {                                      // the tap becomes a unit direction every tick
+  if (p.tx === null || p.tx === undefined) { p.steer.x = p.steer.y = 0; return; }
+  const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
+  if (d < 10) { p.tx = p.ty = null; p.steer.x = p.steer.y = 0; if (p === human) clearTap(); return; }
+  p.steer.x = dx / d; p.steer.y = dy / d;
+}
+
+// ---------- match-making: free fighters are pulled to the NEAREST free fighter ----------
+function rematch() {
+ try {
+  const free = players.filter(p => !p.dead && !p.opp);
+  while (free.length >= 2) {
+    const a = free.shift();
+    let bi = 0, bd = 1e9;
+    for (let i = 0; i < free.length; i++) {
+      const d = Math.hypot(free[i].x - a.x, free[i].y - a.y);
+      if (d < bd) { bd = d; bi = i; }
+    }
+    const b = free.splice(bi, 1)[0];
+    a.opp = b; b.opp = a; a.state = b.state = 'seek';
+  }
+  for (const p of free) p.state = 'wander';
+ } catch (e) { console.error('rematch error:', e.message, e.stack); }
+}
+
+// ---------- combat ----------
+function strike(p) {
+  const M = MELEE[p.t], o = p.opp;
+  p.cd = rnd(CFG.cdMin, CFG.cdMax) * M.cdF;
+  if (isCtrl(p)) { p.esc = p.escMax = p.cd * ESC_F; p.escFrac = 1; setBars(p); }   // your swing opens the escape window
+  const dx = o.x - p.x, dy = o.y - p.y, dd = Math.hypot(dx, dy) || 1;
+  p.face = dx >= 0 ? 1 : -1;
+  p.lungeDir = { x: dx / dd, y: dy / dd };
+  p.lungeMax = .42;
+  p.lunge = p.lungeMax;
+  setAnim(p, 'Attack', true); p.atkHold = M.hold;
+  p.pend = { at: M.at, target: o };
+}
+function damage(p, o, mn, mx) {
+  if (over || o.dead) return;
+  let dmg = Math.round(rnd(mn, mx));
+  const crit = Math.random() < CFG.crit / 100;
+  if (crit) dmg = Math.round(dmg * CFG.critMult);
+  p.dmg += dmg;
+  o.hp = Math.max(0, o.hp - dmg);
+  setBars(o);
+  o.spr.tint = 0xff9d9d; setTimeout(() => { o.spr.tint = 0xffffff; }, 200);
+  o.x += (o.x >= p.x ? 5 : -5);
+  floatTxt(o, (crit ? '\u{1F4A5} ' : '−') + dmg, crit ? 0xffd24a : 0xffffff, crit ? 29 : 22);
+  mpAll({ t: 'dmg', id: o.id, n: dmg, crit: crit ? 1 : 0 });
+  refreshBoard();
+  if (o.hp <= 0) kill(p, o);
+}
+function applyHit(p, o) {
+  if (o.dead || p.dead) return;
+  const M = MELEE[p.t];
+  if (Math.hypot(o.x - p.x, o.y - p.y) > M.reach + DODGE_MARGIN) {   // they ran — the swing whiffs
+    if (isCtrl(o)) { floatTxt(o, 'dodge!', 0x5ec8ff, 20); mpAll({ t: 'dodge', id: o.id }); }
+    return;
+  }
+  damage(p, o, CFG.dmgMin * M.dmgF, CFG.dmgMax * M.dmgF);
+}
+const fallen = [];
+let T0 = performance.now();
+const MEDALS = { 1: '\u{1F451}', 2: '\u{1F948}', 3: '\u{1F949}' };
+function refreshBoard() {
+  const alive = players.filter(q => !q.dead)
+    .sort((a, b) => (a.finalRank || 99) - (b.finalRank || 99) || b.hp - a.hp || b.dmg - a.dmg);
+  const list = [...alive, ...fallen.slice().reverse()];
+  list.forEach((q, i) => {
+    if (!q.row) return;
+    q.row.style.top = (i * 26) + 'px';
+    if (q.dead || q.final) {
+      q.row.querySelector('.rknum').textContent = MEDALS[q.finalRank] || (q.finalRank ? q.finalRank + '.' : '💀');
+      q.row.querySelector('.tt').textContent = q.surv !== undefined ? q.surv.toFixed(1) + 's' : '💀';
+    } else {
+      q.row.querySelector('.rknum').textContent = (i + 1) + '.';
+      q.row.querySelector('.tt').textContent = '❤' + Math.round(q.hp) + ' ⚔' + q.dmg;
+    }
+  });
+}
+function koVisual(o) {
+  const rot = 1.68 * (o.face < 0 ? -1 : 1);
+  if (o.ring) o.ring.visible = false;
+  fx(o, .7, (q, k) => { q.body.rotation = rot * k; });
+  fx(o, .8, (q, k) => { q.body.alpha = q.ui.alpha = 1 - .65 * k; });
+  star(o, '\u{1F4AB}');
+  setTimeout(() => fx(o.cont, .9, (c, k) => { c.alpha = 1 - k; }, c => { if (c.parent) scene.removeChild(c); c.destroy({ children: true }); }), 2000);
+}
+function kill(p, o) {
+  o.dead = true; o.opp = null; if (p.opp === o) p.opp = null;
+  o.tx = o.ty = null; if (o === human) clearTap();
+  o.surv = (performance.now() - T0) / 1000;
+  koVisual(o);
+  fallen.push(o);
+  o.finalRank = players.length - fallen.length + 1;
+  refreshBoard();
+  if (o.row) { o.row.classList.add('done'); o.row.classList.remove('pop'); void o.row.offsetWidth; o.row.classList.add('pop'); }
+  if (o === human) hint('💀 you fell — ' + o.finalRank + (o.finalRank === 2 ? 'nd' : o.finalRank === 3 ? 'rd' : 'th') + ' place', 6000);
+  p.hopT = 1;
+  star(p, '\u{1F3C6}');
+  p.hp = Math.min(100, p.hp + CFG.heal);
+  setBars(p);
+  p.state = 'wander'; p.wt = 0; p.cd = rnd(.3, .6);
+  if (isCtrl(p)) { p.esc = p.escMax = 1.6; p.escFrac = 1; }        // a win buys a breather: pick where you go next
+  const alive = players.filter(q => !q.dead);
+  banner.textContent = alive.length > 1 ? '⚔ ' + alive.length + ' fighters remain' : '';
+  if (alive.length === 1) finale(alive[0]);
+  else setTimeout(rematch, rnd(120, 350));
+}
+
+// ---------- the simulation (solo & host) ----------
+let over = false;
+function battleTick(dt) {
+  const b = BOUNDS();
+  for (const p of players) {
+    if (p.dead) { draw(p, dt); continue; }
+    if (p.pend) { p.pend.at -= dt; if (p.pend.at <= 0) { applyHit(p, p.pend.target); p.pend = null; } }
+    if (p.lunge > 0) p.lunge = Math.max(0, p.lunge - dt);
+    if (p.atkHold) { p.atkHold -= dt; if (p.atkHold <= 0) p.atkHold = 0; }
+    if (p.esc > 0) {
+      p.esc = Math.max(0, p.esc - dt);
+      p.escFrac = p.esc / p.escMax;
+      if (isCtrl(p)) setBars(p);
+    }
+    if (isCtrl(p) && p.state !== 'champion') steerFromTarget(p); else { p.steer.x = p.steer.y = 0; }
+    const steering = isCtrl(p) && Math.hypot(p.steer.x, p.steer.y) > .1;
+    let vx = 0, vy = 0;
+    if (p.state === 'champion') {
+      const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
+      if (d > 8) { vx = dx / d * p.speed; vy = dy / d * p.speed; setAnim(p, 'Run'); p.face = dx >= 0 ? 1 : -1; }
+      else if (!p.crowned) { p.crowned = true; setAnim(p, 'Idle'); p.face = 1; addCrown(p); }
+    } else if (p.opp && !p.opp.dead) {
+      const M = MELEE[p.t], o = p.opp, dx = o.x - p.x, dy = o.y - p.y, d = Math.hypot(dx, dy) || 1;
+      const striking = p.lunge > 0 || p.atkHold > 0;
+      p.cd -= dt;                                                  // cooldown always ticks — runners come back ready
+      if (striking) {
+        // hold still mid-swing
+      } else if (steering) {
+        // the PULL: toward the stand-off spot beside your opponent. Your tap fights it — and wins only inside the escape window.
+        const free = p.esc > 0;
+        const cw = free ? CTRL_SPD : CTRL_PULLED, pw = free ? ESC_PULL : 1;
+        let px = 0, py = 0;
+        if (d > M.close) {
+          const tx = o.x - Math.sign(dx) * M.stand, ty = o.y;
+          const dd = Math.hypot(tx - p.x, ty - p.y) || 1;
+          px = (tx - p.x) / dd; py = (ty - p.y) / dd;
+        } else if (d < 26) { px = -dx / d * .3; py = -dy / d * .3; }
+        vx = (p.steer.x * cw + px * pw) * p.speed; vy = (p.steer.y * cw + py * pw) * p.speed;
+        const vm = Math.hypot(vx, vy), cap = p.speed * CTRL_SPD;
+        if (vm > cap) { vx *= cap / vm; vy *= cap / vm; }
+        p.state = d > M.close ? 'seek' : 'fight';
+        if (vm > 14) { p.face = Math.abs(vx) > 10 ? (vx >= 0 ? 1 : -1) : (dx >= 0 ? 1 : -1); setAnim(p, 'Run'); }
+        else { p.face = dx >= 0 ? 1 : -1; if (!(p.animSt === 'Attack' && p.animT < .4)) setAnim(p, 'Idle'); }
+      } else if (d > M.close) {
+        p.state = 'seek';
+        p.face = dx >= 0 ? 1 : -1;
+        p.wt -= dt; if (p.wt <= 0) { p.wt = rnd(.3, .7); p.swx = rnd(-30, 30); p.swy = rnd(-24, 24); }
+        const tx = o.x - Math.sign(dx) * M.stand + (p.swx || 0), ty = o.y + (p.swy || 0);
+        const dd = Math.hypot(tx - p.x, ty - p.y) || 1;
+        vx = (tx - p.x) / dd * p.speed; vy = (ty - p.y) / dd * p.speed;
+        setAnim(p, 'Run');
+      } else {
+        p.state = 'fight';
+        p.face = dx >= 0 ? 1 : -1;
+        if (d < 26) { vx = -dx / d * 50; vy = -dy / d * 50; }
+        if (!(p.animSt === 'Attack' && p.animT < .4)) setAnim(p, 'Idle');
+      }
+      if (!striking && p.cd <= 0 && !p.pend && d <= M.reach) strike(p);
+    } else if (steering) {                                         // nobody to fight yet: roam freely
+      p.state = 'roam';
+      vx = p.steer.x * p.speed * CTRL_SPD; vy = p.steer.y * p.speed * CTRL_SPD;
+      p.face = Math.abs(vx) > 10 ? (vx >= 0 ? 1 : -1) : p.face;
+      setAnim(p, 'Run');
+    } else {
+      p.state = 'wander';
+      p.wt -= dt;
+      if (p.wt <= 0 || Math.hypot(p.wx - p.x, p.wy - p.y) < 12) {
+        p.wt = rnd(1.2, 3.5);
+        for (let t = 0; t < 8; t++) {
+          p.wx = Math.max(b.x0, Math.min(b.x1, p.x + rnd(-260, 260)));
+          p.wy = Math.max(b.y0, Math.min(b.y1, p.y + rnd(-170, 170)));
+          if (!inObst(p.wx, p.wy)) break;
+        }
+        p.rest = Math.random() < .35;
+      }
+      if (!p.rest) {
+        const dx = p.wx - p.x, dy = p.wy - p.y, d = Math.hypot(dx, dy) || 1;
+        vx = dx / d * p.speed * .55; vy = dy / d * p.speed * .55;
+        p.face = dx >= 0 ? 1 : -1;
+        setAnim(p, 'Run');
+      } else setAnim(p, 'Idle');
+    }
+    moveAndDraw(p, vx, vy, dt, b, true);
+  }
+}
+function moveAndDraw(p, vx, vy, dt, b, separate) {
+  if (separate) {
+    for (const q of players) {
+      if (q === p || q.dead || q === p.opp) continue;
+      const dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy);
+      if (d > 0 && d < 46) { vx += dx / d * 70; vy += dy / d * 70; }
+    }
+  }
+  p.lvx = vx; p.lvy = vy;
+  p.x = Math.max(b.x0, Math.min(b.x1, p.x + vx * dt));
+  p.y = Math.max(b.y0, Math.min(b.y1, p.y + vy * dt));
+  for (const ob of OBST) {
+    if (p.x > ob.x && p.x < ob.x + ob.w && p.y > ob.y && p.y < ob.y + ob.h) {
+      const dl = p.x - ob.x, dr = ob.x + ob.w - p.x, dtp = p.y - ob.y, db = ob.y + ob.h - p.y;
+      const m = Math.min(dl, dr, dtp, db);
+      if (m === dl) p.x = ob.x; else if (m === dr) p.x = ob.x + ob.w;
+      else if (m === dtp) p.y = ob.y; else p.y = ob.y + ob.h;
+    }
+  }
+  draw(p, dt);
+}
+function draw(p, dt) {
+  if (!p.cont || !p.cont.parent) return;
+  p.animT += dt;
+  const fps = p.animSt === 'Run' ? 10 : p.animSt === 'Attack' ? MELEE[p.t].fps : 7;
+  const fr = Math.floor(p.animT * fps) % p.animN;
+  p.spr.texture = frameTex(p.sheet, fr, p.cell * 2, p.cell * 2);
+  if (p.animSt === 'Attack' && p.animT * fps >= p.animN) setAnim(p, 'Idle');
+  let ox = 0, oy = 0;
+  if (p.lunge > 0 && p.lungeDir) {
+    const amp = Math.sin(Math.PI * (1 - p.lunge / p.lungeMax)) * MELEE[p.t].lunge;
+    ox = p.lungeDir.x * amp; oy = p.lungeDir.y * amp;
+  }
+  if (p.hopT > 0) { p.hopT = Math.max(0, p.hopT - dt); oy -= 22 * Math.abs(Math.sin(2 * Math.PI * (1 - p.hopT))); }
+  p.cont.x = p.x + ox; p.cont.y = p.y + oy;
+  p.cont.zIndex = Math.round(p.y);
+  const s = .62 + .26 * (p.y / H0);
+  p.body.scale.set(s * (p.face < 0 ? -1 : 1), s);
+  p.ui.scale.set(s);
+  if (p.ring) {
+    const on = !p.dead && p.escFrac > 0 && (isCtrl(p) || (MODE === 'client' && p.id === myId));
+    p.ring.visible = on;
+    if (on) { p.ring.scale.set(s * (1 + .08 * Math.sin(crownTime * 9))); p.ring.alpha = .45 + .55 * p.escFrac; }
+  }
+}
+function finale(champ) {
+  over = true;
+  clearTap();
+  banner.textContent = '\u{1F451} ' + champ.name + ' rules the island!';
+  pop('\u{1F451} ' + champ.name + '!');
+  mpAll({ t: 'fin', id: champ.id, name: champ.name });
+  champ.state = 'champion'; champ.opp = null; champ.pend = null; champ.esc = 0; champ.escFrac = 0; champ.steer.x = champ.steer.y = 0;
+  champ.surv = (performance.now() - T0) / 1000;
+  champ.tx = ISL.x + ISL.w / 2; champ.ty = ISL.y + ISL.h * .5;
+  champ.final = true; champ.finalRank = 1;
+  refreshBoard();
+  if (champ.row) champ.row.classList.add('pop');
+  const again = document.getElementById('again');
+  again.href = location.pathname + (MODE === 'host' ? '?host=1' : '?players=' + P);
+  again.style.display = 'block';
+  confetti();
+}
+function confetti() {
+  for (let i = 0; i < 90; i++) {
+    const c = document.createElement('div'); c.className = 'confetti';
+    c.style.left = rnd(0, 100) + 'vw';
+    c.style.width = c.style.height = rnd(6, 12) + 'px';
+    c.style.background = 'hsl(' + Math.floor(rnd(0, 360)) + ',85%,60%)';
+    c.style.animationDuration = rnd(2.5, 6) + 's';
+    c.style.animationDelay = rnd(0, 2.5) + 's';
+    document.body.appendChild(c);
+  }
+}
+
+// ---------- roster & board ----------
+const ICO = { Warrior: '\u{1F5E1}', Lancer: '⚔', Pawn: '\u{1FA93}' };
+function buildBoard() {
+  const rankEl = document.getElementById('ranking');
+  rankEl.innerHTML = '';
+  rankEl.style.height = (players.length * 26) + 'px';
+  players.forEach((q, i) => {
+    const r = document.createElement('div'); r.className = 'rrow';
+    const me = q.human || (MODE === 'client' && q.id === myId);
+    const who = (q.remote || me ? '\u{1F4F1} ' : '') + ICO[q.t] + ' ' + q.name.replace(/[<>&]/g, '');
+    r.innerHTML = '<span><span class="rknum">' + (i + 1) + '.</span> <span class="who' + (me ? ' me' : '') + '">' + who + '</span></span><span class="tt">❤100 ⚔0</span>';
+    r.style.top = (i * 26) + 'px';
+    q.row = r; rankEl.appendChild(r);
+  });
+  document.getElementById('podium').style.display = 'block';
+  document.getElementById('again').style.display = 'none';
+}
+function soloRoster() {
+  const KITS = shuffle(COLORS.flatMap(c => TYPES.map(t => ({ c, t }))));
+  players = Array.from({ length: P }, (_, i) => {
+    const k = KITS[i % KITS.length];
+    return fighterProps({ id: 'b' + i, name: i === 0 ? 'You' : k.c + ' ' + LABEL[k.t], c: k.c, t: k.t, human: i === 0 });
+  });
+  players.forEach(p => { byId[p.id] = p; });
+  human = players[0];
+}
+function beginBattle() {
+  T0 = performance.now();
+  banner.textContent = '⚔ ' + players.length + ' fighters — last one standing wins';
+  pop('⚔ FIGHT ⚔');
+  mpAll({ t: 'pop', txt: '⚔ FIGHT ⚔' });
+  setTimeout(rematch, 900);
+}
+
+// ---------- HOST mode ----------
+async function initHost() {
+  const lobbyEl = document.getElementById('lobby');
+  lobbyEl.style.display = 'flex';
+  banner.textContent = '\u{1F4F1} waiting for players — scan to join';
+  const res = await fetch('/api/room', { method: 'POST' });
+  const { code } = await res.json();
+  const joinUrl = location.origin + '/sb/' + code;
+  document.getElementById('roomcode').textContent = code;
+  const qr = window.qrcode(0, 'M');
+  qr.addData(joinUrl); qr.make();
+  document.getElementById('qrbox').innerHTML = qr.createImgTag(5, 8);
+  document.getElementById('joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
+  const namesEl = document.getElementById('lobbynames');
+  const renderNames = () => {
+    namesEl.innerHTML = lobby.size
+      ? [...lobby.values()].map(n => '<span class="lname">⚔ ' + n.replace(/[<>&]/g, '') + '</span>').join('')
+      : '<i>nobody yet — scan the code!</i>';
+  };
+  renderNames();
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const hostMsg = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.t === 'join') {
+      lobby.set(m.id, m.name); renderNames();
+      const back = byId[m.id];
+      if (back) { back.remote = true; back.speed = HUMAN_SPD; }    // their knight is theirs again
+      if (started) mpTo(m.id, { t: 'start', roster: players.map(p => [p.id, p.name, p.c, p.t]), late: back ? 0 : 1 });
+    } else if (m.t === 'leave') {
+      lobby.delete(m.id); renderNames();
+      const p = byId[m.id];
+      if (p && !p.dead) { p.remote = false; p.tx = p.ty = null; p.speed = rnd(CFG.spdMin, CFG.spdMax); setBars(p); }   // fights on as a bot
+    } else if (m.t === 'input' && started) {
+      const p = byId[m.id];
+      if (p && p.remote && !p.dead) {
+        const b = BOUNDS();
+        p.tx = Math.max(b.x0, Math.min(b.x1, +m.x || 0));
+        p.ty = Math.max(b.y0, Math.min(b.y1, +m.y || 0));
+      }
+    }
+  };
+  const connectHost = () => {
+    const ws = new WebSocket(proto + location.host + '/ws/' + code + '?role=host');
+    sock = ws;
+    ws.onmessage = hostMsg;
+    ws.onopen = () => { if (started) banner.textContent = ''; };
+    ws.onclose = () => {
+      if (ws !== sock) return;
+      if (started) banner.textContent = '⚠ room link lost — reconnecting…';
+      setTimeout(() => { if (ws === sock) connectHost(); }, 1200);   // players re-register via their own reconnects
+    };
+  };
+  connectHost();
+  document.getElementById('startbtn').addEventListener('click', () => {
+    if (started) return;
+    started = true;
+    lobbyEl.style.display = 'none';
+    const KITS = shuffle(COLORS.flatMap(c => TYPES.map(t => ({ c, t }))));
+    const remotes = [...lobby.entries()];
+    const total = Math.max(8, Math.min(20, remotes.length + 5));
+    players = [];
+    remotes.forEach(([id, name], i) => {
+      const k = KITS[i % KITS.length];
+      players.push(fighterProps({ id, name, c: k.c, t: k.t, remote: true }));
+    });
+    for (let i = remotes.length; i < total; i++) {
+      const k = KITS[i % KITS.length];
+      players.push(fighterProps({ id: 'b' + i, name: k.c + ' ' + LABEL[k.t], c: k.c, t: k.t }));
+    }
+    players.forEach(p => { byId[p.id] = p; });
+    players.forEach(makeFighter);
+    buildBoard();
+    refreshBoard();
+    mpAll({ t: 'start', roster: players.map(p => [p.id, p.name, p.c, p.t]) });
+    beginBattle();
+  });
+}
+let snapAcc = 0;
+function hostNet(dt) {
+  snapAcc += dt;
+  if (snapAcc < .08) return;
+  snapAcc = 0;
+  mpAll({
+    t: 'snap',
+    ps: players.map(p => [p.id, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.face, ANIMI[p.animSt] || 0, p.dead ? 1 : 0,
+                          Math.round(Math.max(0, Math.min(1, p.escFrac)) * 10), p.dmg]),
+    bn: banner.textContent,
+  });
+}
+
+// ---------- CLIENT mode ----------
+let snapA = null, snapB = null;
+function initClient() {
+  const jb = document.getElementById('joinbox');
+  jb.style.display = 'flex';
+  banner.textContent = '';
+  const jstatus = document.getElementById('jstatus');
+  const tokKey = 'tk-sb-tok-' + JOIN_CODE, nameKey = 'tk-sb-name-' + JOIN_CODE;
+  let token = '';
+  try {
+    token = localStorage.getItem(tokKey) || '';
+    if (!token) { token = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(tokKey, token); }
+  } catch (e) {}
+  let retries = 0;
+  const doJoin = name => {
+    joinName = name;
+    try { localStorage.setItem(nameKey, name); } catch (e) {}
+    document.getElementById('jname').style.display = 'none';
+    document.getElementById('jbtn').style.display = 'none';
+    jstatus.textContent = retries ? 'reconnecting…' : 'joining…';
+    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const ws = new WebSocket(proto + location.host + '/ws/' + JOIN_CODE + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token));
+    sock = ws;
+    ws.onopen = () => { retries = 0; };
+    ws.onmessage = ev => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      lastMsgAt = performance.now();
+      onClientMsg(m, jb, jstatus);
+    };
+    ws.onclose = () => {
+      if (ws !== sock || over) return;                            // superseded socket, or game finished
+      if (!started) jstatus.textContent = '⚠ reconnecting…';
+      else banner.textContent = '⚠ reconnecting…';
+      retries++;
+      setTimeout(() => { if (ws === sock && !over) doJoin(joinName); }, Math.min(5000, 800 * retries));
+    };
+  };
+  clientReconnect = () => { if (joinName && sock && sock.readyState > 1 && !over) doJoin(joinName); };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) clientReconnect(); });
+  document.getElementById('jbtn').addEventListener('click', () => {
+    doJoin((document.getElementById('jname').value || '').trim() || 'Knight ' + Math.floor(rnd(2, 99)));
+  });
+  document.getElementById('jname').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('jbtn').click(); });
+  let savedName = '';
+  try { savedName = localStorage.getItem(nameKey) || ''; } catch (e) {}
+  if (savedName) { jstatus.textContent = 'reconnecting…'; doJoin(savedName); }   // reload = seamless rejoin
+  else { try { document.getElementById('jname').value = ''; } catch (e) {} }
+}
+function onClientMsg(m, jb, jstatus) {
+  if (m.t === 'welcome') {
+    myId = m.id;
+    jstatus.innerHTML = '✅ joined as <b>' + m.name.replace(/[<>&]/g, '') + '</b><br>waiting for the host to start…';
+  } else if (m.t === 'start') {
+    started = true;
+    spectate = !m.roster.some(r => r[0] === myId);              // rejoining players get their own knight back
+    if (players.length) { jb.style.display = 'none'; human = byId[myId] || null; if (human) { human.px = human.x; human.py = human.y; } return; }
+    players = m.roster.map(r => fighterProps({ id: r[0], name: r[1], c: r[2], t: r[3] }));
+    players.forEach(p => { byId[p.id] = p; makeFighter(p); });
+    human = byId[myId] || null;
+    if (human) { human.px = human.x; human.py = human.y; setBars(human); }
+    buildBoard();
+    jb.style.display = 'none';
+    pop(spectate ? '\u{1F440} spectating' : '⚔ FIGHT ⚔');
+    if (!spectate) hint('👆 tap where you want to run — the blue bar is your escape window', 8000);
+  } else if (m.t === 'snap') {
+    m.at = performance.now();
+    snapA = snapB; snapB = m;
+  } else if (m.t === 'dmg') {
+    const p = byId[m.id];
+    if (p) {
+      floatTxt(p, (m.crit ? '\u{1F4A5} ' : '−') + m.n, m.crit ? 0xffd24a : 0xffffff, m.crit ? 29 : 22);
+      if (p.spr && !p.spr.destroyed) { p.spr.tint = 0xff9d9d; setTimeout(() => { if (p.spr && !p.spr.destroyed) p.spr.tint = 0xffffff; }, 200); }
+    }
+  } else if (m.t === 'dodge') {
+    const p = byId[m.id];
+    if (p) floatTxt(p, 'dodge!', 0x5ec8ff, 20);
+  } else if (m.t === 'pop') {
+    pop(m.txt);
+  } else if (m.t === 'fin') {
+    over = true;
+    clearTap();
+    const p = byId[m.id];
+    if (p) addCrown(p);
+    pop('\u{1F451} ' + m.name + '!');
+    banner.textContent = '\u{1F451} ' + m.name + ' rules the island!';
+    confetti();
+  } else if (m.t === 'hostgone') {
+    banner.textContent = '⚠ the host has left the island';
+  }
+}
+function clientRender(dt) {
+  if (!snapB || !players.length) return;
+  const A = snapA || snapB, B = snapB;
+  const span = Math.max(40, B.at - A.at);
+  const k = Math.min(1.25, Math.max(0, (performance.now() - 100 - A.at) / span));
+  const amap = {};
+  A.ps.forEach(e => { amap[e[0]] = e; });
+  if (!over) banner.textContent = B.bn || banner.textContent;
+  for (const e of B.ps) {
+    const p = byId[e[0]];
+    if (!p || !p.cont || p.cont.destroyed) continue;
+    const a = amap[e[0]] || e;
+    let X = a[1] + (e[1] - a[1]) * k, Y = a[2] + (e[2] - a[2]) * k;
+    const escFrac = (e[7] || 0) / 10;
+    let steering = false;
+    if (p === human && !p.dead && !over) {
+      if (p.ptx != null) {                                        // predict your own run; the snapshot reels you back in
+        const dx = p.ptx - p.px, dy = p.pty - p.py, d = Math.hypot(dx, dy);
+        if (d > 10) {
+          const w = escFrac > 0 ? CTRL_SPD : CTRL_PULLED;
+          p.px += dx / d * HUMAN_SPD * w * dt; p.py += dy / d * HUMAN_SPD * w * dt;
+          if (Math.abs(dx) > 10) p.face = dx >= 0 ? 1 : -1;
+          steering = true;
+        } else { p.ptx = null; clearTap(); }
+      }
+      p.px += (X - p.px) * (steering ? .12 : .3); p.py += (Y - p.py) * (steering ? .12 : .3);
+      X = p.px; Y = p.py;
+    }
+    const an = ANIMS[e[5]] || 'Idle';
+    if (steering && an !== 'Attack') { if (p.animSt !== 'Run') setAnim(p, 'Run'); }
+    else if (an !== p.animSt) setAnim(p, an, an === 'Attack');
+    p.x = X; p.y = Y;
+    if (p.hp !== e[3] || p.escFrac !== escFrac) { p.hp = e[3]; p.escFrac = escFrac; setBars(p); }
+    p.dmg = e[8] || 0;
+    if (!steering) p.face = e[4];
+    if (e[6] && !p.dead) { p.dead = true; koVisual(p); if (p === human) { p.ptx = null; clearTap(); hint('💀 you fell — watching the rest', 6000); } }
+    draw(p, dt);
+  }
+  refreshBoardClient();
+}
+function refreshBoardClient() {
+  const alive = players.filter(q => !q.dead).sort((a, b) => b.hp - a.hp || b.dmg - a.dmg);
+  const dead = players.filter(q => q.dead);
+  [...alive, ...dead].forEach((q, i) => {
+    if (!q.row) return;
+    q.row.style.top = (i * 26) + 'px';
+    q.row.querySelector('.rknum').textContent = q.dead ? '💀' : (i + 1) + '.';
+    q.row.querySelector('.tt').textContent = q.dead ? '💀' : '❤' + Math.round(q.hp) + ' ⚔' + q.dmg;
+  });
+}
+
+// ---------- go ----------
+buildScenery();
+fitWorld();
+if (MODE === 'solo') {
+  soloRoster();
+  players.forEach(makeFighter);
+  buildBoard();
+  refreshBoard();
+  beginBattle();
+  hint('👆 tap where you want to run — the blue bar is your escape window', 8000);
+} else if (MODE === 'host') {
+  initHost();
+} else {
+  initClient();
+}
+updateCamera(0, true);
+app.ticker.add(() => {
+ try {
+  const dt = Math.min(app.ticker.deltaMS / 1000, .05);
+  crownTime += dt;
+  if (MODE === 'client') clientRender(dt);
+  else {
+    if (started) battleTick(dt);
+    if (MODE === 'host' && started) hostNet(dt);
+  }
+  updateCamera(dt);
+  fxTick(dt);
+  crowns.forEach(c => { c.y = -205 - 6 * (1 + Math.sin(crownTime * 3.4)); });
+  if (water) { water.tilePosition.x += 4 * dt; water.tilePosition.y += 8 * dt; }
+  for (const cl of clouds) { cl.c.x += cl.sp * dt; if (cl.c.x > W0 + 320) cl.c.x = -320; }
+ } catch (e) { console.error('tick error:', e.message, e.stack); }
+});
+// debug handles (used by the harness probes)
+window.OBST = OBST; window.inObst = inObst; window.__world = world; window.__isFollow = () => followMode;
+window.__byId = byId; window.__mode = MODE; window.__sock = () => sock;
+window.CFG = CFG;
+Object.defineProperty(window, 'players', { get: () => players });
+Object.defineProperty(window, 'human', { get: () => human });
+Object.defineProperty(window, 'over', { get: () => over });
+Object.defineProperty(window, 'started', { get: () => started });
+Object.defineProperty(window, 'snapB', { get: () => snapB });
+})();
