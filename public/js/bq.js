@@ -31,8 +31,8 @@ const DODGE_MARGIN = 40;    // a swing lands only if the target is still within 
 // ---------- quiz duel constants ----------
 const QUIZ_T = 10;          // seconds to answer before the pair falls back to a plain fight
 const QUIZ_DMG = [12, 20];  // a wrong answer hurts the answerer — but they may try another option
-const BUFF_HEAL = 35, BUFF_STR = 20, STR_MAX = 60;   // the quiz winner's prize: a heal, or strength (+20% damage per stack)
-const FIRST_STRIKE = .15, SLOW_START = [.9, 1.3];    // ...and they swing first
+const BUFF_HEAL = 40, BUFF_STR = 30, STR_MAX = 90;   // the quiz winner's prize: a heal, or strength (+30% damage per stack)
+const FIRST_STRIKE = .1, SLOW_START = [1.6, 2.1];    // ...and they get a clear head start on the swords
 const BOT_ANS = [1.8, 6];   // bots "think" this long before answering
 const BOT_ACC = .5;         // ...and are right about half the time
 const QUIZ_POOL = window.QUIZ_POOL || [
@@ -70,18 +70,15 @@ function applyTotal(T) {                                          // same pacing
   CFG.dmgMin = Math.round(clampN(24 / s, 4, 90));
   CFG.dmgMax = Math.round(clampN(36 / s, 6, 99));
 }
-try { CFG.total = clampN(parseInt(localStorage.getItem('tk-bq-total') || '', 10) || DEFAULTS.total, 6, 120); } catch (e) {}
 applyTotal(CFG.total);
-const lenin = document.getElementById('lenin');
-lenin.value = CFG.total;
-lenin.addEventListener('input', () => {
-  const v = parseInt(lenin.value, 10);
-  if (isNaN(v) || v < 6) return;
-  CFG.total = v; applyTotal(v);
-  try { localStorage.setItem('tk-bq-total', String(v)); } catch (e) {}
+const resetBtn = document.getElementById('resetbtn');
+resetBtn.addEventListener('click', e => {                        // any time, mid-fight included
+  e.preventDefault();
+  if (MODE === 'host') hostReset();
+  else location.href = location.pathname + '?players=' + P;
 });
 if (MODE === 'client') {                                          // a phone is a controller, not a menu
-  document.getElementById('lenbox').style.display = 'none';
+  resetBtn.style.display = 'none';
   document.getElementById('controls').innerHTML = '<a href="#" id="helpbtn">&#10068; how to play</a>';   // a phone is a controller, not a menu
 }
 const banner = document.getElementById('banner');
@@ -572,10 +569,13 @@ function duelAnswer(p, d, choice) {
   if (choice === d.def.c) {                                       // first right answer: a random prize + the first strike
     d.done = true; d.result = 'buff';
     const ans = d.def.a[d.def.c];
-    const buff = Math.random() < .5 ? 'heal' : 'str';
+    // the prize is never empty: a full-health winner gets strength, a maxed-out one gets a heal, otherwise a coin flip
+    let buff = Math.random() < .5 ? 'heal' : 'str';
+    if (p.hp > 80) buff = 'str';
+    if (p.str >= STR_MAX) buff = 'heal';
     let amt;
-    if (buff === 'heal') { amt = Math.min(BUFF_HEAL, 100 - p.hp); p.hp = Math.min(100, p.hp + BUFF_HEAL); floatTxt(p, '+' + BUFF_HEAL + ' ❤', 0x7ef17e, 26); }
-    else { amt = Math.min(BUFF_STR, STR_MAX - p.str); p.str = Math.min(STR_MAX, p.str + BUFF_STR); floatTxt(p, '+' + BUFF_STR + ' ⚡', 0xffc93c, 26); p.hopT = .55; }
+    if (buff === 'heal') { amt = Math.min(BUFF_HEAL, 100 - p.hp); p.hp = Math.min(100, p.hp + BUFF_HEAL); floatTxt(p, '+' + amt + ' ❤', 0x7ef17e, 26); }
+    else { amt = Math.min(BUFF_STR, STR_MAX - p.str); p.str = Math.min(STR_MAX, p.str + BUFF_STR); floatTxt(p, '+' + amt + ' ⚡', 0xffc93c, 26); p.hopT = .55; }
     setBars(p); refreshBoard();
     p.cd = FIRST_STRIKE; o.cd = rnd(SLOW_START[0], SLOW_START[1]);   // the quick thinker swings first
     const pk = { name: p.name };
@@ -601,7 +601,8 @@ function endDuel(d) {
   for (const p of [d.a, d.b]) {
     p.duel = null;
     if (p.dead) continue;
-    p.state = 'fight'; p.cd = rnd(.3, .8);
+    p.state = 'fight';
+    if (d.result !== 'buff') p.cd = rnd(.3, .8);                  // a prize duel already set who swings first
     const o = p === d.a ? d.b : d.a;
     p.noQuizWith = o.id;                                          // this pair has had its question
     if (d.result !== 'buff') { if (p.remote) mpTo(p.id, { t: 'qclose' }); else if (p.human) closeQuizNow(); }

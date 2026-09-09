@@ -41,8 +41,15 @@ lenin.addEventListener('input', () => {
   CFG.total = v; applyTotal(v);
   try { localStorage.setItem('tk-sb-total', String(v)); } catch (e) {}
 });
+const resetBtn = document.getElementById('resetbtn');
+resetBtn.addEventListener('click', e => {                        // any time, mid-fight included
+  e.preventDefault();
+  if (MODE === 'host') hostReset();
+  else location.href = location.pathname + '?players=' + P;
+});
 if (MODE === 'client') {                                          // a phone is a controller, not a menu
   document.getElementById('lenbox').style.display = 'none';
+  resetBtn.style.display = 'none';
   document.getElementById('controls').innerHTML = '<a href="#" id="helpbtn">&#10068; how to play</a>';   // a phone is a controller, not a menu
 }
 const banner = document.getElementById('banner');

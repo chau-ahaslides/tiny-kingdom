@@ -50,6 +50,8 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
           box-shadow:0 5px 0 rgba(0,0,0,.3); color:var(--ink); }
 #ranking div { padding:3px 2px; font-size:15px; border-bottom:1px solid rgba(43,43,61,.22); display:flex; justify-content:space-between; }
 #ranking div:last-child { border-bottom:none; }
+#resetbtn { display:block; text-align:center; margin:0 0 10px; background:rgba(255,255,255,.38); color:var(--ink); font-weight:bold; padding:6px 0; border-radius:10px; border:2px solid var(--ink); text-decoration:none; font-size:14px; }
+#resetbtn:hover { background:#ffd24a; }
 #again { display:block; text-align:center; margin-top:14px; background:#ffd24a; color:var(--ink); font-weight:bold; padding:8px 0; border-radius:10px; border:3px solid var(--ink); text-decoration:none; font-size:15px; }
 #help { display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:1700;
   flex-direction:column; align-items:center; gap:10px; width:min(460px, 92vw); padding:20px 24px 18px;
