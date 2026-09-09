@@ -25,7 +25,7 @@ const ESC_PULL = .2;        // how hard the pull still tugs while you're escapin
 const CTRL_PULLED = .3;     // how much say your tap has once the pull is back in charge
 const CTRL_SPD = 1.08;      // a steered knight runs a touch faster than a bot
 const HUMAN_SPD = 225;
-const REST_CTRL = 3.2, REST_BOT = 1.2;   // after a kill: roam freely for a moment before the next matchup
+const REST_CTRL = 1.0, REST_BOT = 1.0;   // after a kill: roam freely for a moment before the next matchup
 const DODGE_MARGIN = 40;    // a swing lands only if the target is still within reach + this at impact — runners can dodge
 // ---------- quiz duel constants ----------
 const QUIZ_T = 10;          // seconds to answer before the pair falls back to a plain fight
