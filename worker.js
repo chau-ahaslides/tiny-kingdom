@@ -1,4 +1,4 @@
-/* tiny-kingdom worker: static assets + Survival Quiz / Survival Brawl multiplayer relay (host-authoritative) */
+/* tiny-kingdom worker: static assets + multiplayer relay (host-authoritative) for Survival Quiz, Survival Brawl, Brawl Quiz and the Marshmallow Challenge */
 
 export class Room {
   constructor(state, env) {
@@ -44,6 +44,7 @@ export class Room {
     this.players.set(id, ws);
     if (name || !this.roster.has(id)) this.roster.set(id, name || 'Player');
     this.send(ws, { t: 'welcome', id, name: this.roster.get(id), rejoined });
+    if (!this.host) this.send(ws, { t: 'nohost' });          // scanned before the big screen opened the room; the host gets the roster when it connects
     if (this.host) this.send(this.host, { t: 'join', id, name: this.roster.get(id), rejoin: rejoined });
     ws.addEventListener('message', ev => {
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
@@ -74,6 +75,8 @@ export default {
     if (brawl) return Response.redirect(url.origin + '/survival-brawl?join=' + brawl[1].toUpperCase(), 302);
     const bq = url.pathname.match(/^\/bq\/([A-Za-z0-9]{4,8})$/);
     if (bq) return Response.redirect(url.origin + '/brawl-quiz?join=' + bq[1].toUpperCase(), 302);
+    const mm = url.pathname.match(/^\/mm\/([A-Za-z0-9]{4,8})$/);
+    if (mm) return Response.redirect(url.origin + '/marshmallow?join=' + mm[1].toUpperCase(), 302);
     return new Response('Not found', { status: 404 });
   }
 };
