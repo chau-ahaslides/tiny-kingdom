@@ -21,6 +21,7 @@ const ESC_PULL = .2;        // how hard the pull still tugs while you're escapin
 const CTRL_PULLED = .3;     // how much say your tap has once the pull is back in charge
 const CTRL_SPD = 1.08;      // a steered knight runs a touch faster than a bot
 const HUMAN_SPD = 225;
+const REST_CTRL = 3.2, REST_BOT = 1.2;   // after a kill: roam freely for a moment before the next matchup
 const DODGE_MARGIN = 40;    // a swing lands only if the target is still within reach + this at impact — runners can dodge
 function clampN(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function applyTotal(T) {                                          // same pacing curve as Survival Island
@@ -74,7 +75,7 @@ function fighterProps(p) {
     hp: 100, dmg: 0, dead: false, opp: null, state: 'wander', cd: rnd(.2, .6),
     wx: 0, wy: 0, wt: 0, swx: 0, swy: 0, speed: (p.human || p.remote) ? HUMAN_SPD : rnd(CFG.spdMin, CFG.spdMax),
     pend: null, lunge: 0, lvx: 0, lvy: 0, hopT: 0, face: 1, tx: null, ty: null,
-    steer: { x: 0, y: 0 }, esc: 0, escMax: 1, escFrac: 0,
+    steer: { x: 0, y: 0 }, esc: 0, escMax: 1, escFrac: 0, restT: 0,
   });
 }
 const isCtrl = p => !!(p.human || p.remote);                      // steered by a person (bots take over when a phone drops)
@@ -393,7 +394,7 @@ function steerFromTarget(p) {                                      // the tap be
 // ---------- match-making: free fighters are pulled to the NEAREST free fighter ----------
 function rematch() {
  try {
-  const free = players.filter(p => !p.dead && !p.opp);
+  const free = players.filter(p => !p.dead && !p.opp && !(p.restT > 0));   // resting winners sit this one out
   while (free.length >= 2) {
     const a = free.shift();
     let bi = 0, bd = 1e9;
@@ -487,7 +488,8 @@ function kill(p, o) {
   p.hp = Math.min(100, p.hp + CFG.heal);
   setBars(p);
   p.state = 'wander'; p.wt = 0; p.cd = rnd(.3, .6);
-  if (isCtrl(p)) { p.esc = p.escMax = 2.5; p.escFrac = 1; }        // a win buys a breather: pick where you go next
+  p.restT = isCtrl(p) ? REST_CTRL : REST_BOT;                     // a win buys a breather: nobody is matched with you yet
+  if (isCtrl(p)) { p.esc = p.escMax = REST_CTRL; p.escFrac = 1; }
   const alive = players.filter(q => !q.dead);
   banner.textContent = alive.length > 1 ? '⚔ ' + alive.length + ' fighters remain' : '';
   if (alive.length === 1) finale(alive[0]);
@@ -540,6 +542,7 @@ function battleTick(dt) {
       p.escFrac = p.esc / p.escMax;
       if (isCtrl(p)) setBars(p);
     }
+    if (p.restT > 0) { p.restT -= dt; if (p.restT <= 0) { p.restT = 0; setTimeout(rematch, 50); } }   // rest over: back into the pool
     if (isCtrl(p) && p.state !== 'champion') steerFromTarget(p); else { p.steer.x = p.steer.y = 0; }
     const steering = isCtrl(p) && Math.hypot(p.steer.x, p.steer.y) > .1;
     let vx = 0, vy = 0;

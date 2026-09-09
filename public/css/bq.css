@@ -69,6 +69,7 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
 #qres { display:none; font-size:22px; font-weight:bold; text-align:center; }
 #qres.good { color:#1e7a1e; }
 #qres.bad { color:#a32222; }
+#qres .lock { display:block; font-size:16px; margin-top:6px; color:var(--ink); opacity:.85; }
 #help { display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:1700;
   flex-direction:column; align-items:center; gap:10px; width:min(460px, 92vw); padding:20px 24px 18px;
   background:linear-gradient(#e8d9a8, #cbb877); border:3px solid var(--ink); border-radius:16px;

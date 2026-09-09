@@ -25,6 +25,7 @@ const ESC_PULL = .2;        // how hard the pull still tugs while you're escapin
 const CTRL_PULLED = .3;     // how much say your tap has once the pull is back in charge
 const CTRL_SPD = 1.08;      // a steered knight runs a touch faster than a bot
 const HUMAN_SPD = 225;
+const REST_CTRL = 3.2, REST_BOT = 1.2;   // after a kill: roam freely for a moment before the next matchup
 const DODGE_MARGIN = 40;    // a swing lands only if the target is still within reach + this at impact — runners can dodge
 // ---------- quiz duel constants ----------
 const QUIZ_T = 10;          // seconds to answer before the pair falls back to a plain fight
@@ -110,7 +111,7 @@ function fighterProps(p) {
     hp: 100, dmg: 0, dead: false, opp: null, state: 'wander', cd: rnd(.2, .6),
     wx: 0, wy: 0, wt: 0, swx: 0, swy: 0, speed: (p.human || p.remote) ? HUMAN_SPD : rnd(CFG.spdMin, CFG.spdMax),
     pend: null, lunge: 0, lvx: 0, lvy: 0, hopT: 0, face: 1, tx: null, ty: null,
-    steer: { x: 0, y: 0 }, esc: 0, escMax: 1, escFrac: 0, duel: null, noQuizWith: null,
+    steer: { x: 0, y: 0 }, esc: 0, escMax: 1, escFrac: 0, restT: 0, duel: null, noQuizWith: null,
   });
 }
 const isCtrl = p => !!(p.human || p.remote);                      // steered by a person (bots take over when a phone drops)
@@ -388,7 +389,7 @@ function setAnim(p, st, force) {
   p.animKey = key; p.animT = 0; p.animN = FRAMES[p.t][st]; p.animSt = st;
   p.sheet = '/img/2x/' + key + '.png';
 }
-function pop(text) { const rp = document.getElementById('roundpop'); rp.querySelector('.rm').textContent = text; rp.classList.remove('pop'); void rp.offsetWidth; rp.classList.add('pop'); }
+function pop(text, high) { const rp = document.getElementById('roundpop'); rp.style.top = high ? '16%' : '42%'; rp.querySelector('.rm').textContent = text; rp.classList.remove('pop'); void rp.offsetWidth; rp.classList.add('pop'); }
 
 // ---------- tap-to-move: a tap is where you WANT to be; the pull decides when you may go ----------
 let tapMark = null;
@@ -432,7 +433,7 @@ function steerFromTarget(p) {                                      // the tap be
 // ---------- match-making: free fighters are pulled to the NEAREST free fighter ----------
 function rematch() {
  try {
-  const free = players.filter(p => !p.dead && !p.opp);
+  const free = players.filter(p => !p.dead && !p.opp && !(p.restT > 0));   // resting winners sit this one out
   while (free.length >= 2) {
     const a = free.shift();
     let bi = 0, bd = 1e9;
@@ -534,7 +535,8 @@ function kill(p, o) {
   p.hp = Math.min(100, p.hp + CFG.heal);
   setBars(p);
   p.state = 'wander'; p.wt = 0; p.cd = rnd(.3, .6);
-  if (isCtrl(p)) { p.esc = p.escMax = 2.5; p.escFrac = 1; }        // a win buys a breather: pick where you go next
+  p.restT = isCtrl(p) ? REST_CTRL : REST_BOT;                     // a win buys a breather: nobody is matched with you yet
+  if (isCtrl(p)) { p.esc = p.escMax = REST_CTRL; p.escFrac = 1; }
   const alive = players.filter(q => !q.dead);
   banner.textContent = alive.length > 1 ? '⚔ ' + alive.length + ' fighters remain' : '';
   if (alive.length === 1) finale(alive[0]);
@@ -590,7 +592,7 @@ function duelAnswer(p, d, choice) {
     floatTxt(p, '✘ −' + dmg, 0xff8080, 24);
     mpAll({ t: 'dmg', id: p.id, n: dmg, crit: 0 });
     refreshBoard();
-    sendRes(p, { right: 0, dmg, correct: d.def.c, chosen: choice, wait: d.wrong.size < 2 ? 1 : 0 });
+    sendRes(p, { right: 0, dmg, correct: d.def.c, chosen: choice, wait: d.wrong.size < 2 ? 1 : 0, n: d.n });
     if (d.wrong.size >= 2) { d.result = 'fight'; endDuel(d); }    // both wrong → settle it with steel
   }
 }
@@ -629,7 +631,7 @@ function canDuel(p, o) {
 }
 
 // ---------- quiz modal (solo human & phones) ----------
-let quizOpen = false, quizBtns = null, quizChoice = -1, quizN = 0, quizLeft = 0;
+let quizOpen = false, quizBtns = null, quizChoice = -1, quizN = 0, quizLeft = 0, answeredN = -1;
 const qbox = document.getElementById('quizbox');
 function fillModal(def, n, secs, onPick) {
   const opts = document.getElementById('qopts');
@@ -662,14 +664,17 @@ function showModalResult(res) {
   qres.className = res.right ? 'good' : 'bad';
   if (res.right) qres.textContent = '✔  KILL!';
   else if (res.lost) qres.textContent = '💀  opponent answered first';
-  else qres.textContent = '✘  −' + res.dmg + ' ❤' + (res.wait ? '  · opponent may still answer…' : '');
+  else {
+    qres.innerHTML = '✘  Wrong  −' + res.dmg + ' ❤<br><span class="lock">🔒 locked out' + (res.wait ? ' — waiting for your opponent…' : '') + '</span>';
+    setTimeout(() => { if (quizOpen && quizN === res.n) { quizBtns.forEach(x => x.style.display = 'none'); } }, 700);   // the options go away for good
+  }
   qres.style.display = 'block';
   if (res.right || res.lost || !res.wait) setTimeout(closeQuizNow, 1400);   // a wrong answer waits for the duel to end
 }
 function closeQuizNow() { qbox.style.display = 'none'; quizOpen = false; quizBtns = null; }
 function duelVerdict(w, ans, won) {                                // no dialog: a ribbon over the field while the blow lands
   closeQuizNow();
-  pop(won ? '✔ Correct!' : '✘ Too slow!');
+  pop(won ? '✔ Correct!' : '✘ Too slow!', true);
   hint((won ? 'You' : w.name) + ' answered first · answer: ' + ans, 4000);
 }
 function openQuizSolo(d) { fillModal(d.def, d.n, d.t, i => duelAnswer(human, d, i)); }
@@ -726,6 +731,7 @@ function battleTick(dt) {
       p.escFrac = p.esc / p.escMax;
       if (isCtrl(p)) setBars(p);
     }
+    if (p.restT > 0) { p.restT -= dt; if (p.restT <= 0) { p.restT = 0; setTimeout(rematch, 50); } }   // rest over: back into the pool
     if (isCtrl(p) && p.state !== 'champion') steerFromTarget(p); else { p.steer.x = p.steer.y = 0; }
     const steering = isCtrl(p) && Math.hypot(p.steer.x, p.steer.y) > .1;
     let vx = 0, vy = 0;
@@ -1132,7 +1138,8 @@ function onClientMsg(m, jb, jstatus) {
       if (p.spr && !p.spr.destroyed) { p.spr.tint = 0xff9d9d; setTimeout(() => { if (p.spr && !p.spr.destroyed) p.spr.tint = 0xffffff; }, 200); }
     }
   } else if (m.t === 'quiz') {
-    fillModal({ q: m.q, a: m.a }, m.n, m.s || QUIZ_T, i => mpAll({ t: 'answer', n: m.n, choice: i }));
+    if (m.n === answeredN) return;                                // already answered this one — no second try
+    fillModal({ q: m.q, a: m.a }, m.n, m.s || QUIZ_T, i => { answeredN = m.n; mpAll({ t: 'answer', n: m.n, choice: i }); });
   } else if (m.t === 'scene') {
     duelVerdict(m.w, m.ans, !!m.won);
   } else if (m.t === 'quizres') {
