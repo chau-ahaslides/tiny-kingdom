@@ -17,16 +17,25 @@
   <div id="controls">
     Fighters:
     <a href="?players=6">6</a><a href="?players=8">8</a><a href="?players=12">12</a><a href="?players=20">20</a>
+    &middot; <a href="#" id="helpbtn">&#10068; how to play</a>
     &middot; <a href="?host=1">&#128241; host a room</a><a href="#" id="hostreset" style="display:none">&#8635; reset round</a>
     &middot; <a href="/brawl-quiz">&#10067; quiz mode</a>
     &middot; <a href="/survival-island">&#127965; survival island</a>
     &middot; <a href="/survival-quiz">&#10067; survival quiz</a>
     &middot; <a href="/">&larr; back to the kingdom</a>
   </div>
-  <div id="instr">&#128070; Tap to move &middot; you are always pulled into the nearest fight &middot; each strike opens a short window to run</div>
 </header>
 <div id="roundpop"><div class="rib r-Yellow"><i class="rl"></i><span class="rm"></span><i class="rr"></i></div></div>
 <div id="hint"></div>
+<div id="help"><h2>&#10068; How to play</h2>
+  <ul>
+      <li>&#128070; <b>Tap</b> anywhere to send your knight there.</li>
+      <li>&#129517; You are always <b>pulled</b> toward the nearest rival and swing automatically.</li>
+      <li>&#127939; Each of your strikes opens an <b>escape window</b> (blue bar): while it lasts, your tap wins over the pull &mdash; run, dodge, or pick your next rival.</li>
+      <li>&#9876; When the window closes the pull wins again. Last knight standing rules the island.</li>
+  </ul>
+  <button id="helpclose">Got it</button>
+</div>
 <div id="lobby">
   <h2>&#128241; Scan to join the brawl</h2>
   <p class="how">Tap to move your knight from your phone &middot; bots fill the rest</p>

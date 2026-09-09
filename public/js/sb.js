@@ -42,10 +42,12 @@ lenin.addEventListener('input', () => {
 });
 if (MODE === 'client') {                                          // a phone is a controller, not a menu
   document.getElementById('lenbox').style.display = 'none';
-  document.getElementById('controls').style.display = 'none';
-  document.getElementById('instr').textContent = '👆 Tap to move · each strike opens a short window to run';
+  document.getElementById('controls').innerHTML = '<a href="#" id="helpbtn">&#10068; how to play</a>';   // a phone is a controller, not a menu
 }
 const banner = document.getElementById('banner');
+const helpEl = document.getElementById('help');
+document.getElementById('helpbtn').addEventListener('click', e => { e.preventDefault(); helpEl.style.display = helpEl.style.display === 'flex' ? 'none' : 'flex'; });
+document.getElementById('helpclose').addEventListener('click', () => { helpEl.style.display = 'none'; });
 const hintEl = document.getElementById('hint');
 let hintT = null;
 function hint(txt, ms) {
@@ -888,7 +890,6 @@ function initClient() {
   if (savedName) { jstatus.textContent = 'reconnecting…'; doJoin(savedName); }   // reload = seamless rejoin
   else { try { document.getElementById('jname').value = ''; } catch (e) {} }
 }
-let lobbyHinted = false;
 function syncRoster(roster) {                                      // add newcomers, drop leavers, keep everyone else
   const ids = new Set(roster.map(r => r[0]));
   for (const p of players) if (!ids.has(p.id)) { if (p.cont && !p.cont.destroyed) { if (p.cont.parent) scene.removeChild(p.cont); p.cont.destroy({ children: true }); } delete byId[p.id]; }
@@ -908,7 +909,6 @@ function onClientMsg(m, jb, jstatus) {
     if (phase === 'lobby') {
       spectate = false;
       jb.style.display = 'none';
-      if (!lobbyHinted) { lobbyHinted = true; hint('🏃 warm-up — tap to run around · the host starts the battle', 8000); }
     }
   } else if (m.t === 'start') {
     started = true; phase = 'battle';
@@ -916,7 +916,7 @@ function onClientMsg(m, jb, jstatus) {
     spectate = !byId[myId];                                      // joined mid-battle: watch, play next round
     jb.style.display = 'none';
     pop(spectate ? '\u{1F440} spectating' : '⚔ FIGHT ⚔');
-    hint(spectate ? '👀 battle in progress — you join the next round' : '👆 tap where you want to run — the blue bar is your escape window', 8000);
+    if (spectate) hint('👀 battle in progress — you join the next round', 8000);
   } else if (m.t === 'snap') {
     m.at = performance.now();
     snapA = snapB; snapB = m;
@@ -1009,7 +1009,6 @@ if (MODE === 'solo') {
   buildBoard();
   refreshBoard();
   beginBattle();
-  hint('👆 tap where you want to run — the blue bar is your escape window', 8000);
 } else if (MODE === 'host') {
   initHost();
 } else {

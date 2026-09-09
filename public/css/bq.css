@@ -11,8 +11,6 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
 #controls { font-size:14px; margin-top:2px; }
 #controls a { color:#fff; margin:0 5px; }
 #controls a.on { color:#ffd24a; font-weight:bold; }
-#instr { font-size:15px; margin-top:3px; opacity:.95; }
-#instr a { color:#ffd24a; }
 #hint { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:950; font-size:16px; font-weight:bold; color:#ffd24a;
         text-shadow:0 2px 0 var(--ink); background:rgba(43,43,61,.55); border:2px solid var(--ink); border-radius:12px; padding:7px 14px;
         pointer-events:none; opacity:0; transition:opacity .5s; max-width:92vw; text-align:center; }
@@ -71,6 +69,13 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
 #qres { display:none; font-size:22px; font-weight:bold; text-align:center; }
 #qres.good { color:#1e7a1e; }
 #qres.bad { color:#a32222; }
+#help { display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:1700;
+  flex-direction:column; align-items:center; gap:10px; width:min(460px, 92vw); padding:20px 24px 18px;
+  background:linear-gradient(#e8d9a8, #cbb877); border:3px solid var(--ink); border-radius:16px;
+  box-shadow:0 6px 0 rgba(0,0,0,.35); color:var(--ink); text-align:left; }
+#help h2 { margin:0; font-size:22px; text-shadow:0 1px 0 rgba(255,255,255,.45); }
+#help ul { margin:0; padding-left:4px; list-style:none; display:flex; flex-direction:column; gap:8px; font-size:15px; line-height:1.35; }
+#help button { font:bold 17px 'MedievalSharp', Georgia, serif; color:var(--ink); background:#ffd24a; border:3px solid var(--ink); border-radius:10px; padding:8px 26px; cursor:pointer; }
 #lobby, #joinbox { display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:1600;
   flex-direction:column; align-items:center; gap:12px; width:min(400px, 92vw); padding:24px 26px 22px;
   background:linear-gradient(#e8d9a8, #cbb877); border:3px solid var(--ink); border-radius:16px;
@@ -97,7 +102,6 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
   h1 { font-size:20px; }
   #banner { font-size:15px; }
   #controls { font-size:12px; }
-  #instr { font-size:12px; }
   #roundpop { font-size:30px; }
   #hint { font-size:14px; bottom:18px; }
 }

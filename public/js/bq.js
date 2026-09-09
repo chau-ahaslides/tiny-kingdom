@@ -78,10 +78,12 @@ lenin.addEventListener('input', () => {
 });
 if (MODE === 'client') {                                          // a phone is a controller, not a menu
   document.getElementById('lenbox').style.display = 'none';
-  document.getElementById('controls').style.display = 'none';
-  document.getElementById('instr').textContent = '👆 Tap to move · meet a rival → answer first to win the duel';
+  document.getElementById('controls').innerHTML = '<a href="#" id="helpbtn">&#10068; how to play</a>';   // a phone is a controller, not a menu
 }
 const banner = document.getElementById('banner');
+const helpEl = document.getElementById('help');
+document.getElementById('helpbtn').addEventListener('click', e => { e.preventDefault(); helpEl.style.display = helpEl.style.display === 'flex' ? 'none' : 'flex'; });
+document.getElementById('helpclose').addEventListener('click', () => { helpEl.style.display = 'none'; });
 const hintEl = document.getElementById('hint');
 let hintT = null;
 function hint(txt, ms) {
@@ -539,6 +541,66 @@ function kill(p, o) {
   else setTimeout(rematch, rnd(120, 350));
 }
 
+// ---------- duel result scene: the winner's blow, the loser's fall, the answer ----------
+const sceneL = new PIXI.Container();
+app.stage.addChild(sceneL);
+let sceneCur = null;
+const ftex = (f, anim, fr) => { const cell = CELL[f.t] || 192; return frameTex('/img/2x/' + f.c + '_' + f.t + '_' + anim + '.png', fr, cell * 2, cell * 2); };
+function fighterSprite(f, anim, fr) {
+  const cell = CELL[f.t] || 192;
+  const sp = new PIXI.Sprite(ftex(f, anim, fr));
+  sp.anchor.set(.5, cell === 320 ? 203 / 320 : 142 / 192);
+  return sp;
+}
+function playScene(w, l, ans, meWon) {                            // w/l: {name,c,t}; meWon: true/false/null (presenter)
+  if (sceneCur) { sceneL.removeChild(sceneCur); sceneCur.destroy({ children: true }); sceneCur = null; }
+  const SW = app.screen.width, SH = app.screen.height;
+  const cont = new PIXI.Container();
+  const dim = new PIXI.Graphics().beginFill(0x000000, .45).drawRect(0, 0, SW, SH).endFill();
+  const pw = Math.min(600, SW - 24), ph = 320;
+  const panel = new PIXI.Graphics();
+  panel.lineStyle(4, INK).beginFill(0xe8d9a8).drawRoundedRect(-pw / 2, -ph / 2, pw, ph, 18).endFill();
+  panel.beginFill(0x8fca5f).drawRoundedRect(-pw / 2 + 6, 24, pw - 12, ph / 2 - 30, 12).endFill();   // grass
+  const stage = new PIXI.Container();
+  stage.x = SW / 2; stage.y = SH / 2;
+  const sc = Math.min(1.15, pw / 520);
+  const gap = Math.min(150, pw * .24);
+  const ws = fighterSprite(w, 'Idle', 0); ws.scale.set(.62 * sc); ws.x = -gap; ws.y = 100;
+  const ls = fighterSprite(l, 'Idle', 0); ls.scale.set(-.62 * sc, .62 * sc); ls.x = gap; ls.y = 100;
+  const nm = (f, x, col) => { const t = TXT(f.name, 18, col); t.anchor.set(.5); t.x = x; t.y = -58; return t; };
+  const wn = nm(w, -gap, 0xffd24a), ln = nm(l, gap, 0xffffff);
+  const vs = TXT('VS', 30, 0xffffff); vs.anchor.set(.5); vs.y = 40;
+  const title = TXT(meWon === null ? '❓ ' + w.name + ' answered first!' : meWon ? '✔ You answered first!' : '✘ ' + w.name + ' answered first', 24, meWon === false ? 0xff8f8f : 0x7ef17e);
+  title.anchor.set(.5); title.y = -ph / 2 + 34;
+  if (title.width > pw - 30) title.scale.set((pw - 30) / title.width);
+  const answer = TXT('Answer: ' + ans, 20, 0xffffff); answer.anchor.set(.5); answer.y = -ph / 2 + 68;
+  const ko = TXT('❓ KO', 32, 0xffd24a); ko.anchor.set(.5); ko.x = gap; ko.y = 60; ko.alpha = 0;
+  stage.addChild(panel, wn, ln, vs, title, answer, ls, ws, ko);
+  cont.addChild(dim, stage);
+  cont.alpha = 0;
+  sceneL.addChild(cont); sceneCur = cont;
+  const M = MELEE[w.t], nA = FRAMES[w.t].Attack;
+  let struck = false;
+  fx(cont, 3.4, (o, k) => {
+    const t = k * 3.4;
+    o.alpha = t < .25 ? t / .25 : t > 2.9 ? Math.max(0, 1 - (t - 2.9) / .5) : 1;
+    if (t < .5) { ws.texture = ftex(w, 'Idle', Math.floor(t * 7) % FRAMES[w.t].Idle); ls.texture = ftex(l, 'Idle', Math.floor(t * 7) % FRAMES[l.t].Idle); }
+    else if (t < 1.3) {                                           // the blow: lunge in, swing, back
+      const a = (t - .5) / .8;
+      ws.x = -gap + Math.sin(Math.PI * Math.min(1, a * 1.15)) * (gap * 1.35);
+      ws.texture = ftex(w, 'Attack', Math.min(nA - 1, Math.floor(a * nA * 1.1)));
+      if (a > .45 && !struck) { struck = true; ls.tint = 0xff9d9d; }
+    } else { ws.x = -gap; ws.texture = ftex(w, 'Idle', Math.floor(t * 7) % FRAMES[w.t].Idle); }
+    if (struck) {                                                 // the fall
+      const f = Math.min(1, (t - .86) / .5);
+      ls.rotation = -1.5 * f; ls.alpha = 1 - .5 * f; ls.x = gap + 26 * f;
+      ko.alpha = Math.min(1, f * 2); ko.scale.set(.6 + .8 * Math.min(1, f * 1.5)); ko.y = 60 - 45 * f;
+      if (f >= 1) ls.tint = 0xffffff;
+    }
+    vs.alpha = struck ? 0 : 1;
+  }, o => { if (sceneCur === o) sceneCur = null; sceneL.removeChild(o); o.destroy({ children: true }); });
+}
+
 // ---------- quiz duels (solo & host sim) ----------
 let duelN = 0;
 const duels = [];
@@ -567,8 +629,13 @@ function duelAnswer(p, d, choice) {
   const o = d.a === p ? d.b : d.a;
   if (choice === d.def.c) {                                       // first right answer wins the duel outright
     d.done = true; d.result = 'kill';
-    sendRes(p, { right: 1, kill: 1, correct: d.def.c, chosen: choice });
-    sendRes(o, { right: 0, lost: 1, correct: d.def.c });
+    const ans = d.def.a[d.def.c];
+    const pk = { name: p.name, c: p.c, t: p.t }, ok = { name: o.name, c: o.c, t: o.t };
+    for (const f of [p, o]) {
+      if (f.remote) mpTo(f.id, { t: 'scene', w: pk, l: ok, ans, won: f === p ? 1 : 0 });
+      else if (f.human) { closeQuizNow(); playScene(pk, ok, ans, f === p); }
+    }
+    if (MODE === 'host' && (p.remote || o.remote)) playScene(pk, ok, ans, null);   // the presenter shows every phone duel
     const M = MELEE[p.t], dx = o.x - p.x, dy = o.y - p.y, dd = Math.hypot(dx, dy) || 1;
     p.face = dx >= 0 ? 1 : -1;
     p.lungeDir = { x: dx / dd, y: dy / dd }; p.lungeMax = .42; p.lunge = .42;
@@ -897,6 +964,7 @@ function clearField() {
   players = []; fallen.length = 0; human = null;
   for (const k in byId) delete byId[k];
   crowns.length = 0; FXS.length = 0; duels.length = 0; closeQuizNow();
+  if (sceneCur) { sceneL.removeChild(sceneCur); sceneCur.destroy({ children: true }); sceneCur = null; }
   document.querySelectorAll('.confetti').forEach(c => c.remove());
   document.getElementById('podium').style.display = 'none';
   document.getElementById('again').style.display = 'none';
@@ -1084,7 +1152,6 @@ function initClient() {
   if (savedName) { jstatus.textContent = 'reconnecting…'; doJoin(savedName); }   // reload = seamless rejoin
   else { try { document.getElementById('jname').value = ''; } catch (e) {} }
 }
-let lobbyHinted = false;
 function syncRoster(roster) {                                      // add newcomers, drop leavers, keep everyone else
   const ids = new Set(roster.map(r => r[0]));
   for (const p of players) if (!ids.has(p.id)) { if (p.cont && !p.cont.destroyed) { if (p.cont.parent) scene.removeChild(p.cont); p.cont.destroy({ children: true }); } delete byId[p.id]; }
@@ -1104,7 +1171,6 @@ function onClientMsg(m, jb, jstatus) {
     if (phase === 'lobby') {
       spectate = false;
       jb.style.display = 'none';
-      if (!lobbyHinted) { lobbyHinted = true; hint('🏃 warm-up — tap to run around · the host starts the battle', 8000); }
     }
   } else if (m.t === 'start') {
     started = true; phase = 'battle';
@@ -1112,7 +1178,7 @@ function onClientMsg(m, jb, jstatus) {
     spectate = !byId[myId];                                      // joined mid-battle: watch, play next round
     jb.style.display = 'none';
     pop(spectate ? '\u{1F440} spectating' : '⚔ FIGHT ⚔');
-    hint(spectate ? '👀 battle in progress — you join the next round' : '❓ meet a rival and answer first — a wrong answer hurts', 8000);
+    if (spectate) hint('👀 battle in progress — you join the next round', 8000);
   } else if (m.t === 'snap') {
     m.at = performance.now();
     snapA = snapB; snapB = m;
@@ -1124,6 +1190,9 @@ function onClientMsg(m, jb, jstatus) {
     }
   } else if (m.t === 'quiz') {
     fillModal({ q: m.q, a: m.a }, m.n, m.s || QUIZ_T, i => mpAll({ t: 'answer', n: m.n, choice: i }));
+  } else if (m.t === 'scene') {
+    closeQuizNow();
+    playScene(m.w, m.l, m.ans, !!m.won);
   } else if (m.t === 'quizres') {
     showModalResult(m);
   } else if (m.t === 'qclose') {
@@ -1216,7 +1285,6 @@ if (MODE === 'solo') {
   buildBoard();
   refreshBoard();
   beginBattle();
-  hint('❓ meet a rival and answer first — a wrong answer hurts · tap to move', 8000);
 } else if (MODE === 'host') {
   initHost();
 } else {
