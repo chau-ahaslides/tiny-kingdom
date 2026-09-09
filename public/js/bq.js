@@ -631,11 +631,10 @@ function duelAnswer(p, d, choice) {
     d.done = true; d.result = 'kill';
     const ans = d.def.a[d.def.c];
     const pk = { name: p.name, c: p.c, t: p.t }, ok = { name: o.name, c: o.c, t: o.t };
-    for (const f of [p, o]) {
+    for (const f of [p, o]) {                                     // the scene plays on the two duellists' phones only — never on the presenter
       if (f.remote) mpTo(f.id, { t: 'scene', w: pk, l: ok, ans, won: f === p ? 1 : 0 });
       else if (f.human) { closeQuizNow(); playScene(pk, ok, ans, f === p); }
     }
-    if (MODE === 'host' && (p.remote || o.remote)) playScene(pk, ok, ans, null);   // the presenter shows every phone duel
     const M = MELEE[p.t], dx = o.x - p.x, dy = o.y - p.y, dd = Math.hypot(dx, dy) || 1;
     p.face = dx >= 0 ? 1 : -1;
     p.lungeDir = { x: dx / dd, y: dy / dd }; p.lungeMax = .42; p.lunge = .42;
