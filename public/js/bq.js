@@ -653,7 +653,16 @@ function fillModal(def, n, secs, onPick) {
     quizBtns.push(b); opts.appendChild(b);
   });
   qbox.style.display = 'flex'; quizOpen = true;
-  document.getElementById('qtimer').textContent = Math.ceil(secs) + 's';
+  quizTotal = secs;
+  renderTimer();
+}
+let quizTotal = QUIZ_T;
+function renderTimer() {
+  const t = document.getElementById('qtimer'), bar = document.getElementById('qbar');
+  t.textContent = Math.ceil(quizLeft);
+  t.classList.toggle('urgent', quizLeft <= 3);
+  bar.style.width = Math.max(0, 100 * quizLeft / quizTotal) + '%';
+  bar.classList.toggle('urgent', quizLeft <= 3);
 }
 function showModalResult(res) {
   if (!quizOpen) return;
@@ -681,7 +690,7 @@ function openQuizSolo(d) { fillModal(d.def, d.n, d.t, i => duelAnswer(human, d, 
 function quizTimerTick(dt) {
   if (!quizOpen) return;
   quizLeft = Math.max(0, quizLeft - dt);
-  document.getElementById('qtimer').textContent = Math.ceil(quizLeft) + 's';
+  renderTimer();
   if (quizLeft <= 0 && MODE === 'client') closeQuizNow();       // host's qclose normally arrives first
 }
 
@@ -834,7 +843,12 @@ function draw(p, dt) {
   p.ui.scale.set(s);
   if (p.qmark) {
     p.qmark.visible = !p.dead && !!p.duel;
-    if (p.qmark.visible) p.qmark.y = -212 - 5 * (1 + Math.sin(crownTime * 6));
+    if (p.qmark.visible) {
+      p.qmark.y = -212 - 5 * (1 + Math.sin(crownTime * 6));
+      const secs = MODE === 'client' ? p.duel : (p.duel && p.duel.t !== undefined ? Math.max(1, Math.ceil(p.duel.t)) : 0);
+      const txt = secs > 0 ? '❓ ' + secs : '❓';
+      if (p.qmark.text !== txt) p.qmark.text = txt;
+    }
   }
   if (p.ring) {
     const on = !p.dead && p.escFrac > 0 && (isCtrl(p) || (MODE === 'client' && p.id === myId));
@@ -1048,7 +1062,7 @@ function hostNet(dt) {
   mpAll({
     t: 'snap',
     ps: players.map(p => [p.id, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.face, ANIMI[p.animSt] || 0, p.dead ? 1 : 0,
-                          Math.round(Math.max(0, Math.min(1, p.escFrac)) * 10), p.dmg, p.duel ? 1 : 0]),
+                          Math.round(Math.max(0, Math.min(1, p.escFrac)) * 10), p.dmg, p.duel ? Math.max(1, Math.ceil(p.duel.t)) : 0]),
     bn: banner.textContent, ph: phase,
   });
 }
@@ -1207,7 +1221,7 @@ function clientRender(dt) {
     p.x = X; p.y = Y;
     if (p.hp !== e[3] || p.escFrac !== escFrac) { p.hp = e[3]; p.escFrac = escFrac; setBars(p); }
     p.dmg = e[8] || 0;
-    p.duel = e[9] ? 1 : null;
+    p.duel = e[9] || null;                                       // seconds left in their duel, 0 = not duelling
     if (!steering) p.face = e[4];
     if (e[6] && !p.dead) { p.dead = true; koVisual(p); if (p === human) { p.ptx = null; clearTap(); hint('💀 you fell — watching the rest', 6000); } }
     draw(p, dt);
