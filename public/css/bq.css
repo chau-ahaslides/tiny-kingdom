@@ -70,7 +70,7 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
 #qopts button:disabled { cursor:default; opacity:.85; }
 #qopts button.picked { background:#ffd24a; }
 #qopts button.good { background:#7ef17e; opacity:1; }
-#qopts button.bad { background:#ff8f8f; opacity:1; }
+#qopts button.bad { background:#ff8f8f; opacity:.6; text-decoration:line-through; }
 #qres { display:none; font-size:22px; font-weight:bold; text-align:center; }
 #qres.good { color:#1e7a1e; }
 #qres.bad { color:#a32222; }

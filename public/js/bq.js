@@ -1,7 +1,8 @@
 /* Brawl: Quiz Mode — Survival Brawl where every encounter starts with a quiz duel.
-   When two fighters meet, both phones get the same question: the first RIGHT answer scores an instant kill,
-   a WRONG answer costs the answerer HP (so no tap-spamming), and if nobody answers in time the pair falls back
-   to a normal Survival Brawl fight. Duelling pairs are locked: nobody else can touch them.
+   When two fighters meet, both phones get the same question. The first RIGHT answer earns a random buff
+   (a heal or lasting strength) plus the first strike; a WRONG answer costs the answerer HP but they may try
+   another option. Then the sword fight decides it — the buff tilts the odds, it doesn't decide them.
+   Duelling pairs are locked: nobody else can touch them.
    Base engine below is Survival Brawl:
    Every fighter is always pulled toward the nearest rival and swings automatically. Right after each of your
    own strikes an ESCAPE WINDOW opens: for a moment your tap wins over the pull and you can run toward it —
@@ -29,7 +30,9 @@ const REST_CTRL = 1.0, REST_BOT = 1.0;   // after a kill: roam freely for a mome
 const DODGE_MARGIN = 40;    // a swing lands only if the target is still within reach + this at impact — runners can dodge
 // ---------- quiz duel constants ----------
 const QUIZ_T = 10;          // seconds to answer before the pair falls back to a plain fight
-const QUIZ_DMG = [12, 20];  // a wrong answer hurts the answerer (and locks them out of that question)
+const QUIZ_DMG = [12, 20];  // a wrong answer hurts the answerer — but they may try another option
+const BUFF_HEAL = 35, BUFF_STR = 20, STR_MAX = 60;   // the quiz winner's prize: a heal, or strength (+20% damage per stack)
+const FIRST_STRIKE = .15, SLOW_START = [.9, 1.3];    // ...and they swing first
 const BOT_ANS = [1.8, 6];   // bots "think" this long before answering
 const BOT_ACC = .5;         // ...and are right about half the time
 const QUIZ_POOL = window.QUIZ_POOL || [
@@ -111,7 +114,7 @@ function fighterProps(p) {
     hp: 100, dmg: 0, dead: false, opp: null, state: 'wander', cd: rnd(.2, .6),
     wx: 0, wy: 0, wt: 0, swx: 0, swy: 0, speed: (p.human || p.remote) ? HUMAN_SPD : rnd(CFG.spdMin, CFG.spdMax),
     pend: null, lunge: 0, lvx: 0, lvy: 0, hopT: 0, face: 1, tx: null, ty: null,
-    steer: { x: 0, y: 0 }, esc: 0, escMax: 1, escFrac: 0, restT: 0, duel: null, noQuizWith: null,
+    steer: { x: 0, y: 0 }, esc: 0, escMax: 1, escFrac: 0, restT: 0, duel: null, noQuizWith: null, str: 0,
   });
 }
 const isCtrl = p => !!(p.human || p.remote);                      // steered by a person (bots take over when a phone drops)
@@ -331,14 +334,18 @@ function setBars(p) {
   const g = p.hpg;
   g.clear();
   const ctrl = isCtrl(p) || (MODE === 'client' && p.id === myId);
-  g.beginFill(INK, .8).drawRoundedRect(-43, -136, 86, ctrl ? 22 : 16, 6).endFill();
+  const rows = 1 + (ctrl ? 1 : 0) + (p.str > 0 ? 1 : 0);
+  g.beginFill(INK, .8).drawRoundedRect(-43, -136, 86, 10 + rows * 8 - (rows > 1 ? 2 : 0), 6).endFill();
   const col = p.hp <= 35 ? 0xe2792b : 0x4fcf4f;
   if (p.hp > 0) g.beginFill(col).drawRoundedRect(-39, -132, Math.max(2, 78 * p.hp / 100), 6, 3).endFill();
+  let y = -123;
   if (ctrl) {                                                     // escape meter: how long your tap still wins
     const f = Math.max(0, Math.min(1, p.escFrac));
-    if (f > 0) g.beginFill(0x5ec8ff).drawRoundedRect(-39, -123, Math.max(2, 78 * f), 5, 2).endFill();
-    else g.beginFill(0x6b6b80, .6).drawRoundedRect(-39, -123, 78, 5, 2).endFill();
+    if (f > 0) g.beginFill(0x5ec8ff).drawRoundedRect(-39, y, Math.max(2, 78 * f), 5, 2).endFill();
+    else g.beginFill(0x6b6b80, .6).drawRoundedRect(-39, y, 78, 5, 2).endFill();
+    y -= 8;
   }
+  if (p.str > 0) g.beginFill(0xffc93c).drawRoundedRect(-39, y, Math.max(2, 78 * Math.min(1, p.str / STR_MAX)), 5, 2).endFill();   // strength
 }
 function makeFighter(p) {
   const cont = new PIXI.Container();
@@ -463,7 +470,7 @@ function strike(p) {
 }
 function damage(p, o, mn, mx) {
   if (over || o.dead) return;
-  let dmg = Math.round(rnd(mn, mx));
+  let dmg = Math.round(rnd(mn, mx) * (1 + p.str / 100));
   const crit = Math.random() < CFG.crit / 100;
   if (crit) dmg = Math.round(dmg * CFG.critMult);
   p.dmg += dmg;
@@ -476,17 +483,9 @@ function damage(p, o, mn, mx) {
   refreshBoard();
   if (o.hp <= 0) kill(p, o);
 }
-function applyHit(p, o, quiz) {
+function applyHit(p, o) {
   if (o.dead || p.dead) return;
   const M = MELEE[p.t];
-  if (quiz) {                                                     // the right answer lands a finishing blow
-    p.dmg += o.hp; o.hp = 0; setBars(o);
-    o.spr.tint = 0xff9d9d; setTimeout(() => { if (o.spr && !o.spr.destroyed) o.spr.tint = 0xffffff; }, 200);
-    floatTxt(o, '❓ KO', 0xffd24a, 29);
-    mpAll({ t: 'ko', id: o.id });
-    kill(p, o);
-    return;
-  }
   if (Math.hypot(o.x - p.x, o.y - p.y) > M.reach + DODGE_MARGIN) {   // they ran — the swing whiffs
     if (isCtrl(o)) { floatTxt(o, 'dodge!', 0x5ec8ff, 20); mpAll({ t: 'dodge', id: o.id }); }
     return;
@@ -498,7 +497,7 @@ let T0 = performance.now();
 const MEDALS = { 1: '\u{1F451}', 2: '\u{1F948}', 3: '\u{1F949}' };
 function refreshBoard() {
   const alive = players.filter(q => !q.dead)
-    .sort((a, b) => (a.finalRank || 99) - (b.finalRank || 99) || b.hp - a.hp || b.dmg - a.dmg);
+    .sort((a, b) => (a.finalRank || 99) - (b.finalRank || 99) || b.hp - a.hp || b.str - a.str);
   const list = [...alive, ...fallen.slice().reverse()];
   list.forEach((q, i) => {
     if (!q.row) return;
@@ -508,7 +507,7 @@ function refreshBoard() {
       q.row.querySelector('.tt').textContent = q.surv !== undefined ? q.surv.toFixed(1) + 's' : '💀';
     } else {
       q.row.querySelector('.rknum').textContent = (i + 1) + '.';
-      q.row.querySelector('.tt').textContent = '❤' + Math.round(q.hp) + ' ⚔' + q.dmg;
+      q.row.querySelector('.tt').textContent = '❤' + Math.round(q.hp) + ' ⚡' + q.str;
     }
   });
 }
@@ -548,7 +547,7 @@ let duelN = 0;
 const duels = [];
 function startDuel(a, b) {
   const def = drawQuiz();
-  const d = { n: ++duelN, a, b, def, t: QUIZ_T, done: false, result: null, wrong: new Set(), botAt: {} };
+  const d = { n: ++duelN, a, b, def, t: QUIZ_T, done: false, result: null, tried: { [a.id]: new Set(), [b.id]: new Set() }, botAt: {} };
   a.duel = b.duel = d; a.state = b.state = 'duel';
   a.pend = b.pend = null; a.tx = a.ty = b.tx = b.ty = null;
   a.face = b.x >= a.x ? 1 : -1; b.face = -a.face;
@@ -561,39 +560,39 @@ function startDuel(a, b) {
   if (a === human) clearTap(); if (b === human) clearTap();
   duels.push(d);
 }
-function botThink(p, d) { if (!d.done && !d.wrong.has(p.id)) d.botAt[p.id] = rnd(BOT_ANS[0], BOT_ANS[1]); }
+function botThink(p, d, again) { if (!d.done) d.botAt[p.id] = again ? rnd(1, 3) : rnd(BOT_ANS[0], BOT_ANS[1]); }
 function sendRes(p, res) {
   if (p.remote) mpTo(p.id, Object.assign({ t: 'quizres' }, res));
   else if (p.human) showModalResult(res);
 }
 function duelAnswer(p, d, choice) {
-  if (d.done || d.wrong.has(p.id) || p.dead) return;
+  if (d.done || p.dead || !d.def.a[choice] || d.tried[p.id].has(choice)) return;
   const o = d.a === p ? d.b : d.a;
-  if (choice === d.def.c) {                                       // first right answer wins the duel outright
-    d.done = true; d.result = 'kill';
+  d.tried[p.id].add(choice);
+  if (choice === d.def.c) {                                       // first right answer: a random prize + the first strike
+    d.done = true; d.result = 'buff';
     const ans = d.def.a[d.def.c];
-    const pk = { name: p.name }, ok = { name: o.name };
-    for (const f of [p, o]) {                                     // the modal drops away: the blow lands on the field, in view
-      if (f.remote) mpTo(f.id, { t: 'scene', w: pk, l: ok, ans, won: f === p ? 1 : 0 });
-      else if (f.human) duelVerdict(pk, ans, f === p);
+    const buff = Math.random() < .5 ? 'heal' : 'str';
+    let amt;
+    if (buff === 'heal') { amt = Math.min(BUFF_HEAL, 100 - p.hp); p.hp = Math.min(100, p.hp + BUFF_HEAL); floatTxt(p, '+' + BUFF_HEAL + ' ❤', 0x7ef17e, 26); }
+    else { amt = Math.min(BUFF_STR, STR_MAX - p.str); p.str = Math.min(STR_MAX, p.str + BUFF_STR); floatTxt(p, '+' + BUFF_STR + ' ⚡', 0xffc93c, 26); p.hopT = .55; }
+    setBars(p); refreshBoard();
+    p.cd = FIRST_STRIKE; o.cd = rnd(SLOW_START[0], SLOW_START[1]);   // the quick thinker swings first
+    const pk = { name: p.name };
+    for (const f of [p, o]) {                                     // the card drops away: the fight happens on the field, in view
+      if (f.remote) mpTo(f.id, { t: 'verdict', w: pk, ans, won: f === p ? 1 : 0, buff, amt });
+      else if (f.human) duelVerdict(pk, ans, f === p, buff, amt);
     }
-    const M = MELEE[p.t], dx = o.x - p.x, dy = o.y - p.y, dd = Math.hypot(dx, dy) || 1;
-    p.face = dx >= 0 ? 1 : -1;
-    p.lungeDir = { x: dx / dd, y: dy / dd }; p.lungeMax = .42; p.lunge = .42;
-    setAnim(p, 'Attack', true); p.atkHold = M.hold;
-    p.pend = { at: M.at, target: o, quiz: true };
-    floatTxt(p, '✔', 0x7ef17e, 26);
     endDuel(d);
-  } else {                                                        // wrong: it hurts, and you're out of this question
-    d.wrong.add(p.id);
+  } else {                                                        // wrong: it hurts — pick again
     const dmg = Math.round(rnd(QUIZ_DMG[0], QUIZ_DMG[1]));
     p.hp = Math.max(4, p.hp - dmg); setBars(p);
     p.spr.tint = 0xff9d9d; setTimeout(() => { if (p.spr && !p.spr.destroyed) p.spr.tint = 0xffffff; }, 220);
     floatTxt(p, '✘ −' + dmg, 0xff8080, 24);
     mpAll({ t: 'dmg', id: p.id, n: dmg, crit: 0 });
     refreshBoard();
-    sendRes(p, { right: 0, dmg, correct: d.def.c, chosen: choice, wait: d.wrong.size < 2 ? 1 : 0, n: d.n });
-    if (d.wrong.size >= 2) { d.result = 'fight'; endDuel(d); }    // both wrong → settle it with steel
+    sendRes(p, { right: 0, dmg, chosen: choice, n: d.n });
+    if (!p.remote && !p.human) botThink(p, d, true);
   }
 }
 function endDuel(d) {
@@ -605,21 +604,22 @@ function endDuel(d) {
     p.state = 'fight'; p.cd = rnd(.3, .8);
     const o = p === d.a ? d.b : d.a;
     p.noQuizWith = o.id;                                          // this pair has had its question
-    if (d.result !== 'kill') { if (p.remote) mpTo(p.id, { t: 'qclose' }); else if (p.human) closeQuizNow(); }
+    if (d.result !== 'buff') { if (p.remote) mpTo(p.id, { t: 'qclose' }); else if (p.human) closeQuizNow(); }
   }
-  if (d.result === 'fight') { floatTxt(d.a, '⚔', 0xffffff, 24); floatTxt(d.b, '⚔', 0xffffff, 24); }
+  floatTxt(d.a, '⚔', 0xffffff, 24); floatTxt(d.b, '⚔', 0xffffff, 24);
 }
 function duelTick(dt) {
   for (const d of duels.slice()) {
     if (d.done) continue;
     d.t -= dt;
     for (const p of [d.a, d.b]) {
-      if (d.botAt[p.id] === undefined || d.wrong.has(p.id)) continue;
+      if (d.botAt[p.id] === undefined) continue;
       d.botAt[p.id] -= dt;
       if (d.botAt[p.id] <= 0) {
         delete d.botAt[p.id];
-        const n = d.def.a.length;
-        duelAnswer(p, d, Math.random() < BOT_ACC ? d.def.c : (d.def.c + 1 + Math.floor(Math.random() * (n - 1))) % n);
+        const left = d.def.a.map((_, i) => i).filter(i => !d.tried[p.id].has(i));
+        const wrongs = left.filter(i => i !== d.def.c);
+        duelAnswer(p, d, (wrongs.length && Math.random() >= BOT_ACC) ? wrongs[Math.floor(Math.random() * wrongs.length)] : d.def.c);
         if (d.done) break;
       }
     }
@@ -631,27 +631,30 @@ function canDuel(p, o) {
 }
 
 // ---------- quiz modal (solo human & phones) ----------
-let quizOpen = false, quizBtns = null, quizChoice = -1, quizN = 0, quizLeft = 0, answeredN = -1;
+let quizOpen = false, quizBtns = null, quizChoice = -1, quizN = 0, quizLeft = 0, quizUnlock = null;
 const qbox = document.getElementById('quizbox');
 function fillModal(def, n, secs, onPick) {
   const opts = document.getElementById('qopts');
   const qres = document.getElementById('qres');
   document.getElementById('qq').textContent = def.q;
   opts.innerHTML = ''; qres.style.display = 'none'; qres.className = '';
-  let answered = false;
+  let pending = false;
   quizBtns = []; quizChoice = -1; quizN = n; quizLeft = secs;
+  const tried = new Set(def.tried || []);
   def.a.forEach((txt, i) => {
     const b = document.createElement('button');
     b.textContent = txt;
+    if (tried.has(i)) { b.disabled = true; b.classList.add('bad'); }
     b.addEventListener('click', () => {
-      if (answered) return;                                       // one shot — no spamming
-      answered = true; quizChoice = i;
+      if (pending || b.disabled) return;                          // one answer in flight at a time — no spamming
+      pending = true; quizChoice = i;
       quizBtns.forEach(x => x.disabled = true);
       b.classList.add('picked');
       onPick(i);
     });
     quizBtns.push(b); opts.appendChild(b);
   });
+  quizUnlock = () => { pending = false; quizBtns.forEach(x => { if (!x.classList.contains('bad')) x.disabled = false; }); };
   qbox.style.display = 'flex'; quizOpen = true;
   quizTotal = secs;
   renderTimer();
@@ -664,27 +667,21 @@ function renderTimer() {
   bar.style.width = Math.max(0, 100 * quizLeft / quizTotal) + '%';
   bar.classList.toggle('urgent', quizLeft <= 3);
 }
-function showModalResult(res) {
-  if (!quizOpen) return;
+function showModalResult(res) {                                  // only wrong answers come through here now
+  if (!quizOpen || res.n !== quizN) return;
   const qres = document.getElementById('qres');
-  quizBtns.forEach(x => x.disabled = true);
-  if (res.chosen !== undefined && quizBtns[res.chosen]) quizBtns[res.chosen].classList.add(res.right ? 'good' : 'bad');
-  if (res.correct !== undefined && quizBtns[res.correct]) quizBtns[res.correct].classList.add('good');
-  qres.className = res.right ? 'good' : 'bad';
-  if (res.right) qres.textContent = '✔  KILL!';
-  else if (res.lost) qres.textContent = '💀  opponent answered first';
-  else {
-    qres.innerHTML = '✘  Wrong  −' + res.dmg + ' ❤<br><span class="lock">🔒 locked out' + (res.wait ? ' — waiting for your opponent…' : '') + '</span>';
-    setTimeout(() => { if (quizOpen && quizN === res.n) { quizBtns.forEach(x => x.style.display = 'none'); } }, 700);   // the options go away for good
-  }
+  if (quizBtns[res.chosen]) { quizBtns[res.chosen].classList.remove('picked'); quizBtns[res.chosen].classList.add('bad'); }
+  qres.className = 'bad';
+  qres.innerHTML = '✘  Wrong  −' + res.dmg + ' ❤<span class="lock">try another answer — every miss costs HP</span>';
   qres.style.display = 'block';
-  if (res.right || res.lost || !res.wait) setTimeout(closeQuizNow, 1400);   // a wrong answer waits for the duel to end
+  if (quizUnlock) quizUnlock();
 }
 function closeQuizNow() { qbox.style.display = 'none'; quizOpen = false; quizBtns = null; }
-function duelVerdict(w, ans, won) {                                // no dialog: a ribbon over the field while the blow lands
+function duelVerdict(w, ans, won, buff, amt) {                    // no dialog: a ribbon over the field, then the fight decides
   closeQuizNow();
-  pop(won ? '✔ Correct!' : '✘ Too slow!', true);
-  hint((won ? 'You' : w.name) + ' answered first · answer: ' + ans, 4000);
+  const prize = buff === 'heal' ? '+' + amt + ' ❤' : '+' + amt + ' ⚡';
+  pop(won ? '✔ Correct! ' + prize : '✘ Too slow!', true);
+  hint((won ? 'You' : w.name) + ' answered first (' + ans + ') → ' + prize + ' + first strike · ⚔ now the swords decide', 5000);
 }
 function openQuizSolo(d) { fillModal(d.def, d.n, d.t, i => duelAnswer(human, d, i)); }
 function quizTimerTick(dt) {
@@ -732,7 +729,7 @@ function battleTick(dt) {
   const b = BOUNDS();
   for (const p of players) {
     if (p.dead) { draw(p, dt); continue; }
-    if (p.pend) { p.pend.at -= dt; if (p.pend.at <= 0) { const pd = p.pend; p.pend = null; applyHit(p, pd.target, pd.quiz); } }
+    if (p.pend) { p.pend.at -= dt; if (p.pend.at <= 0) { const pd = p.pend; p.pend = null; applyHit(p, pd.target); } }
     if (p.lunge > 0) p.lunge = Math.max(0, p.lunge - dt);
     if (p.atkHold) { p.atkHold -= dt; if (p.atkHold <= 0) p.atkHold = 0; }
     if (p.esc > 0) {
@@ -897,7 +894,7 @@ function buildBoard() {
     const r = document.createElement('div'); r.className = 'rrow';
     const me = q.human || (MODE === 'client' && q.id === myId);
     const who = (q.remote || me ? '\u{1F4F1} ' : '') + ICO[q.t] + ' ' + q.name.replace(/[<>&]/g, '');
-    r.innerHTML = '<span><span class="rknum">' + (i + 1) + '.</span> <span class="who' + (me ? ' me' : '') + '">' + who + '</span></span><span class="tt">❤100 ⚔0</span>';
+    r.innerHTML = '<span><span class="rknum">' + (i + 1) + '.</span> <span class="who' + (me ? ' me' : '') + '">' + who + '</span></span><span class="tt">❤100 ⚡0</span>';
     r.style.top = (i * 26) + 'px';
     q.row = r; rankEl.appendChild(r);
   });
@@ -1000,7 +997,7 @@ async function initHost() {
       if (back) {                                                 // their knight is theirs again (mid-duel: re-send the question)
         back.remote = true; back.speed = HUMAN_SPD; setBars(back);
         const d = back.duel;
-        if (d && !d.done && !d.wrong.has(back.id)) { delete d.botAt[back.id]; mpTo(m.id, { t: 'quiz', n: d.n, q: d.def.q, a: d.def.a, s: Math.max(1, d.t) }); }
+        if (d && !d.done) { delete d.botAt[back.id]; mpTo(m.id, { t: 'quiz', n: d.n, q: d.def.q, a: d.def.a, s: Math.max(1, d.t), tried: [...d.tried[back.id]] }); }
       }
       else if (phase === 'lobby') {                               // a knight appears the moment they join
         const k = nextKit();
@@ -1062,7 +1059,7 @@ function hostNet(dt) {
   mpAll({
     t: 'snap',
     ps: players.map(p => [p.id, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.face, ANIMI[p.animSt] || 0, p.dead ? 1 : 0,
-                          Math.round(Math.max(0, Math.min(1, p.escFrac)) * 10), p.dmg, p.duel ? Math.max(1, Math.ceil(p.duel.t)) : 0]),
+                          Math.round(Math.max(0, Math.min(1, p.escFrac)) * 10), p.dmg, p.duel ? Math.max(1, Math.ceil(p.duel.t)) : 0, p.str]),
     bn: banner.textContent, ph: phase,
   });
 }
@@ -1152,17 +1149,14 @@ function onClientMsg(m, jb, jstatus) {
       if (p.spr && !p.spr.destroyed) { p.spr.tint = 0xff9d9d; setTimeout(() => { if (p.spr && !p.spr.destroyed) p.spr.tint = 0xffffff; }, 200); }
     }
   } else if (m.t === 'quiz') {
-    if (m.n === answeredN) return;                                // already answered this one — no second try
-    fillModal({ q: m.q, a: m.a }, m.n, m.s || QUIZ_T, i => { answeredN = m.n; mpAll({ t: 'answer', n: m.n, choice: i }); });
-  } else if (m.t === 'scene') {
-    duelVerdict(m.w, m.ans, !!m.won);
+    fillModal({ q: m.q, a: m.a, tried: m.tried }, m.n, m.s || QUIZ_T, i => mpAll({ t: 'answer', n: m.n, choice: i }));
+  } else if (m.t === 'verdict') {
+    duelVerdict(m.w, m.ans, !!m.won, m.buff, m.amt);
   } else if (m.t === 'quizres') {
     showModalResult(m);
   } else if (m.t === 'qclose') {
     closeQuizNow();
-  } else if (m.t === 'ko') {
-    const p = byId[m.id];
-    if (p) floatTxt(p, '❓ KO', 0xffd24a, 29);
+    hint('⏱ time — ⚔ the swords decide', 3000);
   } else if (m.t === 'dodge') {
     const p = byId[m.id];
     if (p) floatTxt(p, 'dodge!', 0x5ec8ff, 20);
@@ -1219,7 +1213,7 @@ function clientRender(dt) {
     if (steering && an !== 'Attack') { if (p.animSt !== 'Run') setAnim(p, 'Run'); }
     else if (an !== p.animSt) setAnim(p, an, an === 'Attack');
     p.x = X; p.y = Y;
-    if (p.hp !== e[3] || p.escFrac !== escFrac) { p.hp = e[3]; p.escFrac = escFrac; setBars(p); }
+    if (p.hp !== e[3] || p.escFrac !== escFrac || p.str !== (e[10] || 0)) { p.hp = e[3]; p.escFrac = escFrac; p.str = e[10] || 0; setBars(p); }
     p.dmg = e[8] || 0;
     p.duel = e[9] || null;                                       // seconds left in their duel, 0 = not duelling
     if (!steering) p.face = e[4];
@@ -1235,7 +1229,7 @@ function refreshBoardClient() {
     if (!q.row) return;
     q.row.style.top = (i * 26) + 'px';
     q.row.querySelector('.rknum').textContent = q.dead ? '💀' : (i + 1) + '.';
-    q.row.querySelector('.tt').textContent = q.dead ? '💀' : '❤' + Math.round(q.hp) + ' ⚔' + q.dmg;
+    q.row.querySelector('.tt').textContent = q.dead ? '💀' : '❤' + Math.round(q.hp) + ' ⚡' + q.str;
   });
 }
 
