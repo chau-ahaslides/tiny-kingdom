@@ -125,7 +125,7 @@
       <span class="hint">bots fill the empty seats</span>
     </div>
     <div class="row"><button class="big" id="b-start">⚔️ Start the raid</button></div>
-    <p class="hint" style="margin-top:12px">3 waves · 30 s each · the tower gets <span id="hpnote">130</span> HP per raider<br>Raiders charge on their own and strike 3× at the walls. Each wave's quiz: right = 🛡 shield, wrong = lose HP.</p>
+    <p class="hint" style="margin-top:12px">3 waves · 20 s each · the tower gets <span id="hpnote">130</span> HP per raider<br>Raiders charge on their own and strike 3× at the walls. Each wave's quiz: right = 🛡 shield, wrong = lose HP.</p>
   </div>
 </div></div>
 
@@ -311,7 +311,15 @@ class View {
     const end = PATH[PATH.length - 1]; const keep = new THREE.Group(); keep.position.set(end[0], 0.2, end[1]); keep.scale.setScalar(1.15); this.scene.add(keep); this.keep = keep;
     let y = 0;
     for (const p of ['tower-square-bottom-a', 'tower-square-middle-a', 'tower-square-middle-a', 'tower-square-top-a', 'tower-square-roof-a']) { const o = await this.inst(p, 0, 0, Math.PI / 2, y, keep); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y / 1.15 - 0.02; }
-    const c = await this.inst('tile-crystal', 0, 0, 0, y - 0.15, keep); c.scale.setScalar(0.7);
+    // The Attention Gremlin itself, pacing on the roof with a name over its head.
+    const gg = await loadGLB('dungeon/character-orc'); const orc = cloneSkinned(gg.scene); fixMaterials(orc); orc.traverse(o => { if (o.isMesh) o.material = o.material.clone(); });
+    orc.scale.setScalar(1.25); orc.position.set(0, y - 0.05, 0); orc.rotation.y = -Math.PI / 2; keep.add(orc);
+    this.gremlinMixer = new THREE.AnimationMixer(orc); const clip = gg.animations.find(a => a.name === 'emote-no') || gg.animations[0]; this.gremlinMixer.clipAction(clip).play();
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 96; const cx = cv.getContext('2d');
+    cx.font = '700 56px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.lineWidth = 10; cx.strokeStyle = '#fff'; cx.fillStyle = '#8e3bd6';
+    cx.strokeText('👹 Attention Gremlin', 256, 66); cx.fillText('👹 Attention Gremlin', 256, 66);
+    const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); tag.scale.set(2.2, 0.41, 1); tag.position.set(0, y + 0.95, 0); tag.renderOrder = 12; keep.add(tag);
     for (let x = -1; x <= TR.COLS; x++) for (const z of [-1, TR.ROWS]) if (rnd() < 0.7) await this.inst(rnd() < .5 ? 'tile-tree' : 'tile-tree-double', x, z, rnd() * 6, 0, g);
     for (let z = 0; z < TR.ROWS; z++) for (const x of [-1, TR.COLS]) if (rnd() < 0.7 && !(x === -1 && z === PATH[0][1])) await this.inst(rnd() < .5 ? 'tile-tree' : 'tile-tree-double', x, z, rnd() * 6, 0, g);
   }
@@ -412,6 +420,7 @@ class View {
       const aim = s.tgt.holder.position.clone().setY(0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
     });
     this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
+    if (this.gremlinMixer) this.gremlinMixer.update(dt);
     if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.PATH[TR.PATH.length - 1][0] + (Math.random() - .5) * .06; } else this.keep.position.x = TR.PATH[TR.PATH.length - 1][0]; }
     if (this.follow) {
       // Third-person: behind and above the raider, looking down the road.
@@ -455,7 +464,7 @@ async function startHost() {
   const qr = qrcode(0, 'M'); qr.addData(joinUrl); qr.make(); $('#qr').innerHTML = qr.createImgTag(5, 8);
   host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHpPer; $('#h-waves').textContent = TR.RULES.waves;
   host.link = link(WS_BASE() + host.code + '?role=host', hostReceive, st => { if (st === 'down') toast('Room link lost — reconnecting…'); });
-  host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.74, y: 0.66, yBias: -0.1 } }); await host.view.buildMap();
+  host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.64, y: 0.64, yBias: -0.12 } }); await host.view.buildMap();
   renderRoster();
 }
 function hostReceive(m) {

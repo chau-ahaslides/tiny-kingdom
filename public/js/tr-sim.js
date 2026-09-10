@@ -25,19 +25,20 @@
   // ------------------------------------------------------------ numbers to tune
   const RULES = {
     waves: 3,
-    waveTime: 30,          // seconds before the defenders regroup and the wave is called off
+    waveTime: 20,          // seconds before the defenders regroup and the wave is called off
     towerHpPer: 130,       // tower HP per raider (humans + bots), so a bigger party faces a bigger tower
     towerHpMin: 550,
     towerRegen: 0.02,      // share of max HP the tower repairs between waves
-    raiderHp: 150,
-    shield: 80,            // damage a correct quiz answer soaks up
-    wrongHp: 60,           // HP lost for a wrong answer
-    runSpeed: 1.3,         // tiles per second; raiders run on their own
+    raiderHp: 120,
+    shield: 150,           // damage a correct quiz answer soaks up
+    wrongHp: 90,           // HP lost for a wrong answer
+    runSpeed: 2.0,         // tiles per second; raiders run on their own
     strikes: 3,            // swings a raider gets at the walls before the wave is over for them
-    strikeGap: 0.7,        // seconds between swings (the wall cannon keeps firing meanwhile)
+    strikeGap: 0.5,        // seconds between swings (the wall cannon keeps firing meanwhile)
     strike: 12,            // tower damage per swing…
     strikeBonus: 0.06,     // …plus this share of the raider's remaining HP and shield
     stopAtEnd: 1.0,        // path distance from the end where raiders strike
+    towerDmg: 1.7,         // multiplier on every defence tower's damage
   };
 
   // Defence towers per wave: spot, type, level. Later waves add towers and upgrade earlier ones.
@@ -189,7 +190,7 @@
         if (t.cool <= 0) {
           t.cool = st.reload;
           const dist = Math.hypot(p.x - t.x, p.z - t.z);
-          S.shots.push({ id: S.seq + ':' + t.i, tower: t.i, target: best.id, dmg: st.dmg, splash: def.splash, t: 0, dur: Math.max(0.08, dist / def.ammoSpeed), ax: p.x, az: p.z });
+          S.shots.push({ id: S.seq + ':' + t.i, tower: t.i, target: best.id, dmg: st.dmg * R.towerDmg, splash: def.splash, t: 0, dur: Math.max(0.08, dist / def.ammoSpeed), ax: p.x, az: p.z });
           S.events.push({ e: 'shot', tower: t.i, target: best.id, dur: Math.max(0.08, dist / def.ammoSpeed), splash: def.splash });
         }
       }
