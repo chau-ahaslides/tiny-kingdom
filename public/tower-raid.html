@@ -207,8 +207,8 @@ class View {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene(); this.scene.background = new THREE.Color(0xcfe8ff); this.scene.fog = new THREE.Fog(0xcfe8ff, 20, 45);
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-    this.center = new THREE.Vector3(TR.COLS / 2 - 0.5, 0, TR.ROWS / 2 - 0.5 + (this.opts.shiftZ || 0));
-    this.cam = { theta: this.opts.theta !== undefined ? this.opts.theta : -0.55, phi: this.opts.orbit ? 1.05 : 0.95, dist: 13, fit: 13 };
+    this.center = new THREE.Vector3(TR.COLS / 2 - 0.5, 0, TR.ROWS / 2 - 0.5);
+    this.cam = { theta: this.opts.theta !== undefined ? this.opts.theta : -0.55, phi: this.opts.phi !== undefined ? this.opts.phi : 0.95, dist: 14, fit: 0 };
     this.follow = null;
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x7fa86a, 0.85));
     const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(6, 12, 4); sun.castShadow = !this.opts.lite;
@@ -239,9 +239,28 @@ class View {
   resize() {
     const w = innerWidth, h = innerHeight; this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     const portrait = this.camera.aspect < 1;
-    const fit = (portrait ? 6.8 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.1 : 13 * Math.max(1, 1.7 / this.camera.aspect)) * (this.opts.zoom || 1);
     if (portrait !== this.cam.portrait) { this.cam.portrait = portrait; this.cam.theta = portrait ? Math.PI / 2 - 0.35 : (this.opts.theta !== undefined ? this.opts.theta : -0.55); }
-    this.cam.dist = this.cam.dist / this.cam.fit * fit; this.cam.fit = fit; this.placeCamera();
+    this.fitBoard();
+  }
+  // Pull back and re-centre until the whole board (trees included) sits inside the view, leaving room for the HUD.
+  fitBoard() {
+    const m = this.opts.margins || { x: 0.9, y: 0.9, yBias: 0 };
+    const corners = [];
+    for (const x of [-1.5, TR.COLS + 0.5]) for (const z of [-1.5, TR.ROWS + 0.5]) for (const y of [0, 1.2]) corners.push(new THREE.Vector3(x, y, z));
+    const userZoom = this.cam.fit ? this.cam.dist / this.cam.fit : 1;
+    this.cam.dist = this.cam.fit = 14;
+    for (let it = 0; it < 6; it++) {
+      this.placeCamera();
+      const p = corners.map(c => c.clone().project(this.camera));
+      const minx = Math.min(...p.map(v => v.x)), maxx = Math.max(...p.map(v => v.x)), miny = Math.min(...p.map(v => v.y)), maxy = Math.max(...p.map(v => v.y));
+      const cx = (minx + maxx) / 2, cy = (miny + maxy) / 2, w = (maxx - minx) / 2, h = (maxy - miny) / 2;
+      const t = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.cam.dist;
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion); right.y = 0; right.normalize();
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion); fwd.y = 0; fwd.normalize();
+      this.center.add(right.multiplyScalar(cx * t * this.camera.aspect)).add(fwd.multiplyScalar((cy - m.yBias) * t / Math.sin(this.cam.phi)));
+      this.cam.dist *= Math.max(w / m.x, h / m.y);
+    }
+    this.cam.fit = this.cam.dist; this.cam.dist *= userZoom; this.placeCamera();
   }
   placeCamera() {
     const c = this.cam, C = this.center;
@@ -363,7 +382,7 @@ class View {
       const e = this.raiders.get(this.follow); const p = e && e.holder.visible ? e.holder.position : null;
       if (p) {
         const yaw = e.root.rotation.y; const back = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const want = p.clone().add(back.multiplyScalar(5.4)).add(new THREE.Vector3(0, 5.6, 0));
+        const want = p.clone().add(back.multiplyScalar(7.5)).add(new THREE.Vector3(0, 8, 0));
         this.camera.position.lerp(want, Math.min(1, 5 * dt));
         const look = p.clone().add(new THREE.Vector3(Math.sin(yaw) * 0.6, 0.3, Math.cos(yaw) * 0.6)); this.camera.lookAt(look);
         this.scene.fog.near = 16; this.scene.fog.far = 40;
@@ -400,7 +419,7 @@ async function startHost() {
   const qr = qrcode(0, 'M'); qr.addData(joinUrl); qr.make(); $('#qr').innerHTML = qr.createImgTag(5, 8);
   host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHpPer;
   host.link = link(WS_BASE() + host.code + '?role=host', hostReceive, st => { if (st === 'down') toast('Room link lost — reconnecting…'); });
-  host.view = new View($('#gl'), { theta: 0.22, zoom: 1.32, orbit: true, shiftZ: -1.1 }); await host.view.buildMap();
+  host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.74, y: 0.66, yBias: -0.1 } }); await host.view.buildMap();
   renderRoster();
 }
 function hostReceive(m) {
@@ -537,7 +556,7 @@ function joinGame(code, name) {
   player.code = code; player.name = name;
   let token = ''; try { token = localStorage.getItem('tk-tr-tok-' + code) || ''; if (!token) { token = Math.random().toString(36).slice(2, 12); localStorage.setItem('tk-tr-tok-' + code, token); } } catch (e) {}
   show('s-play'); $('#p-name').textContent = name;
-  player.view = new View($('#gl'), { lite: true }); player.view.buildMap().then(() => { player.mapReady = true; });
+  player.view = new View($('#gl'), { lite: true, margins: { x: 0.9, y: 0.6, yBias: -0.05 } }); player.view.buildMap().then(() => { player.mapReady = true; });
   player.link = link(WS_BASE() + code + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token), playerReceive, st => { if (st === 'down') toast('Reconnecting…'); });
   playerTick();
   setInterval(() => { if (player.taps > 0 && player.link) { player.link.send({ t: 'tap', n: player.taps }); player.taps = 0; } }, 120);
