@@ -68,7 +68,7 @@
   #p-top .bar { height:10px; flex:1; }
   #p-btn { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); width:min(78vw, 300px); height:96px; border-radius:48px; font-size:24px; background:var(--red); box-shadow:0 6px 0 rgba(0,0,0,.2); pointer-events:auto; user-select:none; }
   #p-btn.run { background:var(--green); } #p-btn.attack { background:var(--red); } #p-btn.off { background:#9aa7b5; }
-  #p-btn:active { transform:translate(-50%, 4px); box-shadow:0 2px 0 rgba(0,0,0,.2); }
+  #p-btn { pointer-events:none !important; font-size:20px; height:80px; }
   #p-quiz { position:absolute; left:10px; right:10px; top:72px; background:rgba(255,255,255,.96); border-radius:20px; padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.2); display:none; pointer-events:auto; }
   #p-quiz.on { display:block; }
   #p-quiz .q { font-weight:700; font-size:16px; margin-bottom:8px; }
@@ -76,7 +76,10 @@
   #p-quiz .opts button { background:#eef3f8; color:var(--ink); font-size:15px; padding:10px 8px; }
   #p-quiz .opts button.right { background:#d8f5e1; } #p-quiz .opts button.wrong { background:#fbd9d3; }
   #p-quiz .note { font-size:12px; opacity:.7; margin-top:6px; text-align:center; }
-  #p-msg { position:absolute; left:50%; top:30%; transform:translate(-50%,-50%); font-size:30px; font-weight:700; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; width:90%; }
+  #p-howto { position:absolute; left:10px; right:10px; bottom:112px; justify-content:center; font-size:12px; padding:5px 8px; text-align:center; pointer-events:none !important; }
+  #p-red { position:absolute; inset:0; background:rgba(229,83,61,.45); opacity:0; transition:opacity .4s; pointer-events:none !important; }
+  #p-red.on { opacity:1; transition:none; }
+  #p-msg { white-space:pre-line; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:30px; font-weight:700; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; width:90%; }
   #p-msg.on { opacity:1; }
   #toast { position:fixed; left:50%; top:70px; transform:translateX(-50%); background:rgba(32,48,63,.92); color:#fff; padding:8px 16px; border-radius:14px; font-weight:600; opacity:0; transition:opacity .25s; white-space:nowrap; z-index:9; pointer-events:none; }
   #toast.show { opacity:1; }
@@ -91,7 +94,7 @@
 <!-- landing -->
 <div class="screen" id="s-home"><div class="center"><div class="card">
   <h1>🏰 Tower Raid</h1>
-  <p>Everyone attacks the tower. Your raider runs on their own; answer the quiz for a shield, then mash to hit the walls before five waves are up.</p>
+  <p>Everyone attacks the tower. Your raider charges the walls on their own and strikes three times if they get there. Answer the quiz right for a shield; get it wrong and you bleed. Three waves to bring it down, or the raid has failed.</p>
   <div class="row"><button class="big" id="b-host">Host on this screen</button></div>
   <p style="margin-top:18px">Have a code?</p>
   <div class="row"><input id="in-code" placeholder="ROOM CODE" maxlength="8" style="width:170px;text-transform:uppercase"><button id="b-join">Join</button></div>
@@ -115,14 +118,14 @@
       <span class="hint">bots fill the empty seats</span>
     </div>
     <div class="row"><button class="big" id="b-start">⚔️ Start the raid</button></div>
-    <p class="hint" style="margin-top:12px">5 waves · 60 s each · the tower gets <span id="hpnote">220</span> HP per raider</p>
+    <p class="hint" style="margin-top:12px">3 waves · 45 s each · the tower gets <span id="hpnote">130</span> HP per raider<br>Raiders charge on their own and strike 3× at the walls. Each wave's quiz: right = 🛡 shield, wrong = lose HP.</p>
   </div>
 </div></div>
 
 <!-- host game -->
 <div class="screen" id="s-hostgame"><div class="hud">
   <div id="h-tower"><div class="lbl"><span>🏰 The Tower</span><span id="h-hp"></span></div><div class="bar"><i id="h-hpbar" style="width:100%"></i></div></div>
-  <div class="pill" id="h-left"><span>🌊 Wave <b id="h-wave">1</b> / 5</span><span>⏱ <b id="h-time">60</b> s</span><span id="h-alive"></span></div>
+  <div class="pill" id="h-left"><span>🌊 Wave <b id="h-wave">1</b> / <span id="h-waves">3</span></span><span>⏱ <b id="h-time">60</b> s</span><span id="h-alive"></span></div>
   <div id="h-quiz"><div class="q" id="hq-q"></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div></div>
   <div id="h-board"></div>
   <div id="h-msg"></div>
@@ -149,8 +152,10 @@
     <div class="pill"><span id="p-name">You</span><span>❤️</span><div class="bar"><i class="ok" id="p-hp" style="width:100%"></i></div><span id="p-shield">🛡 0</span></div>
     <div class="pill"><span>🏰</span><div class="bar"><i id="p-thp" style="width:100%"></i></div><span id="p-tpct">100%</span><span>🌊 <b id="p-wave">-</b></span><span>⏱ <b id="p-time">-</b></span></div>
   </div>
+  <div id="p-red"></div>
   <div id="p-msg"></div>
   <div id="p-quiz"><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note">Answer right for a 🛡 shield</div></div>
+  <div class="pill" id="p-howto">🛡 Answer right → shield · ❌ wrong → lose HP · reach the walls → 3 strikes</div>
   <button id="p-btn" class="off">Waiting…</button>
 </div></div>
 
@@ -322,7 +327,7 @@ class View {
     this.raiders.set(id, entry); this.scene.add(entry.holder); entry.holder.visible = false;
     const model = info.bot ? BOT_SKIN : 'mini/character-' + SKINS[info.skin % SKINS.length];
     const g = await loadGLB(model);
-    const root = cloneSkinned(g.scene); fixMaterials(root); entry.root = root; entry.holder.add(root);
+    const root = cloneSkinned(g.scene); fixMaterials(root); root.traverse(o => { if (o.isMesh) o.material = o.material.clone(); }); entry.root = root; entry.holder.add(root);
     entry.mixer = new THREE.AnimationMixer(root);
     for (const c of g.animations) entry.clips[c.name] = entry.mixer.clipAction(c);
     entry.clips.die.setLoop(THREE.LoopOnce); entry.clips.die.clampWhenFinished = true;
@@ -354,9 +359,10 @@ class View {
     e.holder.visible = state !== 'wait';
     e.holder.position.set(x, 0, z);
     if (state === 'run' || state === 'attack') { let diff = yaw - e.root.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); e.root.rotation.y += diff * 0.35; }
-    if (state === 'run') this.play(e, tapping ? 'sprint' : 'walk');
+    if (state === 'run') this.play(e, 'sprint');
     else if (state === 'attack') this.play(e, 'attack-melee-right');
     else if (state === 'dead') { if (wasState !== 'dead') { this.play(e, 'die'); this.coin(e.holder.position); } }
+    else if (state === 'done') this.play(e, 'emote-yes');
     else this.play(e, 'idle');
     e.bar.visible = state === 'run' || state === 'attack';
     const f = Math.max(0, hp / maxHp); e.fg.scale.x = f; e.fg.position.x = -(1 - f) * 0.3; e.fg.material.color.set(f > .5 ? 0x4fbb6c : f > .25 ? 0xf3b53e : 0xe5533d);
@@ -374,14 +380,31 @@ class View {
   boom(x, z, r) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: .8 })); m.position.set(x, 0.4, z); m.scale.setScalar(.1); this.scene.add(m); this.fx.push({ m, t: 0, life: .35, r: r + .2, kind: 'boom' }); }
   async coin(pos) { const g = await loadGLB('dungeon/coin'); const m = g.scene.clone(true); m.position.copy(pos).setY(0.6); this.scene.add(m); this.fx.push({ m, t: 0, life: .8, kind: 'coin' }); }
   hitKeep() { this.keepFlash = 0.25; }
+  pulse(id) { const e = this.raiders.get(id); if (e) e.pulseT = 1.0; }
+  flash(id) { const e = this.raiders.get(id); if (e) e.flashT = 0.6; }
+  strikeText(dmg) {
+    // A floating "−N" over the keep, drawn on a small canvas sprite.
+    const cv = document.createElement('canvas'); cv.width = 192; cv.height = 96; const cx = cv.getContext('2d');
+    cx.font = '700 64px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.lineWidth = 8; cx.strokeStyle = '#fff'; cx.fillStyle = '#e5533d';
+    cx.strokeText('−' + dmg, 96, 70); cx.fillText('−' + dmg, 96, 70);
+    const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); sp.scale.set(1.6, 0.8, 1); sp.renderOrder = 12;
+    const end = TR.PATH[TR.PATH.length - 1]; sp.position.set(end[0] + (Math.random() - .5) * .6, 2.6, end[1]); this.scene.add(sp);
+    this.fx.push({ m: sp, t: 0, life: 1.1, kind: 'text' });
+  }
   frame(dt) {
-    for (const e of this.raiders.values()) if (e.mixer && e.holder.visible) { e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion); }
+    for (const e of this.raiders.values()) if (e.mixer && e.holder.visible) {
+      e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion);
+      if (e.pulseT > 0) { e.pulseT -= dt; const k = 1 - Math.max(0, e.pulseT); e.shield.visible = true; e.shield.scale.setScalar(1 + 1.2 * Math.sin(k * Math.PI)); e.shield.material.opacity = 0.28 + 0.4 * Math.sin(k * Math.PI); }
+      else { e.shield.scale.setScalar(1); e.shield.material.opacity = 0.28; }
+      if (e.flashT > 0) { e.flashT -= dt; const on = Math.floor(e.flashT * 12) % 2 === 0; e.root.traverse(o => { if (o.isMesh && o.material) { if (!o.material.__orig) o.material.__orig = o.material.color.clone(); o.material.color.copy(o.material.__orig); if (on) o.material.color.lerp(new THREE.Color(0xff2020), 0.7); } }); if (e.flashT <= 0) e.root.traverse(o => { if (o.isMesh && o.material && o.material.__orig) o.material.color.copy(o.material.__orig); }); }
+    }
     for (let i = 0; i < this.defence.length; i++) { const t = this.defence[i]; const y = this.defYaw ? this.defYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); } }
     this.shots = this.shots.filter(s => {
       s.t += dt / s.dur; if (s.t >= 1) { this.scene.remove(s.m); return false; }
       const aim = s.tgt.holder.position.clone().setY(0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
     });
-    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
+    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
     if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.PATH[TR.PATH.length - 1][0] + (Math.random() - .5) * .06; } else this.keep.position.x = TR.PATH[TR.PATH.length - 1][0]; }
     if (this.follow) {
       // Third-person: behind and above the raider, looking down the road.
@@ -416,14 +439,14 @@ function link(url, onMsg, onState) {
 async function openRoom() { const res = await fetch('/api/room', { method: 'POST' }); return (await res.json()).code; }
 
 /* ===================== HOST (big screen: runs the rules, streams the state) ===================== */
-const host = { link: null, code: '', view: null, S: null, total: 6, names: new Map(), lastSnap: 0, betweenT: 0, running: false, answers: new Map() };
+const host = { link: null, code: '', view: null, S: null, total: 6, names: new Map(), lastSnap: 0, betweenT: 0, running: false, answers: new Map(), fx: { s: [], b: [] } };
 async function startHost() {
   show('s-hostlobby');
   try { host.code = await openRoom(); } catch (e) { toast('Could not open a room — this page has to be served by the game server.'); return; }
   const joinUrl = location.origin + '/tr/' + host.code;
   $('#code').textContent = host.code.split('').join(' '); $('#joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
   const qr = qrcode(0, 'M'); qr.addData(joinUrl); qr.make(); $('#qr').innerHTML = qr.createImgTag(5, 8);
-  host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHpPer;
+  host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHpPer; $('#h-waves').textContent = TR.RULES.waves;
   host.link = link(WS_BASE() + host.code + '?role=host', hostReceive, st => { if (st === 'down') toast('Room link lost — reconnecting…'); });
   host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.74, y: 0.66, yBias: -0.1 } }); await host.view.buildMap();
   renderRoster();
@@ -432,7 +455,7 @@ function hostReceive(m) {
   const S = host.S; if (!S) return;
   if (m.t === 'join') {
     const r = TR.addPlayer(S, m.id, m.name, false); if (S.phase === 'lobby') TR.setBots(S, host.total);
-    host.link.send({ to: m.id, t: 'hello', name: r.name, skin: r.skin, ph: S.phase, wave: S.wave, rules: { hp: S.rules.raiderHp, shield: S.rules.shield } });
+    host.link.send({ to: m.id, t: 'hello', name: r.name, skin: r.skin, ph: S.phase, wave: S.wave, rules: { hp: S.rules.raiderHp, shield: S.rules.shield, wrong: S.rules.wrongHp }, waves: S.rules.waves });
     if (S.phase === 'wave' && S.quiz) host.link.send({ to: m.id, t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, done: r.answered });
     host.link.send({ to: m.id, t: 'defence', list: S.defence.map(t => ({ type: t.type, x: t.x, z: t.z, level: t.level })) });
     sendRoster(); renderRoster(); if (!m.rejoin) toast(r.name + ' joined');
@@ -491,7 +514,7 @@ function renderQuiz() {
   const total = [...S.raiders.values()].filter(r => !r.gone).length;
   const reveal = S.phase !== 'wave' || host.answers.size >= total;
   $('#hq-opts').innerHTML = S.quiz.opts.map((o, i) => `<div class="opt ${reveal && i === S.quiz.answer ? 'right' : ''}"><span>${'ABCD'[i]}. ${esc(o)}</span><span>${counts[i] || ''}</span></div>`).join('');
-  $('#hq-note').textContent = reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got it' : host.answers.size + ' of ' + total + ' raiders answered · right answer = 🛡 shield';
+  $('#hq-note').textContent = reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got it' : host.answers.size + ' of ' + total + ' answered · right = 🛡 shield, wrong = −' + S.rules.wrongHp + ' HP';
 }
 function bigMsg(text, ms) { const el = $('#h-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 function renderBoard() {
@@ -505,18 +528,19 @@ function hostSim() {
   if (host.running && S.phase === 'wave') {
     while (elapsed > 0) { const dt = Math.min(1 / 60, elapsed); elapsed -= dt; TR.step(S, dt); if (S.phase !== 'wave') break; }
     for (const ev of TR.takeEvents(S)) {
-      if (ev.e === 'shot') view.shot(ev.tower, ev.target, ev.dur, ev.splash);
-      else if (ev.e === 'boom') view.boom(ev.x, ev.z, ev.r);
-      else if (ev.e === 'towerhit') view.hitKeep();
-      else if (ev.e === 'reach') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: 'At the walls — TAP to attack!' }); }
-      else if (ev.e === 'shield') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: '🛡 Shield up!' }); }
+      if (ev.e === 'shot') { view.shot(ev.tower, ev.target, ev.dur, ev.splash); host.fx.s.push([ev.tower, ev.target, +ev.dur.toFixed(2), ev.splash]); }
+      else if (ev.e === 'boom') { view.boom(ev.x, ev.z, ev.r); host.fx.b.push([+ev.x.toFixed(2), +ev.z.toFixed(2), ev.r]); }
+      else if (ev.e === 'strike') { view.hitKeep(); view.strikeText(ev.dmg); if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: '⚔️ Hit the tower for ' + ev.dmg + ' (' + ev.n + '/' + S.rules.strikes + ')' }); }
+      else if (ev.e === 'weak') { view.flash(ev.id); if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'weak', hp: S.rules.wrongHp }); }
+      else if (ev.e === 'reach') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: 'At the walls — striking!' }); }
+      else if (ev.e === 'shield') { view.pulse(ev.id); if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'shield', n: S.rules.shield }); }
       else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); }
       else if (ev.e === 'die') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: 'Down! Back next wave.' }); }
       else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = 8; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' over — ' + Math.round(100 * S.tower.hp / S.tower.max) + '% of the tower left', 2500); sendRoster(); }
       else if (ev.e === 'over') finish(ev.won);
     }
     const snap = TR.snapshot(S); host.snap = snap;
-    if (now - host.lastSnap > 100) { host.lastSnap = now; host.link.send(snap); }
+    if (now - host.lastSnap > 100) { host.lastSnap = now; host.link.send(snap); if (host.fx.s.length || host.fx.b.length) { host.link.send({ t: 'fx', s: host.fx.s, b: host.fx.b }); host.fx = { s: [], b: [] }; } }
   } else if (host.running && S.phase === 'between') {
     host.betweenT -= elapsed;
     if (host.betweenT <= 0) beginWave();
@@ -533,7 +557,7 @@ function hostTick() {
   if (host.running && S.phase === 'wave') {
     $('#h-hp').textContent = Math.max(0, Math.round(S.tower.hp)) + ' / ' + S.tower.max; $('#h-hpbar').style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%';
     $('#h-wave').textContent = S.wave; $('#h-time').textContent = Math.max(0, Math.ceil(S.timeLeft));
-    $('#h-alive').textContent = '⚔️ ' + [...S.raiders.values()].filter(r => r.state === 'run' || r.state === 'attack').length + ' raiding';
+    $('#h-alive').textContent = '⚔️ ' + [...S.raiders.values()].filter(r => r.state === 'run' || r.state === 'attack').length + ' raiding · ✓ ' + [...S.raiders.values()].filter(r => r.state === 'done').length + ' struck';
     const now = performance.now(); if (Math.floor(now / 500) !== host.boardT) { host.boardT = Math.floor(now / 500); renderBoard(); }
   } else if (host.running && S.phase === 'between') {
     const n = Math.max(0, Math.ceil(host.betweenT));
@@ -549,9 +573,9 @@ $('#b-abort').onclick = () => { if (confirm('End the game for everyone?')) finis
 function finish(won, aborted) {
   const S = host.S; host.running = false; S.phase = 'over';
   const list = TR.roster(S).sort((a, b) => b.dmg - a.dmg);
-  host.link.send({ t: 'over', won, board: list, left: Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max), aborted: !!aborted });
-  $('#ov-title').textContent = won ? '💥 The tower has fallen!' : '🏰 The tower stands';
-  $('#ov-text').textContent = won ? 'The raiders broke through in wave ' + S.wave + '.' : (aborted ? 'The game was ended early.' : 'Five waves and the walls held, with ' + Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max) + '% still standing. Game over for the raiders.');
+  host.link.send({ t: 'over', won, board: list, left: Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max), aborted: !!aborted, waves: S.rules.waves });
+  $('#ov-title').textContent = won ? '💥 The tower has fallen!' : '❌ The raid has failed';
+  $('#ov-text').textContent = won ? 'The raiders broke through in wave ' + S.wave + '.' : (aborted ? 'The game was ended early.' : S.rules.waves + ' waves and the walls held, with ' + Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max) + '% of the tower still standing. The raiders have failed.');
   $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.correct ? ' 🛡×' + r.correct : ''}</td><td>${r.dmg} dmg</td></tr>`).join('');
   show('s-hostover');
 }
@@ -566,13 +590,12 @@ function joinGame(code, name) {
   player.view = new View($('#gl'), { lite: true, margins: { x: 0.9, y: 0.6, yBias: -0.05 } }); player.view.buildMap().then(() => { player.mapReady = true; });
   player.link = link(WS_BASE() + code + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token), playerReceive, st => { if (st === 'down') toast('Reconnecting…'); });
   playerTick();
-  setInterval(() => { if (player.taps > 0 && player.link) { player.link.send({ t: 'tap', n: player.taps }); player.taps = 0; } }, 120);
 }
 function playerReceive(m) {
   if (m.t === 'welcome') { player.id = m.id; return; }
   if (m.t === 'nohost') { pMsg('The big screen is not open yet…', 4000); return; }
   if (m.t === 'hostgone') { pMsg('Big screen disconnected', 5000); setBtn('off', 'Waiting…'); return; }
-  if (m.t === 'hello') { player.rules = m.rules || player.rules; player.ph = m.ph; if (m.ph === 'lobby') { setBtn('off', 'Waiting for the host…'); pMsg('You are in! Watch the big screen.', 2500); } return; }
+  if (m.t === 'hello') { player.rules = m.rules || player.rules; player.waves = m.waves || 3; player.ph = m.ph; if (m.ph === 'lobby') { setBtn('off', 'Waiting for the host…'); pMsg('You are in!\nEach wave: answer the quiz right to gain a 🛡 shield', 5000); } return; }
   if (m.t === 'roster') { player.roster = m.list; player.tmax = m.tmax || player.tmax; for (const r of m.list) player.view.ensureRaider(r.id, r); return; }
   if (m.t === 'defence') { player.view.setDefence(m.list); return; }
   if (m.t === 'quiz') { showQuiz(m); return; }
@@ -583,26 +606,30 @@ function playerReceive(m) {
     setTimeout(() => $('#p-quiz').classList.remove('on'), 1800); return;
   }
   if (m.t === 'msg') { pMsg(m.m, 1800); if (navigator.vibrate) navigator.vibrate(20); return; }
+  if (m.t === 'fx') { for (const f of m.s || []) player.view.shot(f[0], f[1], f[2], f[3]); for (const b of m.b || []) player.view.boom(b[0], b[1], b[2]); return; }
+  if (m.t === 'shield') { player.view.pulse(player.id); pMsg('🛡 SHIELD UP!\nBlocks the next ' + m.n + ' damage', 2600); if (navigator.vibrate) navigator.vibrate([30, 40, 30]); return; }
+  if (m.t === 'weak') { player.view.flash(player.id); redFlash(); pMsg('❌ WRONG!\n−' + m.hp + ' HP — you are bleeding', 2600); if (navigator.vibrate) navigator.vibrate(120); return; }
   if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950); return; }
   if (m.t === 's') { player.snap = m; player.ph = m.ph; return; }
   if (m.t === 'over') {
-    player.ph = 'over'; $('#p-quiz').classList.remove('on'); setBtn('off', m.won ? '💥 Tower down!' : '🏰 Tower stands');
+    player.ph = 'over'; $('#p-quiz').classList.remove('on'); setBtn('off', m.won ? '💥 Tower down — victory!' : '❌ Raid failed');
     const me = m.board.find(r => r.id === player.id); const rank = m.board.findIndex(r => r.id === player.id) + 1;
-    pMsg((m.won ? 'The tower has fallen! ' : 'Game over — ' + m.left + '% of the tower left. ') + (me ? 'You dealt ' + me.dmg + ' damage (#' + rank + ')' : ''), 60000);
+    pMsg((m.won ? '🎉 The tower has fallen!\n' : '❌ RAID FAILED\nThe tower held with ' + m.left + '% left after ' + (m.waves || 3) + ' waves.\n') + (me ? 'You dealt ' + me.dmg + ' damage (#' + rank + ')' : ''), 60000);
     player.view.follow = null; player.view.placeCamera();
   }
 }
 function showQuiz(m) {
   $('#pq-q').textContent = '❓ Wave ' + m.wave + ': ' + m.q;
   $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}">${esc(o)}</button>`).join('');
-  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : 'Answer right for a 🛡 shield — any time this wave';
+  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = 🛡 shield that blocks ' + player.rules.shield + ' damage · ❌ Wrong = lose HP';
   $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.link.send({ t: 'ans', i: +b.dataset.i }); }; });
   $('#p-quiz').classList.add('on');
 }
 function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
+function redFlash() { const r = $('#p-red'); r.classList.add('on'); setTimeout(() => r.classList.remove('on'), 120); }
 function pMsg(text, ms) { const el = $('#p-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 const btn = $('#p-btn');
-btn.addEventListener('pointerdown', e => { e.preventDefault(); if (player.me && player.me[4] === 'attack') { player.taps++; btn.style.transform = 'translate(-50%,4px) scale(.97)'; setTimeout(() => btn.style.transform = '', 60); } });
+
 function playerTick() {
   requestAnimationFrame(playerTick);
   const v = player.view; if (!v) return;
@@ -612,14 +639,15 @@ function playerTick() {
     for (const a of s.a) { v.applyRaider(a, null, player.rules.hp, player.rules.shield); if (a[0] === player.id) player.me = a; }
     v.defYaw = s.dy;
     $('#p-thp').style.width = (100 * s.th / s.tm) + '%'; $('#p-tpct').textContent = Math.round(100 * s.th / s.tm) + '%';
-    $('#p-wave').textContent = s.w + '/5'; $('#p-time').textContent = s.ph === 'wave' ? s.tl : '–';
+    $('#p-wave').textContent = s.w + '/' + (player.waves || 3); $('#p-time').textContent = s.ph === 'wave' ? s.tl : '–';
     const me = player.me;
     if (me) {
       $('#p-hp').style.width = (100 * me[2] / player.rules.hp) + '%'; $('#p-shield').textContent = '🛡 ' + me[3];
       if (player.ph === 'over') {}
       else if (s.ph === 'between') { setBtn('off', 'Next wave soon…'); v.follow = null; }
-      else if (me[4] === 'run') { setBtn('run', '🏃 Running to the walls…'); v.follow = player.id; v.hideSelf = player.id; }
-      else if (me[4] === 'attack') { setBtn('attack', '⚔️ TAP TO ATTACK'); v.follow = player.id; v.hideSelf = player.id; }
+      else if (me[4] === 'run') { setBtn('run', '🏃 Charging the walls…'); v.follow = player.id; v.hideSelf = player.id; }
+      else if (me[4] === 'attack') { setBtn('attack', '⚔️ Striking the tower!'); v.follow = player.id; v.hideSelf = player.id; }
+      else if (me[4] === 'done') { setBtn('off', '✓ Struck for ' + me[8] + ' — next wave soon'); v.follow = null; }
       else if (me[4] === 'dead') { setBtn('off', '💀 Down — next wave'); v.follow = null; }
       else { setBtn('off', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…'); v.follow = null; }
     }

@@ -24,33 +24,32 @@
 
   // ------------------------------------------------------------ numbers to tune
   const RULES = {
-    waves: 5,
-    waveTime: 60,          // seconds before the defenders regroup and the wave is called off
-    towerHpPer: 210,       // tower HP per raider (humans + bots), so a bigger party faces a bigger tower
-    towerHpMin: 900,
+    waves: 3,
+    waveTime: 45,          // seconds before the defenders regroup and the wave is called off
+    towerHpPer: 130,       // tower HP per raider (humans + bots), so a bigger party faces a bigger tower
+    towerHpMin: 550,
     towerRegen: 0.02,      // share of max HP the tower repairs between waves
     raiderHp: 150,
-    shield: 70,            // damage a correct quiz answer soaks up
-    runSpeed: 1.2,         // tiles per second; raiders run on their own, taps only count at the walls
-    maxTapRate: 5,
-    hitDmg: 1,             // tower damage per tap while at the walls
-    autoHitRate: 1.0,      // idle hits per second while at the walls
-    attackRange: 1.35,     // distance from the road's end where raiders stop and swing
-    stopAtEnd: 1.0,        // path distance from the end where raiders stand
+    shield: 80,            // damage a correct quiz answer soaks up
+    wrongHp: 60,           // HP lost for a wrong answer
+    runSpeed: 1.3,         // tiles per second; raiders run on their own
+    strikes: 3,            // swings a raider gets at the walls before the wave is over for them
+    strikeGap: 0.7,        // seconds between swings (the wall cannon keeps firing meanwhile)
+    strike: 12,            // tower damage per swing…
+    strikeBonus: 0.06,     // …plus this share of the raider's remaining HP and shield
+    stopAtEnd: 1.0,        // path distance from the end where raiders strike
   };
 
   // Defence towers per wave: spot, type, level. Later waves add towers and upgrade earlier ones.
   const DEFENCE = [
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 0], ['turret', 5, 5, 0]],
     [['cannon', 11, 6, 1], ['ballista', 2, 2, 0], ['turret', 5, 5, 0], ['ballista', 7, 3, 0]],
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 0], ['turret', 5, 5, 0], ['ballista', 7, 3, 0], ['cannon', 8, 4, 0], ['turret', 2, 5, 0]],
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 1], ['ballista', 7, 3, 0], ['cannon', 8, 4, 0], ['turret', 2, 5, 0], ['cannon', 4, 3, 0]],
+    [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 0], ['ballista', 7, 3, 0], ['cannon', 8, 4, 0], ['turret', 2, 5, 0], ['cannon', 4, 3, 0]],
     [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 1], ['ballista', 7, 3, 1], ['cannon', 8, 4, 0], ['turret', 2, 5, 0], ['cannon', 4, 3, 0], ['turret', 10, 3, 0]],
   ];
   const TOWERS = {
-    ballista: { ammoSpeed: 9, splash: 0, levels: [{ dmg: 8, range: 2.4, reload: 1.1 }, { dmg: 11, range: 2.6, reload: 1.0 }, { dmg: 15, range: 2.8, reload: 0.9 }] },
-    cannon: { ammoSpeed: 6, splash: 0.9, levels: [{ dmg: 14, range: 2.2, reload: 2.2 }, { dmg: 24, range: 2.3, reload: 2.0 }, { dmg: 32, range: 2.3, reload: 1.6 }] },
-    turret: { ammoSpeed: 14, splash: 0, levels: [{ dmg: 2, range: 2.1, reload: 0.25 }, { dmg: 3, range: 2.3, reload: 0.22 }, { dmg: 4, range: 2.5, reload: 0.2 }] },
+    ballista: { ammoSpeed: 9, splash: 0, levels: [{ dmg: 6, range: 2.4, reload: 1.1 }, { dmg: 8, range: 2.6, reload: 1.0 }, { dmg: 11, range: 2.8, reload: 0.9 }] },
+    cannon: { ammoSpeed: 6, splash: 0.9, levels: [{ dmg: 12, range: 2.2, reload: 2.2 }, { dmg: 18, range: 2.3, reload: 2.0 }, { dmg: 24, range: 2.3, reload: 1.6 }] },
+    turret: { ammoSpeed: 14, splash: 0, levels: [{ dmg: 2, range: 2.1, reload: 0.25 }, { dmg: 2.5, range: 2.3, reload: 0.22 }, { dmg: 3, range: 2.5, reload: 0.2 }] },
   };
 
   const QUIZ = [
@@ -102,7 +101,7 @@
   }
   function addPlayer(S, id, name, bot) {
     if (S.raiders.has(id)) { S.raiders.get(id).name = name || S.raiders.get(id).name; S.raiders.get(id).gone = false; return S.raiders.get(id); }
-    const r = { id, name: name || 'Raider', bot: !!bot, skin: S.order.length % 12, d: 0, side: 0, hp: 0, shield: 0, state: 'wait', taps: 0, rate: 0, dmg: 0, kills: 0, reached: 0, answered: false, correct: 0, gone: false, swing: 0, bot_t: 0, bot_rate: 0, bot_ans: 0 };
+    const r = { id, name: name || 'Raider', bot: !!bot, skin: S.order.length % 12, d: 0, side: 0, hp: 0, shield: 0, state: 'wait', dmg: 0, reached: 0, answered: false, correct: 0, wrong: 0, gone: false, bot_ans: 0, struck: 0, swings: 0, swingT: 0 };
     S.raiders.set(id, r); S.order.push(id);
     return r;
   }
@@ -134,9 +133,9 @@
     for (const id of S.order) {
       const r = S.raiders.get(id);
       if (r.gone && !r.bot) { r.state = 'wait'; continue; }
-      r.hp = S.rules.raiderHp; r.state = 'run'; r.answered = false; r.taps = 0; r.rate = 0; r.swing = 0;
+      r.hp = S.rules.raiderHp; r.state = 'run'; r.answered = false; r.struck = 0; r.swings = 0; r.swingT = 0;
       r.d = -0.4 - (n % 4) * 0.35; r.side = ((n % 3) - 1) * 0.28;
-      if (r.bot) { r.bot_rate = 2.5 + S.rand() * 2.5; r.bot_t = S.rand(); r.bot_ans = 3 + S.rand() * 10; }
+      if (r.bot) r.bot_ans = 3 + S.rand() * 8;
       n++;
     }
     S.events.push({ e: 'wave', wave: S.wave });
@@ -144,7 +143,7 @@
   }
   function endWave(S) {
     S.phase = S.wave >= S.rules.waves ? 'over' : 'between';
-    for (const r of S.raiders.values()) if (r.state !== 'dead') r.state = 'wait';
+    for (const r of S.raiders.values()) r.state = r.state === 'dead' ? 'dead' : r.state === 'done' ? 'done' : 'wait';
     S.shots = [];
     if (S.phase === 'over') { S.won = false; S.events.push({ e: 'over', won: false }); }
     else { S.tower.hp = Math.min(S.tower.max, S.tower.hp + S.tower.max * S.rules.towerRegen); S.events.push({ e: 'waveEnd', wave: S.wave }); }
@@ -152,18 +151,20 @@
   function towerDown(S) { S.phase = 'over'; S.won = true; S.tower.hp = 0; S.events.push({ e: 'over', won: true }); }
 
   // ------------------------------------------------------------ inputs
-  function tap(S, id, n) { const r = S.raiders.get(id); if (!r || S.phase !== 'wave' || r.state !== 'attack') return; r.taps += Math.max(1, Math.min(20, n | 0 || 1)); }
+  function tap() {}                                        // raiders run and strike on their own now; kept so old phones stay harmless
   function answer(S, id, i) {
     const r = S.raiders.get(id); if (!r || !S.quiz || S.phase !== 'wave') return 'late';
     if (r.answered) return 'dup';
     r.answered = true;
     if (i === S.quiz.answer) { r.correct++; r.shield = S.rules.shield; S.events.push({ e: 'shield', id }); return 'right'; }
+    r.wrong++;
+    if (r.state === 'run') { damage(S, r, S.rules.wrongHp, 'wrong'); S.events.push({ e: 'weak', id }); }
     return 'wrong';
   }
 
   // ------------------------------------------------------------ simulation
   function damage(S, r, dmg, byId) {
-    if (r.state === 'dead' || r.state === 'wait') return;
+    if (r.state !== 'run' && r.state !== 'attack') return;
     if (r.shield > 0) { const s = Math.min(r.shield, dmg); r.shield -= s; dmg -= s; }
     r.hp -= dmg;
     S.events.push({ e: 'hit', id: r.id, dmg });
@@ -174,25 +175,23 @@
     S.time += dt; S.timeLeft -= dt; S.seq++;
     const R = S.rules;
     const endD = PATH_LEN - R.stopAtEnd;
-    // Raiders
+    // Raiders run on their own; at the walls each gets a few swings, then is done for the wave.
     for (const r of S.raiders.values()) {
       if (r.state !== 'run' && r.state !== 'attack') continue;
-      if (r.bot) {                                            // bots mash in bursts and answer the quiz eventually
-        r.bot_t -= dt;
-        if (r.bot_t <= 0) { r.taps += Math.round(r.bot_rate * 0.25); r.bot_t = 0.25; if (S.rand() < 0.03) r.bot_rate = 1.5 + S.rand() * 3.5; }
-        if (!r.answered) { r.bot_ans -= dt; if (r.bot_ans <= 0) { const pick = Math.floor(S.rand() * 4); answer(S, r.id, pick); S.events.push({ e: 'answer', id: r.id, i: pick }); } }
-      }
-      // Tap rate: taps accumulated this tick feed a decaying rate.
-      r.rate += r.taps; r.taps = 0;
-      r.rate *= Math.exp(-dt * 1.6);
-      const rate = Math.min(R.maxTapRate, r.rate * 1.6);
+      if (r.bot && !r.answered) { r.bot_ans -= dt; if (r.bot_ans <= 0) { const pick = Math.floor(S.rand() * 4); answer(S, r.id, pick); S.events.push({ e: 'answer', id: r.id, i: pick }); } }
       if (r.state === 'run') {
         r.d += R.runSpeed * dt;
-        if (r.d >= endD) { r.d = endD; r.state = 'attack'; r.reached++; S.events.push({ e: 'reach', id: r.id }); }
-      } else {
-        // At the walls: every tap is a swing, and idle raiders still swing slowly.
-        r.swing += dt * R.autoHitRate + rate * dt * 1.0;
-        while (r.swing >= 1) { r.swing -= 1; r.dmg += R.hitDmg; S.tower.hp -= R.hitDmg; S.events.push({ e: 'towerhit', id: r.id }); if (S.tower.hp <= 0) return towerDown(S); }
+        if (r.d >= endD) { r.d = endD; r.reached++; r.state = 'attack'; r.swingT = 0.15; S.events.push({ e: 'reach', id: r.id }); }
+      } else if (r.state === 'attack') {
+        r.swingT -= dt;
+        if (r.swingT <= 0) {
+          r.swingT = R.strikeGap; r.swings++;
+          const hit = Math.round(R.strike + (r.hp + r.shield) * R.strikeBonus);
+          r.dmg += hit; r.struck += hit; S.tower.hp -= hit;
+          S.events.push({ e: 'strike', id: r.id, dmg: hit, n: r.swings });
+          if (S.tower.hp <= 0) return towerDown(S);
+          if (r.swings >= R.strikes) r.state = 'done';
+        }
       }
     }
     // Defence towers pick the raider furthest along the road in range and shoot.
@@ -239,12 +238,12 @@
     for (const id of S.order) {
       const r = S.raiders.get(id);
       const p = posAt(r.d, r.side);
-      a.push([id, +r.d.toFixed(2), Math.round(r.hp), Math.round(r.shield), r.state, +p.x.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(2), r.rate > 0.3 ? 1 : 0]);
+      a.push([id, +r.d.toFixed(2), Math.round(r.hp), Math.round(r.shield), r.state, +p.x.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(2), r.struck]);
     }
     return { t: 's', ph: S.phase, w: S.wave, th: Math.round(S.tower.hp), tm: S.tower.max, tl: Math.ceil(S.timeLeft), a, dy: S.defence.map(t => +t.yaw.toFixed(2)) };
   }
   function roster(S) {
-    return [...S.order].map(id => { const r = S.raiders.get(id); return { id, name: r.name, bot: r.bot, skin: r.skin, dmg: r.dmg, reached: r.reached, correct: r.correct, gone: r.gone }; });
+    return [...S.order].map(id => { const r = S.raiders.get(id); return { id, name: r.name, bot: r.bot, skin: r.skin, dmg: r.dmg, reached: r.reached, correct: r.correct, wrong: r.wrong, gone: r.gone }; });
   }
   function takeEvents(S) { const ev = S.events; S.events = []; return ev; }
 
