@@ -26,28 +26,26 @@
   const RULES = {
     waves: 5,
     waveTime: 60,          // seconds before the defenders regroup and the wave is called off
-    towerHpPer: 220,       // tower HP per raider (humans + bots), so a bigger party faces a bigger tower
+    towerHpPer: 210,       // tower HP per raider (humans + bots), so a bigger party faces a bigger tower
     towerHpMin: 900,
     towerRegen: 0.02,      // share of max HP the tower repairs between waves
-    raiderHp: 100,
+    raiderHp: 150,
     shield: 70,            // damage a correct quiz answer soaks up
-    baseSpeed: 0.55,       // tiles per second when nobody taps
-    tapSpeed: 0.16,        // extra tiles per second per tap-per-second, capped
+    runSpeed: 1.2,         // tiles per second; raiders run on their own, taps only count at the walls
     maxTapRate: 5,
     hitDmg: 1,             // tower damage per tap while at the walls
     autoHitRate: 1.0,      // idle hits per second while at the walls
     attackRange: 1.35,     // distance from the road's end where raiders stop and swing
     stopAtEnd: 1.0,        // path distance from the end where raiders stand
-    quizBotCorrect: 0.55,
   };
 
   // Defence towers per wave: spot, type, level. Later waves add towers and upgrade earlier ones.
   const DEFENCE = [
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 0]],
     [['cannon', 11, 6, 1], ['ballista', 2, 2, 0], ['turret', 5, 5, 0]],
     [['cannon', 11, 6, 1], ['ballista', 2, 2, 0], ['turret', 5, 5, 0], ['ballista', 7, 3, 0]],
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 0], ['ballista', 7, 3, 0], ['cannon', 8, 4, 0]],
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 1], ['ballista', 7, 3, 1], ['cannon', 8, 4, 0], ['turret', 2, 5, 0]],
+    [['cannon', 11, 6, 1], ['ballista', 2, 2, 0], ['turret', 5, 5, 0], ['ballista', 7, 3, 0], ['cannon', 8, 4, 0], ['turret', 2, 5, 0]],
+    [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 1], ['ballista', 7, 3, 0], ['cannon', 8, 4, 0], ['turret', 2, 5, 0], ['cannon', 4, 3, 0]],
+    [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 1], ['ballista', 7, 3, 1], ['cannon', 8, 4, 0], ['turret', 2, 5, 0], ['cannon', 4, 3, 0], ['turret', 10, 3, 0]],
   ];
   const TOWERS = {
     ballista: { ammoSpeed: 9, splash: 0, levels: [{ dmg: 8, range: 2.4, reload: 1.1 }, { dmg: 11, range: 2.6, reload: 1.0 }, { dmg: 15, range: 2.8, reload: 0.9 }] },
@@ -154,7 +152,7 @@
   function towerDown(S) { S.phase = 'over'; S.won = true; S.tower.hp = 0; S.events.push({ e: 'over', won: true }); }
 
   // ------------------------------------------------------------ inputs
-  function tap(S, id, n) { const r = S.raiders.get(id); if (!r || S.phase !== 'wave' || r.state === 'dead' || r.state === 'wait') return; r.taps += Math.max(1, Math.min(20, n | 0 || 1)); }
+  function tap(S, id, n) { const r = S.raiders.get(id); if (!r || S.phase !== 'wave' || r.state !== 'attack') return; r.taps += Math.max(1, Math.min(20, n | 0 || 1)); }
   function answer(S, id, i) {
     const r = S.raiders.get(id); if (!r || !S.quiz || S.phase !== 'wave') return 'late';
     if (r.answered) return 'dup';
@@ -182,14 +180,14 @@
       if (r.bot) {                                            // bots mash in bursts and answer the quiz eventually
         r.bot_t -= dt;
         if (r.bot_t <= 0) { r.taps += Math.round(r.bot_rate * 0.25); r.bot_t = 0.25; if (S.rand() < 0.03) r.bot_rate = 1.5 + S.rand() * 3.5; }
-        if (!r.answered) { r.bot_ans -= dt; if (r.bot_ans <= 0) answer(S, r.id, S.rand() < R.quizBotCorrect ? S.quiz.answer : (S.quiz.answer + 1) % 4); }
+        if (!r.answered) { r.bot_ans -= dt; if (r.bot_ans <= 0) { const pick = Math.floor(S.rand() * 4); answer(S, r.id, pick); S.events.push({ e: 'answer', id: r.id, i: pick }); } }
       }
       // Tap rate: taps accumulated this tick feed a decaying rate.
       r.rate += r.taps; r.taps = 0;
       r.rate *= Math.exp(-dt * 1.6);
       const rate = Math.min(R.maxTapRate, r.rate * 1.6);
       if (r.state === 'run') {
-        r.d += (R.baseSpeed + rate * R.tapSpeed) * dt;
+        r.d += R.runSpeed * dt;
         if (r.d >= endD) { r.d = endD; r.state = 'attack'; r.reached++; S.events.push({ e: 'reach', id: r.id }); }
       } else {
         // At the walls: every tap is a swing, and idle raiders still swing slowly.

@@ -27,6 +27,8 @@
   .credit { font-size:11px; opacity:.55; margin-top:12px; }
   .pill { position:absolute; background:rgba(255,255,255,.93); border-radius:14px; padding:6px 12px; font-weight:600; font-size:15px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:flex; gap:12px; align-items:center; pointer-events:auto; }
   .hud { position:absolute; inset:0; pointer-events:none; }
+  #s-hostgame, #s-play { pointer-events:none; }
+  #s-hostgame .hud > *, #s-play .hud > * { pointer-events:auto; } #h-msg, #p-msg, #p-top { pointer-events:none !important; }
   /* host lobby */
   #s-hostlobby .wrap { position:absolute; inset:0; display:grid; grid-template-columns:1fr 1fr; gap:24px; padding:28px; align-items:center; }
   #s-hostlobby .card { max-width:none; }
@@ -89,7 +91,7 @@
 <!-- landing -->
 <div class="screen" id="s-home"><div class="center"><div class="card">
   <h1>🏰 Tower Raid</h1>
-  <p>Everyone attacks the tower. Mash to run, answer the quiz for a shield, and break the walls before five waves are up.</p>
+  <p>Everyone attacks the tower. Your raider runs on their own; answer the quiz for a shield, then mash to hit the walls before five waves are up.</p>
   <div class="row"><button class="big" id="b-host">Host on this screen</button></div>
   <p style="margin-top:18px">Have a code?</p>
   <div class="row"><input id="in-code" placeholder="ROOM CODE" maxlength="8" style="width:170px;text-transform:uppercase"><button id="b-join">Join</button></div>
@@ -206,7 +208,7 @@ class View {
     this.scene = new THREE.Scene(); this.scene.background = new THREE.Color(0xcfe8ff); this.scene.fog = new THREE.Fog(0xcfe8ff, 20, 45);
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
     this.center = new THREE.Vector3(TR.COLS / 2 - 0.5, 0, TR.ROWS / 2 - 0.5);
-    this.cam = { theta: this.opts.theta !== undefined ? this.opts.theta : -0.55, phi: 0.95, dist: 13, fit: 13 };
+    this.cam = { theta: this.opts.theta !== undefined ? this.opts.theta : -0.55, phi: this.opts.orbit ? 1.05 : 0.95, dist: 13, fit: 13 };
     this.follow = null;
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x7fa86a, 0.85));
     const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(6, 12, 4); sun.castShadow = !this.opts.lite;
@@ -217,11 +219,27 @@ class View {
     this.hpGeo = new THREE.PlaneGeometry(0.6, 0.07);
     addEventListener('resize', () => this.resize()); this.resize();
     this.placeCamera();
+    if (this.opts.orbit) this.enableOrbit(canvas);
+  }
+  enableOrbit(el) {
+    // Drag to orbit, wheel or pinch to zoom — the same feel as Tiny Towers.
+    const pointers = new Map(); let lastPinch = 0; const cam = this.cam;
+    const zoom = k => { cam.dist = Math.max(cam.fit * 0.4, Math.min(cam.fit * 2, cam.dist * k)); this.placeCamera(); };
+    el.addEventListener('pointerdown', e => { pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); el.setPointerCapture(e.pointerId); });
+    el.addEventListener('pointermove', e => {
+      const p = pointers.get(e.pointerId); if (!p) return;
+      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+      if (pointers.size === 1) { cam.theta -= dx * 0.006; cam.phi = Math.max(0.35, Math.min(1.4, cam.phi + dy * 0.005)); this.placeCamera(); }
+      else if (pointers.size === 2) { const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (lastPinch) zoom(lastPinch / d); lastPinch = d; }
+    });
+    const up = e => { pointers.delete(e.pointerId); if (pointers.size < 2) lastPinch = 0; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    el.addEventListener('wheel', e => zoom(1 + Math.sign(e.deltaY) * 0.08), { passive: true });
   }
   resize() {
     const w = innerWidth, h = innerHeight; this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     const portrait = this.camera.aspect < 1;
-    const fit = portrait ? 6.8 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.1 : 13 * Math.max(1, 1.7 / this.camera.aspect);
+    const fit = (portrait ? 6.8 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.1 : 13 * Math.max(1, 1.7 / this.camera.aspect)) * (this.opts.zoom || 1);
     if (portrait !== this.cam.portrait) { this.cam.portrait = portrait; this.cam.theta = portrait ? Math.PI / 2 - 0.35 : (this.opts.theta !== undefined ? this.opts.theta : -0.55); }
     this.cam.dist = this.cam.dist / this.cam.fit * fit; this.cam.fit = fit; this.placeCamera();
   }
@@ -345,10 +363,10 @@ class View {
       const e = this.raiders.get(this.follow); const p = e && e.holder.visible ? e.holder.position : null;
       if (p) {
         const yaw = e.root.rotation.y; const back = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const want = p.clone().add(back.multiplyScalar(3.0)).add(new THREE.Vector3(0, 2.2, 0));
-        this.camera.position.lerp(want, Math.min(1, 6 * dt));
-        const look = p.clone().add(new THREE.Vector3(Math.sin(yaw) * 1.8, 0.4, Math.cos(yaw) * 1.8)); this.camera.lookAt(look);
-        this.scene.fog.near = 12; this.scene.fog.far = 30;
+        const want = p.clone().add(back.multiplyScalar(4.5)).add(new THREE.Vector3(0, 4.6, 0));
+        this.camera.position.lerp(want, Math.min(1, 5 * dt));
+        const look = p.clone().add(new THREE.Vector3(Math.sin(yaw) * 2.2, 0.2, Math.cos(yaw) * 2.2)); this.camera.lookAt(look);
+        this.scene.fog.near = 16; this.scene.fog.far = 40;
       } else this.placeCamera();
     }
     this.renderer.render(this.scene, this.camera);
@@ -382,7 +400,7 @@ async function startHost() {
   const qr = qrcode(0, 'M'); qr.addData(joinUrl); qr.make(); $('#qr').innerHTML = qr.createImgTag(5, 8);
   host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHpPer;
   host.link = link(WS_BASE() + host.code + '?role=host', hostReceive, st => { if (st === 'down') toast('Room link lost — reconnecting…'); });
-  host.view = new View($('#gl'), { theta: -2.3 }); await host.view.buildMap();
+  host.view = new View($('#gl'), { theta: -0.9, zoom: 1.2, orbit: true }); await host.view.buildMap();
   renderRoster();
 }
 function hostReceive(m) {
@@ -445,10 +463,10 @@ function renderQuiz() {
   const S = host.S; if (!S.quiz) return;
   $('#hq-q').textContent = '❓ ' + S.quiz.q;
   const counts = [0, 0, 0, 0]; for (const i of host.answers.values()) counts[i]++;
-  const reveal = S.phase !== 'wave';
+  const total = [...S.raiders.values()].filter(r => !r.gone).length;
+  const reveal = S.phase !== 'wave' || host.answers.size >= total;
   $('#hq-opts').innerHTML = S.quiz.opts.map((o, i) => `<div class="opt ${reveal && i === S.quiz.answer ? 'right' : ''}"><span>${'ABCD'[i]}. ${esc(o)}</span><span>${counts[i] || ''}</span></div>`).join('');
-  const humans = [...S.raiders.values()].filter(r => !r.bot && !r.gone).length;
-  $('#hq-note').textContent = reveal ? 'Answer: ' + S.quiz.opts[S.quiz.answer] : host.answers.size + ' of ' + humans + ' phones answered · right answer = 🛡 shield';
+  $('#hq-note').textContent = reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got it' : host.answers.size + ' of ' + total + ' raiders answered · right answer = 🛡 shield';
 }
 function bigMsg(text, ms) { const el = $('#h-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 function renderBoard() {
@@ -465,10 +483,11 @@ function hostSim() {
       if (ev.e === 'shot') view.shot(ev.tower, ev.target, ev.dur, ev.splash);
       else if (ev.e === 'boom') view.boom(ev.x, ev.z, ev.r);
       else if (ev.e === 'towerhit') view.hitKeep();
-      else if (ev.e === 'reach') host.link.send({ to: ev.id, t: 'msg', m: 'At the walls — TAP to attack!' });
-      else if (ev.e === 'shield') host.link.send({ to: ev.id, t: 'msg', m: '🛡 Shield up!' });
-      else if (ev.e === 'die') host.link.send({ to: ev.id, t: 'msg', m: 'Down! Back next wave.' });
-      else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = 8; bigMsg('Wave ' + S.wave + ' over — ' + Math.round(100 * S.tower.hp / S.tower.max) + '% of the tower left', 2500); sendRoster(); }
+      else if (ev.e === 'reach') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: 'At the walls — TAP to attack!' }); }
+      else if (ev.e === 'shield') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: '🛡 Shield up!' }); }
+      else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); }
+      else if (ev.e === 'die') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: 'Down! Back next wave.' }); }
+      else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = 8; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' over — ' + Math.round(100 * S.tower.hp / S.tower.max) + '% of the tower left', 2500); sendRoster(); }
       else if (ev.e === 'over') finish(ev.won);
     }
     const snap = TR.snapshot(S); host.snap = snap;
@@ -492,7 +511,9 @@ function hostTick() {
     $('#h-alive').textContent = '⚔️ ' + [...S.raiders.values()].filter(r => r.state === 'run' || r.state === 'attack').length + ' raiding';
     const now = performance.now(); if (Math.floor(now / 500) !== host.boardT) { host.boardT = Math.floor(now / 500); renderBoard(); }
   } else if (host.running && S.phase === 'between') {
-    $('#h-time').textContent = 'next in ' + Math.max(0, Math.ceil(host.betweenT)); $('#b-next').style.display = '';
+    const n = Math.max(0, Math.ceil(host.betweenT));
+    $('#h-time').textContent = 'next in ' + n; $('#b-next').style.display = '';
+    if (n <= 3 && n > 0 && n !== host.lastCount) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); }
   }
   view.frame(dt);
 }
@@ -536,6 +557,7 @@ function playerReceive(m) {
     setTimeout(() => $('#p-quiz').classList.remove('on'), 1800); return;
   }
   if (m.t === 'msg') { pMsg(m.m, 1800); if (navigator.vibrate) navigator.vibrate(20); return; }
+  if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950); return; }
   if (m.t === 's') { player.snap = m; player.ph = m.ph; return; }
   if (m.t === 'over') {
     player.ph = 'over'; $('#p-quiz').classList.remove('on'); setBtn('off', m.won ? '💥 Tower down!' : '🏰 Tower stands');
@@ -554,7 +576,7 @@ function showQuiz(m) {
 function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
 function pMsg(text, ms) { const el = $('#p-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 const btn = $('#p-btn');
-btn.addEventListener('pointerdown', e => { e.preventDefault(); if (player.me && (player.me[4] === 'run' || player.me[4] === 'attack')) { player.taps++; btn.style.transform = 'translate(-50%,4px) scale(.97)'; setTimeout(() => btn.style.transform = '', 60); } });
+btn.addEventListener('pointerdown', e => { e.preventDefault(); if (player.me && player.me[4] === 'attack') { player.taps++; btn.style.transform = 'translate(-50%,4px) scale(.97)'; setTimeout(() => btn.style.transform = '', 60); } });
 function playerTick() {
   requestAnimationFrame(playerTick);
   const v = player.view; if (!v) return;
@@ -570,7 +592,7 @@ function playerTick() {
       $('#p-hp').style.width = (100 * me[2] / player.rules.hp) + '%'; $('#p-shield').textContent = '🛡 ' + me[3];
       if (player.ph === 'over') {}
       else if (s.ph === 'between') { setBtn('off', 'Next wave soon…'); v.follow = null; }
-      else if (me[4] === 'run') { setBtn('run', '🏃 TAP TO RUN'); v.follow = player.id; v.hideSelf = player.id; }
+      else if (me[4] === 'run') { setBtn('run', '🏃 Running to the walls…'); v.follow = player.id; v.hideSelf = player.id; }
       else if (me[4] === 'attack') { setBtn('attack', '⚔️ TAP TO ATTACK'); v.follow = player.id; v.hideSelf = player.id; }
       else if (me[4] === 'dead') { setBtn('off', '💀 Down — next wave'); v.follow = null; }
       else { setBtn('off', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…'); v.follow = null; }

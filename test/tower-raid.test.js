@@ -49,9 +49,9 @@ test('a right answer grants a shield that soaks damage before HP; one answer per
   assert.equal(TR.answer(S2, 'a', S2.quiz.answer), 'right');
   const r = S2.raiders.get('a');
   assert.equal(r.shield, S2.rules.shield);
-  // Walk into the wall cannon and watch the shield go first.
+  // Run into the defence and watch the shield go first.
   let ticks = 0;
-  while (r.shield === S2.rules.shield && ticks++ < 3000) { TR.tap(S2, 'a', 2); TR.step(S2, 1 / 30); }
+  while (r.shield === S2.rules.shield && ticks++ < 3000) TR.step(S2, 1 / 30);
   assert.ok(r.shield < S2.rules.shield, 'shield took the first hit');
   assert.equal(r.hp, S2.rules.raiderHp, 'HP untouched while the shield holds');
 });
@@ -86,7 +86,7 @@ test('difficulty: bots alone never win and leave most of the tower standing', ()
   }
 });
 
-test('difficulty: decent players (5 taps/s, 90% quiz) get close but do not take the tower in five waves', () => {
+test('difficulty: decent players (5 taps/s at the walls, 90% quiz) get close but do not take the tower in five waves', () => {
   for (let seed = 1; seed <= 4; seed++) {
     const r = play({ total: 6, humans: 6, rate: 5, correct: 0.9, seed });
     assert.equal(r.won, false, `seed ${seed}`);
