@@ -179,7 +179,7 @@
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/GLTFLoader.js"></script>
 <script src="/vendor/qr.js"></script>
-<script src="/js/tr-sim.js?v=4"></script>
+<script src="/js/tr-sim.js?v=5"></script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
@@ -235,7 +235,7 @@ class View {
   constructor(canvas, opts) {
     this.opts = opts || {};
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.opts.lite ? 1.5 : 2));   // phones: fewer pixels, smoother frames
     this.renderer.outputEncoding = THREE.sRGBEncoding;
     this.renderer.shadowMap.enabled = !this.opts.lite;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -393,11 +393,15 @@ class View {
     for (let k = 0; k < 6; k++) { const m = new THREE.Mesh(new THREE.BoxGeometry(.18, .18, .18), new THREE.MeshLambertMaterial({ color: 0x9aa7b5 })); m.position.set(t.x + (Math.random() - .5) * .5, 0.6, t.z + (Math.random() - .5) * .5); this.scene.add(m); this.fx.push({ m, t: 0, life: .9, kind: 'rubble', vx: (Math.random() - .5) * 2, vz: (Math.random() - .5) * 2, vy: 2 + Math.random() * 2 }); }
   }
   // Enemies come and go every wave, so their models are pooled.
-  async ensureEnemy(id, kind) {
+  ensureEnemy(id, kind) {
     if (this.enemies.has(id)) return this.enemies.get(id);
-    const look = ENEMY_LOOK[kind] || ENEMY_LOOK.gremlin; const poolKey = kind === 'ufo' ? 'ufo' : 'orc';
     const entry = { id, kind, holder: new THREE.Group(), mixer: null, clips: {}, cur: null, state: 'run', root: null, t: 0 };
     this.enemies.set(id, entry); this.scene.add(entry.holder); entry.holder.visible = false;
+    this.dressEnemy(entry, kind);
+    return entry;
+  }
+  async dressEnemy(entry, kind) {
+    const id = entry.id; const look = ENEMY_LOOK[kind] || ENEMY_LOOK.gremlin; const poolKey = kind === 'ufo' ? 'ufo' : 'orc';
     let body = this.pool[poolKey].pop();
     if (!body) {
       body = { root: null, mixer: null, clips: {}, bar: null, fg: null };
@@ -414,14 +418,14 @@ class View {
       const fg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0xe5533d, depthTest: false })); fg.position.z = 0.001;
       bar.add(bg, fg); body.bar = bar; body.fg = fg;
     }
-    if (!this.enemies.has(id)) { this.pool[poolKey].push(body); return null; }      // gone before the model arrived
+    if (this.enemies.get(id) !== entry) { this.pool[poolKey].push(body); return; }      // gone before the model arrived
     Object.assign(entry, { root: body.root, mixer: body.mixer, clips: body.clips, bar: body.bar, fg: body.fg, body, cur: null });
     body.root.scale.setScalar(look.scale); body.root.position.y = kind === 'ufo' ? 0.9 : 0; body.root.visible = true;
     body.root.traverse(o => { if (o.isMesh && o.material && o.material.__orig) { o.material.color.copy(o.material.__orig); if (look.tint) o.material.color.multiply(new THREE.Color(look.tint)); } });
     body.bar.position.y = (kind === 'ufo' ? 1.5 : 0.95 * look.scale) + 0.1; body.bar.visible = true;
     entry.holder.add(body.root, body.bar);
     if (body.mixer) { for (const a of Object.values(body.clips)) a.stop(); this.play(entry, look.anim); }
-    return entry;
+    entry.holder.visible = entry.state !== 'in';
   }
   releaseEnemy(id) {
     const e = this.enemies.get(id); if (!e) return; this.enemies.delete(id); this.scene.remove(e.holder);
@@ -432,20 +436,33 @@ class View {
     if (e.cur) e.cur.fadeOut(0.15);
     a.reset().fadeIn(0.15).play(); e.cur = a;
   }
-  // Apply one snapshot: list = [[id, kind, hpFrac, x, z, yaw, state], …]
+  // Apply one snapshot: list = [[id, kind, hpFrac, d, side, speed, state], …]
+  // Snapshots arrive ten times a second; enemies keep walking the road between them and ease toward the reported spot.
   applyEnemies(list) {
     const seen = new Set();
-    for (const [id, kind, hp, x, z, yaw, state] of list) {
+    for (const [id, kind, hp, d, side, speed, state] of list) {
       seen.add(id);
-      let e = this.enemies.get(id); if (!e) { this.ensureEnemy(id, kind); continue; } if (!e.root) continue;
+      let e = this.enemies.get(id); if (!e) { e = this.ensureEnemy(id, kind); e.d = d; e.err = 0; continue; }
+      if (e.d === undefined) { e.d = d; e.err = 0; }
+      // Lead the reported spot by the typical snapshot age, then only speed up or slow down to close the gap (no jumps).
+      e.err = d + (state === 'run' ? speed * 0.1 : 0) - e.d; e.side = side; e.speed = speed;
+      if (Math.abs(e.err) > 1.5) { e.d = d; e.err = 0; }
+      if (!e.root) continue;
       const was = e.state; e.state = state;
       e.holder.visible = state !== 'in';
-      e.holder.position.set(x, 0, z);
-      if (state === 'run') { let diff = yaw - e.root.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); e.root.rotation.y += diff * 0.35; }
       if (state === 'dead' && was !== 'dead') { if (e.clips.die) this.play(e, 'die'); else e.root.visible = false; this.coin(e.holder.position); e.bar.visible = false; }
       if (state === 'run') { e.bar.visible = true; e.fg.scale.x = Math.max(0.02, hp); e.fg.position.x = -(1 - hp) * 0.3; }
     }
     for (const id of [...this.enemies.keys()]) if (!seen.has(id)) this.releaseEnemy(id);
+  }
+  moveEnemies(dt) {
+    for (const e of this.enemies.values()) {
+      if (e.d === undefined) continue;
+      if (e.state === 'run') { const rate = 1 + Math.max(-0.35, Math.min(0.35, (e.err || 0) * 1.0)); const step = (e.speed || 0) * dt * rate; e.d += step; e.err -= step - (e.speed || 0) * dt; }
+      const p = TR.posAt(e.d, e.side || 0);
+      e.holder.position.set(p.x, 0, p.z);
+      if (e.root && e.state === 'run') { let diff = p.yaw - e.root.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); e.root.rotation.y += diff * Math.min(1, 10 * dt); }
+    }
   }
   async shot(fromGun, targetId, dur, splash) {
     const t = this.guns[fromGun]; const tgt = this.enemies.get(targetId); if (!t || !t.weapon || !tgt) return;
@@ -463,6 +480,7 @@ class View {
     this.fx.push({ m: sp, t: 0, life: 1.1, kind: 'text' });
   }
   frame(dt) {
+    this.moveEnemies(dt);
     for (const e of this.enemies.values()) if (e.root && e.holder.visible) {
       if (e.mixer) e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion);
       if (e.kind === 'ufo') { e.t += dt; e.root.position.y = 0.9 + Math.sin(e.t * 4) * 0.08; e.root.rotation.y += dt * 2; }
@@ -612,10 +630,10 @@ function hostSim() {
     if (now - host.lastSnap > 500) { host.lastSnap = now; host.link.send(snap); }
   }
 }
-function hostTick() {
+function hostTick(ts) {
   requestAnimationFrame(hostTick);
   const view = host.view; if (!view) return;
-  const dt = Math.min(0.05, view.clock.getDelta());
+  const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (host.frameT || ts || performance.now())) / 1000)); host.frameT = ts || performance.now();
   const S = host.S, snap = host.snap;
   if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh); }
   if (host.running && (S.phase === 'wave' || S.phase === 'between')) {
@@ -756,10 +774,10 @@ function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textCon
 function redFlash() { const r = $('#p-red'); r.classList.add('on'); setTimeout(() => r.classList.remove('on'), 120); }
 function pMsg(text, ms) { const el = $('#p-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 
-function playerTick() {
+function playerTick(ts) {
   requestAnimationFrame(playerTick);
   const v = player.view; if (!v) return;
-  const dt = Math.min(0.05, v.clock.getDelta());
+  const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (player.frameT || ts || performance.now())) / 1000)); player.frameT = ts || performance.now();
   const s = player.snap;
   if (s) {
     v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh);

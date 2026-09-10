@@ -266,7 +266,8 @@
 
   // ------------------------------------------------------------ output
   function snapshot(S) {
-    const e = S.enemies.map(e => { const p = posAt(e.d, e.side); return [e.id, e.kind, +(e.hp / e.max).toFixed(2), +p.x.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(2), e.state]; });
+    // Road distance + speed rather than a position, so renderers can move enemies smoothly between snapshots.
+    const e = S.enemies.map(e => [e.id, e.kind, +(e.hp / e.max).toFixed(2), +e.d.toFixed(3), +e.side.toFixed(2), e.speed, e.state]);
     return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)) };
   }
   function roster(S) {
