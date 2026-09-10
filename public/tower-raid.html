@@ -199,7 +199,7 @@
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/GLTFLoader.js"></script>
 <script src="/vendor/qr.js"></script>
-<script src="/js/tr-sim.js?v=5"></script>
+<script src="/js/tr-sim.js?v=6"></script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
@@ -389,28 +389,42 @@ class View {
     for (const name of TOWER_PARTS[d.level]) { const o = await this.inst(name, 0, 0, 0, y, group); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y - 0.02; }
     const w = await this.inst(WEAPON[d.type], 0, 0, 0, y + (d.type === 'cannon' ? 0.15 : 0.02), group);
     entry.weapon = w; entry.muzzleY = 0.2 + w.position.y + 0.3; entry.top = y;
-    const bar = new THREE.Group(); bar.position.y = y + 0.72; bar.renderOrder = 10; bar.visible = false;
-    const bg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x20303f, depthTest: false, transparent: true, opacity: .8 }));
-    const fg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x4a8fe7, depthTest: false })); fg.position.z = 0.001;
-    bar.add(bg, fg); group.add(bar); entry.bar = bar; entry.fg = fg;
+    // Ammo pill: a bar with the shots left, redrawn only when the count changes.
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 72; entry.ammoCv = cv; entry.ammoTex = new THREE.CanvasTexture(cv); entry.ammoTex.minFilter = THREE.LinearFilter;
+    const pill = new THREE.Sprite(new THREE.SpriteMaterial({ map: entry.ammoTex, depthTest: false, transparent: true })); pill.scale.set(1.6, 1.6 * 72 / 256, 1); pill.position.y = y + 0.66; pill.renderOrder = 10; group.add(pill); entry.pill = pill;
+    entry.ammo = d.ammo; entry.max = d.max; entry.frac = d.max ? d.ammo / d.max : 1; this.drawAmmo(entry);
     if (this.guns[d.i] !== entry) { this.scene.remove(group); return; }      // collapsed while loading
     const mine = d.owner === this.me;
-    const label = textSprite((mine ? '★ ' : '') + d.name.slice(0, 14), { fill: mine ? '#e5533d' : hex(COLORS[d.skin % COLORS.length]), size: 44, scale: mine ? 1.9 : 1.6 }); label.position.y = y + 1.0; group.add(label);
+    const label = textSprite((mine ? '★ ' : '') + d.name.slice(0, 14), { fill: mine ? '#e5533d' : hex(COLORS[d.skin % COLORS.length]), size: 44, scale: mine ? 1.9 : 1.6 }); label.position.y = y + 1.12; group.add(label);
     // A puff so the new gun is easy to spot.
     const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .7 })); puff.position.set(d.x, 0.5, d.z); this.scene.add(puff); this.fx.push({ m: puff, t: 0, life: .5, r: 0.9, kind: 'boom' });
   }
   setGuns(list) { for (const d of list) if (!d.dead) this.addGun(d); }
-  // gh = ammo left per gun, as a fraction
-  applyGuns(gh) {
+  drawAmmo(t) {
+    const cx = t.ammoCv.getContext('2d'); const W = 256, H = 72; cx.clearRect(0, 0, W, H);
+    const f = Math.max(0, Math.min(1, t.frac)); const low = f <= 0.25; const col = f > .5 ? '#4a8fe7' : f > .25 ? '#f3b53e' : '#e5533d';
+    cx.fillStyle = 'rgba(32,48,63,.85)'; cx.beginPath(); cx.roundRect(4, 14, W - 8, 44, 22); cx.fill();
+    cx.fillStyle = col; cx.beginPath(); cx.roundRect(10, 20, Math.max(12, (W - 20) * f), 32, 16); cx.fill();
+    cx.font = '700 36px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineWidth = 6; cx.strokeStyle = 'rgba(32,48,63,.9)'; cx.fillStyle = '#fff';
+    const text = (low ? '🪫 ' : '🔫 ') + t.ammo; cx.strokeText(text, W / 2, 37); cx.fillText(text, W / 2, 37);
+    t.ammoTex.needsUpdate = true;
+  }
+  // gh = ammo left per gun as a fraction, ga = shots left
+  applyGuns(gh, ga) {
     for (let i = 0; i < gh.length; i++) {
-      const t = this.guns[i]; if (!t || !t.bar) continue;
-      const f = gh[i]; t.bar.visible = f < 1; t.fg.scale.x = Math.max(0.02, f); t.fg.position.x = -(1 - f) * 0.3; t.fg.material.color.set(f > .5 ? 0x4a8fe7 : f > .25 ? 0xf3b53e : 0xe5533d);
+      const t = this.guns[i]; if (!t || !t.pill) continue;
+      const n = ga ? ga[i] : Math.round(gh[i] * (t.max || 1));
+      if (n !== t.ammo) { t.ammo = n; t.frac = gh[i]; this.drawAmmo(t); }
+      t.low = gh[i] <= 0.25 && gh[i] > 0;
     }
   }
+  // Out of ammo: the gun tips over and sinks into the ground under a puff of smoke, then goes away.
   removeGun(i) {
-    const t = this.guns[i]; if (!t) return; this.guns[i] = null; this.scene.remove(t.group);
-    this.boom(t.x, t.z, 0.7);
-    for (let k = 0; k < 6; k++) { const m = new THREE.Mesh(new THREE.BoxGeometry(.18, .18, .18), new THREE.MeshLambertMaterial({ color: 0x9aa7b5 })); m.position.set(t.x + (Math.random() - .5) * .5, 0.6, t.z + (Math.random() - .5) * .5); this.scene.add(m); this.fx.push({ m, t: 0, life: .9, kind: 'rubble', vx: (Math.random() - .5) * 2, vz: (Math.random() - .5) * 2, vy: 2 + Math.random() * 2 }); }
+    const t = this.guns[i]; if (!t) return; this.guns[i] = null;
+    t.group.rotation.set(0, 0, 0); t.group.position.set(t.x, 0.2, t.z);
+    this.fx.push({ m: t.group, t: 0, life: 1.1, kind: 'collapse', x: t.x, z: t.z, dir: Math.random() * Math.PI * 2 });
+    for (let k = 0; k < 7; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.16, 8, 6), new THREE.MeshBasicMaterial({ color: 0xb8c2cc, transparent: true, opacity: .8 })); m.position.set(t.x + (Math.random() - .5) * .6, 0.3 + Math.random() * .4, t.z + (Math.random() - .5) * .6); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.2 + Math.random() * .4, kind: 'smoke', vx: (Math.random() - .5) * .6, vz: (Math.random() - .5) * .6 }); }
+    const sp = textSprite('🪫 out of ammo', { size: 40, fill: '#e5533d', w: 384, h: 80, scale: 1.7 }); sp.position.set(t.x, (t.top || 0.6) + 1.1, t.z); this.scene.add(sp); this.fx.push({ m: sp, t: 0, life: 1.6, kind: 'text' });
   }
   // Enemies come and go every wave, so their models are pooled.
   ensureEnemy(id, kind) {
@@ -507,13 +521,16 @@ class View {
     }
     for (let i = 0; i < this.guns.length; i++) {
       const t = this.guns[i]; if (!t || !t.weapon) continue; const y = this.gunYaw ? this.gunYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); }
-      if (t.bar) t.bar.quaternion.copy(this.camera.quaternion);
+      if (t.low) {   // running dry: the pill throbs and the gun rattles
+        const k = performance.now() / 1000; const g = 1.6 * (1 + 0.12 * Math.sin(k * 12)); t.pill.scale.set(g, g * 72 / 256, 1);
+        t.weapon.rotation.z = Math.sin(k * 40) * 0.05; t.pill.material.opacity = 0.75 + 0.25 * Math.sin(k * 12);
+      } else if (t.pill && t.pill.material.opacity !== 1) { t.pill.material.opacity = 1; t.pill.scale.set(1.6, 1.6 * 72 / 256, 1); t.weapon.rotation.z = 0; }
     }
     this.shots = this.shots.filter(s => {
       s.t += dt / s.dur; if (s.t >= 1 || !s.tgt.root) { this.scene.remove(s.m); return false; }
       const aim = s.tgt.holder.position.clone().setY(s.tgt.kind === 'ufo' ? 0.9 : 0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
     });
-    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'rubble') { f.vy -= 9 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y = Math.max(0.05, f.m.position.y + f.vy * dt); f.m.rotation.x += dt * 5; } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
+    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'collapse') { const e = k * k; f.m.rotation.z = Math.cos(f.dir) * 0.9 * e; f.m.rotation.x = Math.sin(f.dir) * 0.9 * e; f.m.position.y = 0.2 - 1.4 * e; f.m.scale.setScalar(1 - 0.5 * e); } else if (f.kind === 'smoke') { f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += dt * 0.9; f.m.scale.setScalar(1 + k * 1.5); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
     if (this.crystal) this.crystal.rotation.y += dt * 0.8;
     if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.END[0] + (Math.random() - .5) * .08; } else this.keep.position.x = TR.END[0]; }
     if (this.ghost && this.ghost.visible) this.ghost.children[0].scale.setScalar(1 + 0.08 * Math.sin(performance.now() / 150));
@@ -635,7 +652,7 @@ function hostSim() {
       else if (ev.e === 'die') { const p = S.players.get(ev.owner); if (p && !p.bot) host.link.send({ to: ev.owner, t: 'kill', n: ev.kills }); }
       else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
       else if (ev.e === 'placed') { view.addGun(ev.gun); host.link.send({ t: 'gun', g: ev.gun }); }
-      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) bigMsg('🪫 ' + p.name + "'s gun is out of ammo", 1500); }
+      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) toast('🪫 ' + p.name + "'s gun is out of ammo"); }
       else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); }
       else if (ev.e === 'quizEnd') { renderQuiz(); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); }
       else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = S.rules.between; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' held! Tower at ' + Math.max(0, S.tower.hp) + ' / ' + S.tower.max, 2500); sendRoster(); }
@@ -655,7 +672,7 @@ function hostTick(ts) {
   const view = host.view; if (!view) return;
   const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (host.frameT || ts || performance.now())) / 1000)); host.frameT = ts || performance.now();
   const S = host.S, snap = host.snap;
-  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh); }
+  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh, snap.ga); }
   if (host.running && (S.phase === 'wave' || S.phase === 'between')) {
     $('#h-hp').textContent = Math.max(0, S.tower.hp) + ' / ' + S.tower.max; const bar = $('#h-hpbar'); bar.style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%'; bar.classList.toggle('low', S.tower.hp <= S.tower.max * 0.3);
     $('#h-wave').textContent = S.wave; $('#h-guns').textContent = S.guns.filter(g => !g.dead).length;
@@ -803,7 +820,7 @@ function playerTick(ts) {
   const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (player.frameT || ts || performance.now())) / 1000)); player.frameT = ts || performance.now();
   const s = player.snap;
   if (s) {
-    v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh);
+    v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh, s.ga);
     const bar = $('#p-thp'); bar.style.width = (100 * s.th / s.tm) + '%'; bar.classList.toggle('low', s.th <= s.tm * 0.3); $('#p-tpct').textContent = s.th + '/' + s.tm;
     $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
     if (s.ph === 'wave') $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';

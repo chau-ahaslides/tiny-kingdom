@@ -268,7 +268,7 @@
   function snapshot(S) {
     // Road distance + speed rather than a position, so renderers can move enemies smoothly between snapshots.
     const e = S.enemies.map(e => [e.id, e.kind, +(e.hp / e.max).toFixed(2), +e.d.toFixed(3), +e.side.toFixed(2), e.speed, e.state]);
-    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)) };
+    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)), ga: S.guns.map(g => g.dead ? 0 : g.ammo) };
   }
   function roster(S) {
     return [...S.order].map(id => { const p = S.players.get(id); return { id, name: p.name, bot: p.bot, skin: p.skin, kills: p.kills, dmg: Math.round(p.dmg), correct: p.correct, wrong: p.wrong, streak: p.streak, best: p.best, guns: p.guns, alive: S.guns.filter(g => !g.dead && g.owner === id).length, lost: p.lost, gone: p.gone }; });
