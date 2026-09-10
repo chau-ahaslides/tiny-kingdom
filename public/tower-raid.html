@@ -75,6 +75,10 @@
   #p-quiz { position:absolute; left:10px; right:10px; top:72px; background:rgba(255,255,255,.96); border-radius:20px; padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.2); display:none; pointer-events:auto; }
   #p-quiz.on { display:block; }
   #p-quiz .q { font-weight:700; font-size:16px; margin-bottom:8px; }
+  #p-quiz .urgent { background:var(--red); color:#fff; font-weight:700; font-size:13px; border-radius:12px; padding:6px 10px; margin:-4px -4px 8px; text-align:center; animation:throb 1s ease-in-out infinite; }
+  #p-quiz .urgent.calm { animation:none; background:#e9eef4; color:var(--ink); font-weight:600; }
+  #p-quiz .tbar { height:6px; margin-bottom:8px; } #p-quiz .tbar i { background:var(--red); transition:width .5s linear; }
+  @keyframes throb { 0%,100% { transform:scale(1); } 50% { transform:scale(1.03); } }
   #p-quiz .opts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   #p-quiz .opts button { background:#eef3f8; color:var(--ink); font-size:15px; padding:10px 8px; }
   #p-quiz .opts button.right { background:#d8f5e1; } #p-quiz .opts button.wrong { background:#fbd9d3; }
@@ -157,7 +161,7 @@
   </div>
   <div id="p-red"></div>
   <div id="p-msg"></div>
-  <div id="p-quiz"><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note">Answer right for a 🛡 shield</div></div>
+  <div id="p-quiz"><div class="urgent" id="pq-urgent">⚠️ Answer right to get a 🛡 shield, or you will die before reaching the tower!</div><div class="bar tbar"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note">Answer right for a 🛡 shield</div></div>
   <div class="pill" id="p-howto">🛡 Answer right → shield · ❌ wrong → lose HP · reach the walls → 3 strikes</div>
   <button id="p-btn" class="off">Waiting…</button>
 </div></div>
@@ -458,7 +462,7 @@ function hostReceive(m) {
   const S = host.S; if (!S) return;
   if (m.t === 'join') {
     const r = TR.addPlayer(S, m.id, m.name, false); if (S.phase === 'lobby') TR.setBots(S, host.total);
-    host.link.send({ to: m.id, t: 'hello', name: r.name, skin: r.skin, ph: S.phase, wave: S.wave, rules: { hp: S.rules.raiderHp, shield: S.rules.shield, wrong: S.rules.wrongHp }, waves: S.rules.waves });
+    host.link.send({ to: m.id, t: 'hello', name: r.name, skin: r.skin, ph: S.phase, wave: S.wave, rules: { hp: S.rules.raiderHp, shield: S.rules.shield, wrong: S.rules.wrongHp }, waves: S.rules.waves, waveTime: S.rules.waveTime });
     if (S.phase === 'wave' && S.quiz) host.link.send({ to: m.id, t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, done: r.answered });
     host.link.send({ to: m.id, t: 'defence', list: S.defence.map(t => ({ type: t.type, x: t.x, z: t.z, level: t.level })) });
     sendRoster(); renderRoster(); if (!m.rejoin) toast(r.name + ' joined');
@@ -599,13 +603,14 @@ function playerReceive(m) {
   if (m.t === 'welcome') { player.id = m.id; return; }
   if (m.t === 'nohost') { pMsg('The big screen is not open yet…', 4000); return; }
   if (m.t === 'hostgone') { pMsg('Big screen disconnected', 5000); setBtn('off', 'Waiting…'); return; }
-  if (m.t === 'hello') { player.rules = m.rules || player.rules; player.waves = m.waves || 3; player.ph = m.ph; if (m.ph === 'lobby') { setBtn('off', 'Waiting for the host…'); pMsg('You are in!\nEach wave: answer the quiz right to gain a 🛡 shield', 5000); } return; }
+  if (m.t === 'hello') { player.rules = m.rules || player.rules; player.waves = m.waves || 3; player.waveTime = m.waveTime || 30; player.ph = m.ph; if (m.ph === 'lobby') { setBtn('off', 'Waiting for the host…'); pMsg('You are in!\nEach wave: answer the quiz right to gain a 🛡 shield', 5000); } return; }
   if (m.t === 'roster') { player.roster = m.list; player.tmax = m.tmax || player.tmax; for (const r of m.list) player.view.ensureRaider(r.id, r); return; }
   if (m.t === 'defence') { player.view.setDefence(m.list); return; }
   if (m.t === 'quiz') { showQuiz(m); return; }
   if (m.t === 'ans') {
     const btns = $('#pq-opts').querySelectorAll('button'); btns.forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (b.classList.contains('picked')) b.classList.add('wrong'); });
     $('#pq-note').textContent = m.res === 'right' ? '🛡 Shield up — it soaks ' + m.shield + ' damage' : m.res === 'wrong' ? 'Not this time. No shield this wave.' : 'Too late for this wave.';
+    const u = $('#pq-urgent'); u.className = 'urgent calm'; u.textContent = m.res === 'right' ? '🛡 Shielded — charge!' : '💔 No shield this wave — hold on…';
     if (navigator.vibrate) navigator.vibrate(m.res === 'right' ? [30, 40, 30] : 60);
     setTimeout(() => $('#p-quiz').classList.remove('on'), 1800); return;
   }
@@ -627,6 +632,7 @@ function showQuiz(m) {
   $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}">${esc(o)}</button>`).join('');
   $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = 🛡 shield that blocks ' + player.rules.shield + ' damage · ❌ Wrong = lose HP';
   $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.link.send({ t: 'ans', i: +b.dataset.i }); }; });
+  $('#pq-urgent').className = 'urgent' + (m.done ? ' calm' : ''); $('#pq-time').style.width = '100%';
   $('#p-quiz').classList.add('on');
 }
 function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
@@ -644,6 +650,7 @@ function playerTick() {
     v.defYaw = s.dy;
     $('#p-thp').style.width = (100 * s.th / s.tm) + '%'; $('#p-tpct').textContent = Math.round(100 * s.th / s.tm) + '%';
     $('#p-wave').textContent = s.w + '/' + (player.waves || 3); $('#p-time').textContent = s.ph === 'wave' ? s.tl : '–';
+    if (s.ph === 'wave' && player.waveTime) $('#pq-time').style.width = Math.max(0, 100 * s.tl / player.waveTime) + '%';
     const me = player.me;
     if (me) {
       $('#p-hp').style.width = (100 * me[2] / player.rules.hp) + '%'; $('#p-shield').textContent = '🛡 ' + me[3];
