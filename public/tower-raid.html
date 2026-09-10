@@ -357,6 +357,12 @@ class View {
     cx.font = '600 34px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#20303f'; cx.fillText(info.name.slice(0, 14), 128, 44);
     cx.lineWidth = 0; const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); label.scale.set(1.1, 0.275, 1); label.position.y = 1.16; label.renderOrder = 11; entry.holder.add(label); entry.label = label;
+    // "YOU" marker, shown only on the phone over its own raider.
+    const yc = document.createElement('canvas'); yc.width = 256; yc.height = 128; const yx = yc.getContext('2d');
+    yx.font = '700 64px Fredoka, sans-serif'; yx.textAlign = 'center'; yx.lineWidth = 10; yx.strokeStyle = '#fff'; yx.fillStyle = '#e5533d';
+    yx.strokeText('YOU', 128, 56); yx.fillText('YOU', 128, 56); yx.strokeText('▼', 128, 116); yx.fillText('▼', 128, 116);
+    const ytex = new THREE.CanvasTexture(yc); ytex.minFilter = THREE.LinearFilter;
+    const you = new THREE.Sprite(new THREE.SpriteMaterial({ map: ytex, depthTest: false, transparent: true })); you.scale.set(1.0, 0.5, 1); you.position.y = 1.35; you.renderOrder = 13; you.visible = false; entry.holder.add(you); entry.you = you;
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.3, 32), new THREE.MeshBasicMaterial({ color: COLORS[info.skin % COLORS.length], side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; entry.holder.add(ring);
     const shield = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 14), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.38, depthWrite: false })); shield.position.y = 0.42; shield.visible = false; entry.holder.add(shield); entry.shield = shield;
     return entry;
@@ -383,7 +389,9 @@ class View {
     const f = Math.max(0, hp / maxHp); e.fg.scale.x = f; e.fg.position.x = -(1 - f) * 0.3; e.fg.material.color.set(f > .5 ? 0x4fbb6c : f > .25 ? 0xf3b53e : 0xe5533d);
     const s = Math.max(0, sh / maxShield); e.sh.visible = s > 0; e.sh.scale.x = s; e.sh.position.x = -(1 - s) * 0.3;
     e.shield.visible = s > 0 && e.bar.visible;
-    if (a[0] === this.hideSelf) { e.bar.visible = false; e.label.visible = false; }   // the phone's own raider: the HUD already shows these
+    const mine = a[0] === this.hideSelf;
+    if (mine) { e.bar.visible = false; e.label.visible = false; }   // the phone's own raider: the HUD already shows these
+    e.you.visible = mine && e.holder.visible;
   }
   async shot(fromTower, targetId, dur, splash) {
     const t = this.defence[fromTower]; const tgt = this.raiders.get(targetId); if (!t || !tgt) return;
@@ -410,6 +418,7 @@ class View {
   frame(dt) {
     for (const e of this.raiders.values()) if (e.mixer && e.holder.visible) {
       e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion);
+      if (e.you.visible) e.you.position.y = 1.35 + Math.sin(performance.now() / 180) * 0.08;
       if (e.pulseT > 0) { e.pulseT -= dt; const k = 1 - Math.max(0, e.pulseT); e.shield.visible = true; e.shield.scale.setScalar(1 + 1.2 * Math.sin(k * Math.PI)); e.shield.material.opacity = 0.38 + 0.45 * Math.sin(k * Math.PI); }
       else { e.shield.scale.setScalar(1); e.shield.material.opacity = 0.38; }
       if (e.flashT > 0) { e.flashT -= dt; const on = Math.floor(e.flashT * 12) % 2 === 0; e.root.traverse(o => { if (o.isMesh && o.material) { if (!o.material.__orig) o.material.__orig = o.material.color.clone(); o.material.color.copy(o.material.__orig); if (on) o.material.color.lerp(new THREE.Color(0xff2020), 0.7); } }); if (e.flashT <= 0) e.root.traverse(o => { if (o.isMesh && o.material && o.material.__orig) o.material.color.copy(o.material.__orig); }); }
