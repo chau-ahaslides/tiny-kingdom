@@ -47,7 +47,7 @@
   .bar { height:16px; background:#e3e9f0; border-radius:8px; overflow:hidden; position:relative; }
   .bar i { position:absolute; left:0; top:0; bottom:0; background:var(--red); border-radius:8px; transition:width .25s; }
   .bar i.ok { background:var(--green); }
-  .bar i.shield { background:var(--blue); opacity:.8; }
+  .bar i.shield { background:var(--gold); opacity:.9; }
   #h-tower .lbl { display:flex; justify-content:space-between; font-weight:600; font-size:14px; margin-bottom:4px; }
   #h-left { top:14px; left:14px; flex-direction:column; align-items:flex-start; gap:4px; }
   #h-quiz { position:absolute; right:14px; top:14px; width:min(340px, 34vw); background:rgba(255,255,255,.95); border-radius:18px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:none; }
@@ -55,6 +55,9 @@
   #h-quiz .q { font-weight:700; font-size:17px; margin-bottom:8px; }
   #h-quiz .opt { background:#eef3f8; border-radius:10px; padding:6px 10px; margin:4px 0; font-weight:600; font-size:14px; display:flex; justify-content:space-between; }
   #h-quiz .opt.right { background:#d8f5e1; }
+  #hq-who { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+  #hq-who .chip { font-size:12px; padding:3px 8px; }
+  #hq-who .chip.ok { background:#fff3c2; } #hq-who .chip.bad { background:#fbd9d3; }
   #h-board { position:absolute; left:14px; bottom:14px; background:rgba(255,255,255,.93); border-radius:18px; padding:10px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); min-width:220px; max-height:46vh; overflow:auto; }
   #h-board .r { display:flex; justify-content:space-between; gap:12px; font-weight:600; font-size:14px; padding:3px 0; }
   #h-board .r .n { display:flex; align-items:center; gap:6px; }
@@ -118,7 +121,7 @@
       <span class="hint">bots fill the empty seats</span>
     </div>
     <div class="row"><button class="big" id="b-start">⚔️ Start the raid</button></div>
-    <p class="hint" style="margin-top:12px">3 waves · 45 s each · the tower gets <span id="hpnote">130</span> HP per raider<br>Raiders charge on their own and strike 3× at the walls. Each wave's quiz: right = 🛡 shield, wrong = lose HP.</p>
+    <p class="hint" style="margin-top:12px">3 waves · 30 s each · the tower gets <span id="hpnote">130</span> HP per raider<br>Raiders charge on their own and strike 3× at the walls. Each wave's quiz: right = 🛡 shield, wrong = lose HP.</p>
   </div>
 </div></div>
 
@@ -126,7 +129,7 @@
 <div class="screen" id="s-hostgame"><div class="hud">
   <div id="h-tower"><div class="lbl"><span>🏰 The Tower</span><span id="h-hp"></span></div><div class="bar"><i id="h-hpbar" style="width:100%"></i></div></div>
   <div class="pill" id="h-left"><span>🌊 Wave <b id="h-wave">1</b> / <span id="h-waves">3</span></span><span>⏱ <b id="h-time">60</b> s</span><span id="h-alive"></span></div>
-  <div id="h-quiz"><div class="q" id="hq-q"></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div></div>
+  <div id="h-quiz"><div class="q" id="hq-q"></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div><div id="hq-who"></div></div>
   <div id="h-board"></div>
   <div id="h-msg"></div>
   <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
@@ -336,14 +339,14 @@ class View {
     const bar = new THREE.Group(); bar.position.y = 0.95; bar.renderOrder = 10;
     const bg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x20303f, depthTest: false, transparent: true, opacity: .8 }));
     const fg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x4fbb6c, depthTest: false })); fg.position.z = 0.001;
-    const sh = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x4a8fe7, depthTest: false, transparent: true, opacity: .9 })); sh.position.z = 0.002; sh.position.y = 0.075; sh.scale.y = 0.6;
+    const sh = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0xffd23f, depthTest: false })); sh.position.z = 0.002; sh.position.y = 0.075; sh.scale.y = 0.6;
     bar.add(bg, fg, sh); entry.holder.add(bar); entry.bar = bar; entry.fg = fg; entry.sh = sh;
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64; const cx = cv.getContext('2d');
     cx.font = '600 34px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#20303f'; cx.fillText(info.name.slice(0, 14), 128, 44);
     cx.lineWidth = 0; const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); label.scale.set(1.1, 0.275, 1); label.position.y = 1.16; label.renderOrder = 11; entry.holder.add(label); entry.label = label;
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.3, 32), new THREE.MeshBasicMaterial({ color: COLORS[info.skin % COLORS.length], side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; entry.holder.add(ring);
-    const shield = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 14), new THREE.MeshBasicMaterial({ color: 0x7fb6ff, transparent: true, opacity: 0.28, depthWrite: false })); shield.position.y = 0.42; shield.visible = false; entry.holder.add(shield); entry.shield = shield;
+    const shield = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 14), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.38, depthWrite: false })); shield.position.y = 0.42; shield.visible = false; entry.holder.add(shield); entry.shield = shield;
     return entry;
   }
   play(e, name) {
@@ -395,8 +398,8 @@ class View {
   frame(dt) {
     for (const e of this.raiders.values()) if (e.mixer && e.holder.visible) {
       e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion);
-      if (e.pulseT > 0) { e.pulseT -= dt; const k = 1 - Math.max(0, e.pulseT); e.shield.visible = true; e.shield.scale.setScalar(1 + 1.2 * Math.sin(k * Math.PI)); e.shield.material.opacity = 0.28 + 0.4 * Math.sin(k * Math.PI); }
-      else { e.shield.scale.setScalar(1); e.shield.material.opacity = 0.28; }
+      if (e.pulseT > 0) { e.pulseT -= dt; const k = 1 - Math.max(0, e.pulseT); e.shield.visible = true; e.shield.scale.setScalar(1 + 1.2 * Math.sin(k * Math.PI)); e.shield.material.opacity = 0.38 + 0.45 * Math.sin(k * Math.PI); }
+      else { e.shield.scale.setScalar(1); e.shield.material.opacity = 0.38; }
       if (e.flashT > 0) { e.flashT -= dt; const on = Math.floor(e.flashT * 12) % 2 === 0; e.root.traverse(o => { if (o.isMesh && o.material) { if (!o.material.__orig) o.material.__orig = o.material.color.clone(); o.material.color.copy(o.material.__orig); if (on) o.material.color.lerp(new THREE.Color(0xff2020), 0.7); } }); if (e.flashT <= 0) e.root.traverse(o => { if (o.isMesh && o.material && o.material.__orig) o.material.color.copy(o.material.__orig); }); }
     }
     for (let i = 0; i < this.defence.length; i++) { const t = this.defence[i]; const y = this.defYaw ? this.defYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); } }
@@ -514,6 +517,7 @@ function renderQuiz() {
   const total = [...S.raiders.values()].filter(r => !r.gone).length;
   const reveal = S.phase !== 'wave' || host.answers.size >= total;
   $('#hq-opts').innerHTML = S.quiz.opts.map((o, i) => `<div class="opt ${reveal && i === S.quiz.answer ? 'right' : ''}"><span>${'ABCD'[i]}. ${esc(o)}</span><span>${counts[i] || ''}</span></div>`).join('');
+  $('#hq-who').innerHTML = [...host.answers.entries()].map(([id, i]) => { const r = S.raiders.get(id); if (!r) return ''; const ok = i === S.quiz.answer; return `<span class="chip ${ok ? 'ok' : 'bad'}">${ok ? '🛡' : '❌'} ${r.bot ? '🤖 ' : ''}${esc(r.name)}</span>`; }).join('');
   $('#hq-note').textContent = reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got it' : host.answers.size + ' of ' + total + ' answered · right = 🛡 shield, wrong = −' + S.rules.wrongHp + ' HP';
 }
 function bigMsg(text, ms) { const el = $('#h-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }

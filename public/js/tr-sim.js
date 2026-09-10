@@ -25,7 +25,7 @@
   // ------------------------------------------------------------ numbers to tune
   const RULES = {
     waves: 3,
-    waveTime: 45,          // seconds before the defenders regroup and the wave is called off
+    waveTime: 30,          // seconds before the defenders regroup and the wave is called off
     towerHpPer: 130,       // tower HP per raider (humans + bots), so a bigger party faces a bigger tower
     towerHpMin: 550,
     towerRegen: 0.02,      // share of max HP the tower repairs between waves
