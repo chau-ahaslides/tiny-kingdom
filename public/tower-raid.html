@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Attack the Attention Gremlin Tower</title>
+<title>Defend the Attention Tower</title>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root { --ink:#20303f; --gold:#f3b53e; --red:#e5533d; --green:#4fbb6c; --blue:#4a8fe7; --purple:#8e6be8; }
@@ -45,9 +45,8 @@
   /* host game hud */
   #h-tower { position:absolute; top:14px; left:50%; transform:translateX(-50%); width:min(560px, 60vw); background:rgba(255,255,255,.93); border-radius:18px; padding:8px 14px 10px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
   .bar { height:16px; background:#e3e9f0; border-radius:8px; overflow:hidden; position:relative; }
-  .bar i { position:absolute; left:0; top:0; bottom:0; background:var(--red); border-radius:8px; transition:width .25s; }
-  .bar i.ok { background:var(--green); }
-  .bar i.shield { background:var(--gold); opacity:.9; }
+  .bar i { position:absolute; left:0; top:0; bottom:0; background:var(--green); border-radius:8px; transition:width .25s; }
+  .bar i.low { background:var(--red); }
   #h-tower .lbl { display:flex; justify-content:space-between; font-weight:600; font-size:14px; margin-bottom:4px; }
   #h-left { top:14px; left:14px; flex-direction:column; align-items:flex-start; gap:4px; }
   #h-quiz { position:absolute; right:14px; top:14px; width:min(340px, 34vw); background:rgba(255,255,255,.95); border-radius:18px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:none; }
@@ -55,13 +54,13 @@
   #h-quiz .q { font-weight:700; font-size:17px; margin-bottom:8px; }
   #h-quiz .opt { background:#eef3f8; border-radius:10px; padding:6px 10px; margin:4px 0; font-weight:600; font-size:14px; display:flex; justify-content:space-between; }
   #h-quiz .opt.right { background:#d8f5e1; }
+  #h-quiz .tbar { height:6px; margin:6px 0 8px; } #h-quiz .tbar i { background:var(--blue); transition:width .5s linear; }
   #hq-who { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
   #hq-who .chip { font-size:12px; padding:3px 8px; }
   #hq-who .chip.ok { background:#fff3c2; } #hq-who .chip.bad { background:#fbd9d3; }
-  #h-board { position:absolute; left:14px; bottom:14px; background:rgba(255,255,255,.93); border-radius:18px; padding:10px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); min-width:220px; max-height:46vh; overflow:auto; }
+  #h-board { position:absolute; left:14px; bottom:14px; background:rgba(255,255,255,.93); border-radius:18px; padding:10px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); min-width:240px; max-height:46vh; overflow:auto; }
   #h-board .r { display:flex; justify-content:space-between; gap:12px; font-weight:600; font-size:14px; padding:3px 0; }
   #h-board .r .n { display:flex; align-items:center; gap:6px; }
-  #h-board .r.dead { opacity:.45; }
   #h-msg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:min(9vw,64px); font-weight:700; color:#fff; text-shadow:0 4px 18px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; }
   #h-msg.on { opacity:1; }
   #h-ctl { right:14px; bottom:14px; }
@@ -69,24 +68,34 @@
   #p-top { position:absolute; left:10px; right:10px; top:10px; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
   #p-top .pill { position:static; width:100%; justify-content:space-between; font-size:13px; padding:6px 10px; }
   #p-top .bar { height:10px; flex:1; }
-  #p-btn { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); width:min(78vw, 300px); height:96px; border-radius:48px; font-size:24px; background:var(--red); box-shadow:0 6px 0 rgba(0,0,0,.2); pointer-events:auto; user-select:none; }
-  #p-btn.run { background:var(--green); } #p-btn.attack { background:var(--red); } #p-btn.off { background:#9aa7b5; }
-  #p-btn { pointer-events:none !important; font-size:20px; height:80px; }
+  #p-btn { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); width:min(84vw, 320px); height:64px; border-radius:32px; font-size:18px; background:#9aa7b5; box-shadow:0 6px 0 rgba(0,0,0,.2); pointer-events:none !important; user-select:none; }
+  #p-btn.hot { background:var(--red); } #p-btn.ok { background:var(--green); }
   #p-quiz { position:absolute; left:10px; right:10px; top:72px; background:rgba(255,255,255,.96); border-radius:20px; padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.2); display:none; pointer-events:auto; }
   #p-quiz.on { display:block; }
   #p-quiz .q { font-weight:700; font-size:16px; margin-bottom:8px; }
-  #p-quiz .urgent { background:var(--red); color:#fff; font-weight:700; font-size:13px; border-radius:12px; padding:6px 10px; margin:-4px -4px 8px; text-align:center; animation:throb 1s ease-in-out infinite; }
-  #p-quiz .urgent.calm { animation:none; background:#e9eef4; color:var(--ink); font-weight:600; }
+  .urgent { background:var(--red); color:#fff; font-weight:700; font-size:13px; border-radius:12px; padding:6px 10px; margin:-4px -4px 8px; text-align:center; animation:throb 1s ease-in-out infinite; }
+  .urgent.calm { animation:none; background:#e9eef4; color:var(--ink); font-weight:600; }
+  .urgent.good { animation:none; background:#d8f5e1; color:#1d6b38; }
   #p-quiz .tbar { height:6px; margin-bottom:8px; } #p-quiz .tbar i { background:var(--red); transition:width .5s linear; }
   @keyframes throb { 0%,100% { transform:scale(1); } 50% { transform:scale(1.03); } }
   #p-quiz .opts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   #p-quiz .opts button { background:#eef3f8; color:var(--ink); font-size:15px; padding:10px 8px; }
   #p-quiz .opts button.right { background:#d8f5e1; } #p-quiz .opts button.wrong { background:#fbd9d3; }
   #p-quiz .note { font-size:12px; opacity:.7; margin-top:6px; text-align:center; }
-  #p-howto { position:absolute; left:10px; right:10px; bottom:112px; justify-content:center; font-size:12px; padding:5px 8px; text-align:center; pointer-events:none !important; }
+  #p-place { position:absolute; left:8px; right:8px; bottom:14px; background:rgba(255,255,255,.97); border-radius:20px; padding:10px 10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.25); display:none; pointer-events:auto; }
+  #p-place.on { display:block; }
+  #p-place.on ~ #p-btn { display:none; }
+  #p-place .h { font-weight:700; font-size:16px; text-align:center; margin-bottom:6px; }
+  #p-place .types { display:flex; gap:6px; justify-content:center; margin-bottom:8px; }
+  #p-place .types button { background:#eef3f8; color:var(--ink); font-size:13px; padding:7px 10px; border-radius:10px; }
+  #p-place .types button.sel { background:var(--blue); color:#fff; }
+  #p-map { display:block; width:100%; border-radius:12px; touch-action:none; }
+  #p-place .foot { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:8px; }
+  #p-place .foot .hint { flex:1; text-align:left; }
+  #b-place { background:var(--green); }
   #p-red { position:absolute; inset:0; background:rgba(229,83,61,.45); opacity:0; transition:opacity .4s; pointer-events:none !important; }
   #p-red.on { opacity:1; transition:none; }
-  #p-msg { white-space:pre-line; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:30px; font-weight:700; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; width:90%; }
+  #p-msg { white-space:pre-line; position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); font-size:28px; font-weight:700; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; width:90%; }
   #p-msg.on { opacity:1; }
   #toast { position:fixed; left:50%; top:70px; transform:translateX(-50%); background:rgba(32,48,63,.92); color:#fff; padding:8px 16px; border-radius:14px; font-weight:600; opacity:0; transition:opacity .25s; white-space:nowrap; z-index:9; pointer-events:none; }
   #toast.show { opacity:1; }
@@ -100,8 +109,8 @@
 
 <!-- landing -->
 <div class="screen" id="s-home"><div class="center"><div class="card">
-  <h1>👹 Attack the Attention Gremlin Tower</h1>
-  <p>The Attention Gremlin has holed up in its tower. Everyone attacks. Your raider charges the walls on their own and strikes three times if they get there. Answer the quiz right for a shield; get it wrong and you bleed. Three waves to bring it down, or the raid has failed.</p>
+  <h1>🏰 Defend the Attention Tower</h1>
+  <p>The Attention Gremlins are marching on the tower. Every wave opens with a quiz: answer right and you get to place a gun with your name on it, wherever you like. Keep a streak of right answers going and your guns get bigger. Hold as many waves as you can.</p>
   <div class="row"><button class="big" id="b-host">Host on this screen</button></div>
   <p style="margin-top:18px">Have a code?</p>
   <div class="row"><input id="in-code" placeholder="ROOM CODE" maxlength="8" style="width:170px;text-transform:uppercase"><button id="b-join">Join</button></div>
@@ -117,23 +126,23 @@
     <div class="hint" id="joinurl"></div>
   </div>
   <div class="card">
-    <h2>Raiders <span id="count" style="opacity:.6"></span></h2>
+    <h2>Defenders <span id="count" style="opacity:.6"></span></h2>
     <div id="roster"><span class="hint">Waiting for phones…</span></div>
     <div class="row" style="margin:12px 0">
       <span style="font-weight:600">Party size</span>
       <span class="stepper"><button id="b-less">−</button><b id="total">6</b><button id="b-more">+</button></span>
       <span class="hint">bots fill the empty seats</span>
     </div>
-    <div class="row"><button class="big" id="b-start">⚔️ Start the raid</button></div>
-    <p class="hint" style="margin-top:12px">3 waves · 20 s each · the tower gets <span id="hpnote">130</span> HP per raider<br>Raiders charge on their own and strike 3× at the walls. Each wave's quiz: right = 🛡 shield, wrong = lose HP.</p>
+    <div class="row"><button class="big" id="b-start">🏰 Start the siege</button></div>
+    <p class="hint" style="margin-top:12px">Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Right again next wave = a bigger gun. Wrong = no gun and the streak is gone.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
   </div>
 </div></div>
 
 <!-- host game -->
 <div class="screen" id="s-hostgame"><div class="hud">
-  <div id="h-tower"><div class="lbl"><span>👹 Attention Gremlin Tower</span><span id="h-hp"></span></div><div class="bar"><i id="h-hpbar" style="width:100%"></i></div></div>
-  <div class="pill" id="h-left"><span>🌊 Wave <b id="h-wave">1</b> / <span id="h-waves">3</span></span><span>⏱ <b id="h-time">60</b> s</span><span id="h-alive"></span></div>
-  <div id="h-quiz"><div class="q" id="hq-q"></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div><div id="hq-who"></div></div>
+  <div id="h-tower"><div class="lbl"><span>🏰 Attention Tower</span><span id="h-hp"></span></div><div class="bar"><i id="h-hpbar" style="width:100%"></i></div></div>
+  <div class="pill" id="h-left"><span>🌊 Wave <b id="h-wave">1</b></span><span>👹 <b id="h-enemies">0</b> coming</span><span>🔫 <b id="h-guns">0</b> guns</span><span id="h-time"></span></div>
+  <div id="h-quiz"><div class="q" id="hq-q"></div><div class="bar tbar"><i id="hq-time" style="width:100%"></i></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div><div id="hq-who"></div></div>
   <div id="h-board"></div>
   <div id="h-msg"></div>
   <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
@@ -148,22 +157,27 @@
 
 <!-- phone: name -->
 <div class="screen" id="s-join"><div class="center"><div class="card">
-  <h1>👹 Attack the Attention Gremlin Tower</h1><p>Room <b id="j-code"></b>. What's your name?</p>
+  <h1>🏰 Defend the Attention Tower</h1><p>Room <b id="j-code"></b>. What's your name?</p>
   <input id="in-name" placeholder="Your name" maxlength="16">
-  <div class="row" style="margin-top:12px"><button class="big" id="b-go">Join the raid</button></div>
+  <div class="row" style="margin-top:12px"><button class="big" id="b-go">Join the defence</button></div>
 </div></div></div>
 
 <!-- phone: game -->
 <div class="screen" id="s-play"><div class="hud">
   <div id="p-top">
-    <div class="pill"><span id="p-name">You</span><span>❤️</span><div class="bar"><i class="ok" id="p-hp" style="width:100%"></i></div><span id="p-shield">🛡 0</span></div>
-    <div class="pill"><span>🏰</span><div class="bar"><i id="p-thp" style="width:100%"></i></div><span id="p-tpct">100%</span><span>🌊 <b id="p-wave">-</b></span><span>⏱ <b id="p-time">-</b></span></div>
+    <div class="pill"><span id="p-name">You</span><span>🔥 streak <b id="p-streak">0</b></span><span>🎯 <b id="p-kills">0</b> kills</span><span>🔫 <b id="p-guns">0</b></span></div>
+    <div class="pill"><span>🏰</span><div class="bar"><i id="p-thp" style="width:100%"></i></div><span id="p-tpct">10</span><span>🌊 <b id="p-wave">-</b></span><span>👹 <b id="p-left">-</b></span></div>
   </div>
   <div id="p-red"></div>
   <div id="p-msg"></div>
-  <div id="p-quiz"><div class="urgent" id="pq-urgent">⚠️ Answer right to get a 🛡 shield, or you will die before reaching the Gremlin Tower!</div><div class="bar tbar"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note">Answer right for a 🛡 shield</div></div>
-  <div class="pill" id="p-howto">🛡 Answer right → shield · ❌ wrong → lose HP · reach the walls → 3 strikes</div>
-  <button id="p-btn" class="off">Waiting…</button>
+  <div id="p-quiz"><div class="urgent" id="pq-urgent">⚠️ Answer right to place a gun. Keep the streak for a bigger gun!</div><div class="bar tbar"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note"></div></div>
+  <div id="p-place">
+    <div class="h" id="pl-h">🔫 Place your gun</div>
+    <div class="types"><button data-t="ballista">🏹 Ballista</button><button data-t="cannon">💣 Cannon</button><button data-t="turret">🔩 Turret</button></div>
+    <canvas id="p-map"></canvas>
+    <div class="foot"><span class="hint" id="pl-hint">Tap a free green tile next to the road</span><button id="b-place" disabled>Place here</button></div>
+  </div>
+  <button id="p-btn">Waiting…</button>
 </div></div>
 
 <script src="/vendor/three.min.js"></script>
@@ -178,8 +192,10 @@ let toastT = 0;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
 const ASSETS = '/assets/td/';
 const COLORS = [0xe5533d, 0x4a8fe7, 0x4fbb6c, 0xf3b53e, 0x8e6be8, 0xef8fb5, 0x2bb3c0, 0xa46a3c, 0x6c7a89, 0xd94fd0, 0x9ccc3d, 0xff7a3d];
-const SKINS = ['male-a', 'female-a', 'male-b', 'female-b', 'male-c', 'female-c', 'male-d', 'female-d', 'male-e', 'female-e', 'male-f', 'female-f'];
-const BOT_SKIN = 'dungeon/character-orc';
+const hex = c => '#' + c.toString(16).padStart(6, '0');
+const LEVEL_NAME = ['Small', 'Medium', 'BIG'];
+const TYPE_NAME = { ballista: '🏹 Ballista', cannon: '💣 Cannon', turret: '🔩 Turret' };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ===================== LOADER ===================== */
 const loader = new THREE.GLTFLoader();
@@ -196,6 +212,14 @@ function cloneSkinned(source) {
   return clone;
 }
 const fixMaterials = root => root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material && o.material.map) o.material.map.encoding = THREE.sRGBEncoding; } });
+function textSprite(text, { size = 34, fill = '#20303f', stroke = '#fff', w = 256, h = 64, scale = 1.1 } = {}) {
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const cx = cv.getContext('2d');
+  cx.font = '700 ' + size + 'px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.lineWidth = Math.max(4, size / 6); cx.strokeStyle = stroke; cx.fillStyle = fill;
+  cx.strokeText(text, w / 2, h * 0.7); cx.fillText(text, w / 2, h * 0.7);
+  const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); sp.scale.set(scale, scale * h / w, 1); sp.renderOrder = 11;
+  return sp;
+}
 
 /* ===================== VIEW (the 3D board; the big screen and the phones both use it) ===================== */
 const OPENINGS = { 'tile-straight': [[0, 1], [0, -1]], 'tile-corner-square': [[1, 0], [0, 1]], 'tile-end': [[0, 1]], 'tile-spawn-end': [[0, 1]] };
@@ -208,6 +232,8 @@ function yawFor(name, wanted) {
 const TOWER_PARTS = { 0: ['tower-round-bottom-a'], 1: ['tower-round-bottom-b', 'tower-round-middle-a'], 2: ['tower-round-bottom-c', 'tower-round-middle-b', 'tower-round-top-a'] };
 const WEAPON = { ballista: 'weapon-ballista', cannon: 'weapon-cannon', turret: 'weapon-turret' };
 const AMMO = { ballista: 'weapon-ammo-arrow', cannon: 'weapon-ammo-cannonball', turret: 'weapon-ammo-bullet' };
+const ENEMY_LOOK = { gremlin: { scale: 1.0, tint: null, anim: 'walk' }, runner: { scale: 0.8, tint: 0xc8ff70, anim: 'sprint' }, brute: { scale: 1.5, tint: 0xff7a7a, anim: 'walk' }, ufo: { scale: 0.9 } };
+const DECOR_MODEL = { tree: 'tile-tree', tree2: 'tile-tree-double', rock: 'tile-rock' };
 
 class View {
   constructor(canvas, opts) {
@@ -221,13 +247,12 @@ class View {
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
     this.center = new THREE.Vector3(TR.COLS / 2 - 0.5, 0, TR.ROWS / 2 - 0.5);
     this.cam = { theta: this.opts.theta !== undefined ? this.opts.theta : -0.55, phi: this.opts.phi !== undefined ? this.opts.phi : 0.95, dist: 14, fit: 0 };
-    this.follow = null;
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x7fa86a, 0.85));
     const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(6, 12, 4); sun.castShadow = !this.opts.lite;
     sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 }); sun.shadow.bias = -0.0005;
     this.scene.add(sun, sun.target); sun.target.position.copy(this.center);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({ color: 0x6fcf8a })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; this.scene.add(ground);
-    this.raiders = new Map(); this.defence = []; this.shots = []; this.fx = []; this.clock = new THREE.Clock();
+    this.enemies = new Map(); this.pool = { orc: [], ufo: [] }; this.guns = []; this.shots = []; this.fx = []; this.clock = new THREE.Clock(); this.me = null;
     this.hpGeo = new THREE.PlaneGeometry(0.6, 0.07);
     addEventListener('resize', () => this.resize()); this.resize();
     this.placeCamera();
@@ -255,8 +280,6 @@ class View {
     this.fitBoard();
   }
   // Pull back and re-centre until the whole board (trees included) sits inside the view, leaving room for the HUD.
-  // Starts from the true board centre every time so nothing accumulates, and recentres by intersecting the ground plane,
-  // which is exact at any orbit angle.
   fitBoard() {
     const m = this.opts.margins || { x: 0.9, y: 0.9, yBias: 0 };
     const corners = [];
@@ -268,10 +291,9 @@ class View {
     for (let it = 0; it < 10; it++) {
       this.placeCamera();
       const p = corners.map(c => c.clone().project(this.camera));
-      if (p.some(v => !isFinite(v.x) || v.z > 1)) { this.cam.dist *= 1.5; continue; }      // a corner behind the camera: back off first
+      if (p.some(v => !isFinite(v.x) || v.z > 1)) { this.cam.dist *= 1.5; continue; }
       const minx = Math.min(...p.map(v => v.x)), maxx = Math.max(...p.map(v => v.x)), miny = Math.min(...p.map(v => v.y)), maxy = Math.max(...p.map(v => v.y));
       const cx = (minx + maxx) / 2, cy = (miny + maxy) / 2, w = (maxx - minx) / 2, h = (maxy - miny) / 2;
-      // Where on the ground does the board's on-screen centre sit? Move the look-at point there (minus the HUD bias).
       ray.setFromCamera({ x: cx, y: cy - m.yBias }, this.camera);
       if (ray.ray.intersectPlane(ground, hit)) { this.center.x += (hit.x - this.center.x) * 0.9; this.center.z += (hit.z - this.center.z) * 0.9; }
       const k = Math.max(w / m.x, h / m.y);
@@ -288,17 +310,11 @@ class View {
   }
   async inst(name, x, z, yaw = 0, y = 0, parent) { const g = await loadGLB('kit/' + name); const o = g.scene.clone(true); fixMaterials(o); o.position.set(x, y, z); o.rotation.y = yaw; (parent || this.scene).add(o); return o; }
   async buildMap() {
-    const PATH = TR.PATH; const pathSet = new Set(PATH.map(([x, z]) => x + ',' + z));
-    await Promise.all(['tile', 'tile-straight', 'tile-corner-square', 'tile-spawn-end', 'tile-end', 'tile-tree', 'tile-tree-double', 'tile-rock', 'detail-rocks', 'tower-square-bottom-a', 'tower-square-middle-a', 'tower-square-top-a', 'tower-square-roof-a', 'tower-round-base', 'tile-crystal'].map(n => loadGLB('kit/' + n)));
-    let seed = 42; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const PATH = TR.PATH;
+    await Promise.all(['tile', 'tile-straight', 'tile-corner-square', 'tile-spawn-end', 'tile-end', 'tile-tree', 'tile-tree-double', 'tile-rock', 'tower-square-bottom-a', 'tower-square-middle-a', 'tower-square-top-a', 'tower-square-roof-a', 'tower-round-base', 'tile-crystal'].map(n => loadGLB('kit/' + n)));
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const g = new THREE.Group(); this.scene.add(g);
-    for (let x = 0; x < TR.COLS; x++) for (let z = 0; z < TR.ROWS; z++) {
-      if (pathSet.has(x + ',' + z)) continue;
-      const r = rnd(); let name = 'tile';
-      if (r < 0.07) name = 'tile-tree'; else if (r < 0.11) name = 'tile-tree-double'; else if (r < 0.14) name = 'tile-rock';
-      if (TR.DEFENCE[TR.DEFENCE.length - 1].some(t => t[1] === x && t[2] === z)) name = 'tile';
-      await this.inst(name, x, z, Math.floor(rnd() * 4) * Math.PI / 2, 0, g);
-    }
+    for (const [key, d] of TR.DECOR) { const [x, z] = key.split(',').map(Number); await this.inst(DECOR_MODEL[d.kind] || 'tile', x, z, d.yaw, 0, g); }
     for (let i = 0; i < PATH.length; i++) {
       const [x, z] = PATH[i]; const prev = PATH[i - 1], next = PATH[i + 1]; const dirTo = (a, b) => [b[0] - a[0], b[1] - a[1]];
       let name, yaw;
@@ -307,94 +323,93 @@ class View {
       else { const a = dirTo(prev, [x, z]), b = dirTo([x, z], next); name = (a[0] === b[0] && a[1] === b[1]) ? 'tile-straight' : 'tile-corner-square'; yaw = yawFor(name, [[-a[0], -a[1]], b]); }
       await this.inst(name, x, z, yaw, 0, g);
     }
-    // The Tower: a tall square keep on the last road tile, with the crystal on top.
-    const end = PATH[PATH.length - 1]; const keep = new THREE.Group(); keep.position.set(end[0], 0.2, end[1]); keep.scale.setScalar(1.15); this.scene.add(keep); this.keep = keep;
+    // The Attention Tower: a tall square keep on the last road tile, crystal on top, name over it.
+    const end = TR.END; const keep = new THREE.Group(); keep.position.set(end[0], 0.2, end[1]); keep.scale.setScalar(1.15); this.scene.add(keep); this.keep = keep;
     let y = 0;
     for (const p of ['tower-square-bottom-a', 'tower-square-middle-a', 'tower-square-middle-a', 'tower-square-top-a', 'tower-square-roof-a']) { const o = await this.inst(p, 0, 0, Math.PI / 2, y, keep); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y / 1.15 - 0.02; }
-    // The Attention Gremlin itself, pacing on the roof with a name over its head.
-    const gg = await loadGLB('dungeon/character-orc'); const orc = cloneSkinned(gg.scene); fixMaterials(orc); orc.traverse(o => { if (o.isMesh) o.material = o.material.clone(); });
-    orc.scale.setScalar(1.25); orc.position.set(0, y - 0.05, 0); orc.rotation.y = -Math.PI / 2; keep.add(orc);
-    this.gremlinMixer = new THREE.AnimationMixer(orc); const clip = gg.animations.find(a => a.name === 'emote-no') || gg.animations[0]; this.gremlinMixer.clipAction(clip).play();
-    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 96; const cx = cv.getContext('2d');
-    cx.font = '700 56px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.lineWidth = 10; cx.strokeStyle = '#fff'; cx.fillStyle = '#8e3bd6';
-    cx.strokeText('👹 Attention Gremlin', 256, 66); cx.fillText('👹 Attention Gremlin', 256, 66);
-    const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
-    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); tag.scale.set(2.2, 0.41, 1); tag.position.set(0, y + 0.95, 0); tag.renderOrder = 12; keep.add(tag);
+    const crystal = await this.inst('tile-crystal', 0, 0, 0, y - 0.25, keep); crystal.scale.setScalar(0.7); this.crystal = crystal;
+    const tag = textSprite('🏰 Attention Tower', { size: 56, fill: '#2f6fd6', w: 512, h: 96, scale: 2.2 }); tag.position.set(0, y + 0.9, 0); tag.renderOrder = 12; keep.add(tag);
     for (let x = -1; x <= TR.COLS; x++) for (const z of [-1, TR.ROWS]) if (rnd() < 0.7) await this.inst(rnd() < .5 ? 'tile-tree' : 'tile-tree-double', x, z, rnd() * 6, 0, g);
     for (let z = 0; z < TR.ROWS; z++) for (const x of [-1, TR.COLS]) if (rnd() < 0.7 && !(x === -1 && z === PATH[0][1])) await this.inst(rnd() < .5 ? 'tile-tree' : 'tile-tree-double', x, z, rnd() * 6, 0, g);
+    // Placement preview (phones): a ring on the tile and the gun's reach.
+    this.ghost = new THREE.Group(); this.ghost.visible = false; this.scene.add(this.ghost);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.46, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide, transparent: true, opacity: 0.95 })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.22; this.ghost.add(ring);
+    const reach = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.22, depthWrite: false })); reach.rotation.x = -Math.PI / 2; reach.position.y = 0.21; this.ghost.add(reach); this.ghostReach = reach;
   }
-  async setDefence(list) {
-    const gen = this.defGen = (this.defGen || 0) + 1;
-    for (const t of this.defence) this.scene.remove(t.group); this.defence = [];
-    for (const d of list) {
-      if (gen !== this.defGen) return;
-      const group = new THREE.Group(); group.position.set(d.x, 0.2, d.z); this.scene.add(group);
-      await this.inst('tower-round-base', 0, 0, 0, -0.2, group);
-      let y = 0;
-      for (const name of TOWER_PARTS[d.level]) { const o = await this.inst(name, 0, 0, 0, y, group); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y - 0.02; }
-      const w = await this.inst(WEAPON[d.type], 0, 0, 0, y + (d.type === 'cannon' ? 0.15 : 0.02), group);
-      this.defence.push({ group, weapon: w, muzzleY: 0.2 + w.position.y + 0.3, type: d.type, x: d.x, z: d.z });
+  setGhost(x, z, range) { if (!this.ghost) return; if (x === null) { this.ghost.visible = false; return; } this.ghost.visible = true; this.ghost.position.set(x, 0, z); this.ghostReach.scale.setScalar(range); }
+  // Guns persist for the whole game, so only new ones are built. `d` is one entry of TR.gunList().
+  async addGun(d) {
+    if (this.guns[d.i]) return;
+    const group = new THREE.Group(); group.position.set(d.x, 0.2, d.z); this.scene.add(group);
+    const entry = { group, weapon: null, muzzleY: 0.6, type: d.type, x: d.x, z: d.z, owner: d.owner }; this.guns[d.i] = entry;
+    await this.inst('tower-round-base', 0, 0, 0, -0.2, group);
+    let y = 0;
+    for (const name of TOWER_PARTS[d.level]) { const o = await this.inst(name, 0, 0, 0, y, group); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y - 0.02; }
+    const w = await this.inst(WEAPON[d.type], 0, 0, 0, y + (d.type === 'cannon' ? 0.15 : 0.02), group);
+    entry.weapon = w; entry.muzzleY = 0.2 + w.position.y + 0.3;
+    const mine = d.owner === this.me;
+    const label = textSprite((mine ? '★ ' : '') + d.name.slice(0, 14), { fill: mine ? '#e5533d' : hex(COLORS[d.skin % COLORS.length]), size: 44, scale: mine ? 1.9 : 1.6 }); label.position.y = y + 1.0; group.add(label);
+    // A puff so the new gun is easy to spot.
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .7 })); puff.position.set(d.x, 0.5, d.z); this.scene.add(puff); this.fx.push({ m: puff, t: 0, life: .5, r: 0.9, kind: 'boom' });
+  }
+  setGuns(list) { for (const d of list) this.addGun(d); }
+  // Enemies come and go every wave, so their models are pooled.
+  async ensureEnemy(id, kind) {
+    if (this.enemies.has(id)) return this.enemies.get(id);
+    const look = ENEMY_LOOK[kind] || ENEMY_LOOK.gremlin; const poolKey = kind === 'ufo' ? 'ufo' : 'orc';
+    const entry = { id, kind, holder: new THREE.Group(), mixer: null, clips: {}, cur: null, state: 'run', root: null, t: 0 };
+    this.enemies.set(id, entry); this.scene.add(entry.holder); entry.holder.visible = false;
+    let body = this.pool[poolKey].pop();
+    if (!body) {
+      body = { root: null, mixer: null, clips: {}, bar: null, fg: null };
+      if (poolKey === 'ufo') { const g = await loadGLB('kit/enemy-ufo-a'); body.root = g.scene.clone(true); fixMaterials(body.root); }
+      else {
+        const g = await loadGLB('dungeon/character-orc'); body.root = cloneSkinned(g.scene); fixMaterials(body.root);
+        body.root.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.__orig = o.material.color.clone(); } });
+        body.mixer = new THREE.AnimationMixer(body.root);
+        for (const c of g.animations) body.clips[c.name] = body.mixer.clipAction(c);
+        body.clips.die.setLoop(THREE.LoopOnce); body.clips.die.clampWhenFinished = true;
+      }
+      const bar = new THREE.Group(); bar.renderOrder = 10;
+      const bg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x20303f, depthTest: false, transparent: true, opacity: .8 }));
+      const fg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0xe5533d, depthTest: false })); fg.position.z = 0.001;
+      bar.add(bg, fg); body.bar = bar; body.fg = fg;
     }
-  }
-  async ensureRaider(id, info) {
-    if (this.raiders.has(id)) return this.raiders.get(id);
-    const entry = { id, holder: new THREE.Group(), mixer: null, clips: {}, cur: null, hp: 1, sh: 0, state: 'wait', root: null, label: null };
-    this.raiders.set(id, entry); this.scene.add(entry.holder); entry.holder.visible = false;
-    const model = info.bot ? BOT_SKIN : 'mini/character-' + SKINS[info.skin % SKINS.length];
-    const g = await loadGLB(model);
-    const root = cloneSkinned(g.scene); fixMaterials(root); root.traverse(o => { if (o.isMesh) o.material = o.material.clone(); }); entry.root = root; entry.holder.add(root);
-    entry.mixer = new THREE.AnimationMixer(root);
-    for (const c of g.animations) entry.clips[c.name] = entry.mixer.clipAction(c);
-    entry.clips.die.setLoop(THREE.LoopOnce); entry.clips.die.clampWhenFinished = true;
-    this.play(entry, 'idle');
-    // HP + shield bar and a name tag.
-    const bar = new THREE.Group(); bar.position.y = 0.95; bar.renderOrder = 10;
-    const bg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x20303f, depthTest: false, transparent: true, opacity: .8 }));
-    const fg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x4fbb6c, depthTest: false })); fg.position.z = 0.001;
-    const sh = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0xffd23f, depthTest: false })); sh.position.z = 0.002; sh.position.y = 0.075; sh.scale.y = 0.6;
-    bar.add(bg, fg, sh); entry.holder.add(bar); entry.bar = bar; entry.fg = fg; entry.sh = sh;
-    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64; const cx = cv.getContext('2d');
-    cx.font = '600 34px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#20303f'; cx.fillText(info.name.slice(0, 14), 128, 44);
-    cx.lineWidth = 0; const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
-    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); label.scale.set(1.1, 0.275, 1); label.position.y = 1.16; label.renderOrder = 11; entry.holder.add(label); entry.label = label;
-    // "YOU" marker, shown only on the phone over its own raider.
-    const yc = document.createElement('canvas'); yc.width = 256; yc.height = 128; const yx = yc.getContext('2d');
-    yx.font = '700 64px Fredoka, sans-serif'; yx.textAlign = 'center'; yx.lineWidth = 10; yx.strokeStyle = '#fff'; yx.fillStyle = '#e5533d';
-    yx.strokeText('YOU', 128, 56); yx.fillText('YOU', 128, 56); yx.strokeText('▼', 128, 116); yx.fillText('▼', 128, 116);
-    const ytex = new THREE.CanvasTexture(yc); ytex.minFilter = THREE.LinearFilter;
-    const you = new THREE.Sprite(new THREE.SpriteMaterial({ map: ytex, depthTest: false, transparent: true })); you.scale.set(1.0, 0.5, 1); you.position.y = 1.35; you.renderOrder = 13; you.visible = false; entry.holder.add(you); entry.you = you;
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.3, 32), new THREE.MeshBasicMaterial({ color: COLORS[info.skin % COLORS.length], side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; entry.holder.add(ring);
-    const shield = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 14), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.38, depthWrite: false })); shield.position.y = 0.42; shield.visible = false; entry.holder.add(shield); entry.shield = shield;
+    if (!this.enemies.has(id)) { this.pool[poolKey].push(body); return null; }      // gone before the model arrived
+    Object.assign(entry, { root: body.root, mixer: body.mixer, clips: body.clips, bar: body.bar, fg: body.fg, body, cur: null });
+    body.root.scale.setScalar(look.scale); body.root.position.y = kind === 'ufo' ? 0.9 : 0; body.root.visible = true;
+    body.root.traverse(o => { if (o.isMesh && o.material && o.material.__orig) { o.material.color.copy(o.material.__orig); if (look.tint) o.material.color.multiply(new THREE.Color(look.tint)); } });
+    body.bar.position.y = (kind === 'ufo' ? 1.5 : 0.95 * look.scale) + 0.1; body.bar.visible = true;
+    entry.holder.add(body.root, body.bar);
+    if (body.mixer) { for (const a of Object.values(body.clips)) a.stop(); this.play(entry, look.anim); }
     return entry;
+  }
+  releaseEnemy(id) {
+    const e = this.enemies.get(id); if (!e) return; this.enemies.delete(id); this.scene.remove(e.holder);
+    if (e.body) { e.holder.remove(e.body.root, e.body.bar); this.pool[e.kind === 'ufo' ? 'ufo' : 'orc'].push(e.body); }
   }
   play(e, name) {
     const a = e.clips[name]; if (!a || e.cur === a) return;
     if (e.cur) e.cur.fadeOut(0.15);
     a.reset().fadeIn(0.15).play(); e.cur = a;
   }
-  // a = [id, d, hp, shield, state, x, z, yaw, tapping]
-  applyRaider(a, info, maxHp, maxShield) {
-    const e = this.raiders.get(a[0]); if (!e || !e.root) return;
-    const [, , hp, sh, state, x, z, yaw, tapping] = a;
-    const wasState = e.state; e.state = state;
-    e.holder.visible = state !== 'wait';
-    e.holder.position.set(x, 0, z);
-    if (state === 'run' || state === 'attack') { let diff = yaw - e.root.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); e.root.rotation.y += diff * 0.35; }
-    if (state === 'run') this.play(e, 'sprint');
-    else if (state === 'attack') this.play(e, 'attack-melee-right');
-    else if (state === 'dead') { if (wasState !== 'dead') { this.play(e, 'die'); this.coin(e.holder.position); } }
-    else if (state === 'done') this.play(e, 'emote-yes');
-    else this.play(e, 'idle');
-    e.bar.visible = state === 'run' || state === 'attack';
-    const f = Math.max(0, hp / maxHp); e.fg.scale.x = f; e.fg.position.x = -(1 - f) * 0.3; e.fg.material.color.set(f > .5 ? 0x4fbb6c : f > .25 ? 0xf3b53e : 0xe5533d);
-    const s = Math.max(0, sh / maxShield); e.sh.visible = s > 0; e.sh.scale.x = s; e.sh.position.x = -(1 - s) * 0.3;
-    e.shield.visible = s > 0 && e.bar.visible;
-    const mine = a[0] === this.hideSelf;
-    if (mine) { e.bar.visible = false; e.label.visible = false; }   // the phone's own raider: the HUD already shows these
-    e.you.visible = mine && e.holder.visible;
+  // Apply one snapshot: list = [[id, kind, hpFrac, x, z, yaw, state], …]
+  applyEnemies(list) {
+    const seen = new Set();
+    for (const [id, kind, hp, x, z, yaw, state] of list) {
+      seen.add(id);
+      let e = this.enemies.get(id); if (!e) { this.ensureEnemy(id, kind); continue; } if (!e.root) continue;
+      const was = e.state; e.state = state;
+      e.holder.visible = state !== 'in';
+      e.holder.position.set(x, 0, z);
+      if (state === 'run') { let diff = yaw - e.root.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); e.root.rotation.y += diff * 0.35; }
+      if (state === 'dead' && was !== 'dead') { if (e.clips.die) this.play(e, 'die'); else e.root.visible = false; this.coin(e.holder.position); e.bar.visible = false; }
+      if (state === 'run') { e.bar.visible = true; e.fg.scale.x = Math.max(0.02, hp); e.fg.position.x = -(1 - hp) * 0.3; }
+    }
+    for (const id of [...this.enemies.keys()]) if (!seen.has(id)) this.releaseEnemy(id);
   }
-  async shot(fromTower, targetId, dur, splash) {
-    const t = this.defence[fromTower]; const tgt = this.raiders.get(targetId); if (!t || !tgt) return;
+  async shot(fromGun, targetId, dur, splash) {
+    const t = this.guns[fromGun]; const tgt = this.enemies.get(targetId); if (!t || !t.weapon || !tgt) return;
     const g = await loadGLB('kit/' + AMMO[t.type]); const m = g.scene.clone(true); m.scale.setScalar(t.type === 'turret' ? 1.6 : 1.1);
     const from = new THREE.Vector3(t.x, t.muzzleY, t.z); m.position.copy(from); this.scene.add(m);
     this.shots.push({ m, from, tgt, t: 0, dur, arc: splash > 0 });
@@ -402,46 +417,26 @@ class View {
   }
   boom(x, z, r) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: .8 })); m.position.set(x, 0.4, z); m.scale.setScalar(.1); this.scene.add(m); this.fx.push({ m, t: 0, life: .35, r: r + .2, kind: 'boom' }); }
   async coin(pos) { const g = await loadGLB('dungeon/coin'); const m = g.scene.clone(true); m.position.copy(pos).setY(0.6); this.scene.add(m); this.fx.push({ m, t: 0, life: .8, kind: 'coin' }); }
-  hitKeep() { this.keepFlash = 0.25; }
-  pulse(id) { const e = this.raiders.get(id); if (e) e.pulseT = 1.0; }
-  flash(id) { const e = this.raiders.get(id); if (e) e.flashT = 0.6; }
-  strikeText(dmg) {
-    // A floating "−N" over the keep, drawn on a small canvas sprite.
-    const cv = document.createElement('canvas'); cv.width = 192; cv.height = 96; const cx = cv.getContext('2d');
-    cx.font = '700 64px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.lineWidth = 8; cx.strokeStyle = '#fff'; cx.fillStyle = '#e5533d';
-    cx.strokeText('−' + dmg, 96, 70); cx.fillText('−' + dmg, 96, 70);
-    const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); sp.scale.set(1.6, 0.8, 1); sp.renderOrder = 12;
-    const end = TR.PATH[TR.PATH.length - 1]; sp.position.set(end[0] + (Math.random() - .5) * .6, 2.6, end[1]); this.scene.add(sp);
+  hitKeep() { this.keepFlash = 0.35; }
+  biteText(text) {
+    const sp = textSprite(text, { size: 64, fill: '#e5533d', w: 192, h: 96, scale: 1.6 }); sp.renderOrder = 12;
+    sp.position.set(TR.END[0] + (Math.random() - .5) * .6, 2.6, TR.END[1]); this.scene.add(sp);
     this.fx.push({ m: sp, t: 0, life: 1.1, kind: 'text' });
   }
   frame(dt) {
-    for (const e of this.raiders.values()) if (e.mixer && e.holder.visible) {
-      e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion);
-      if (e.you.visible) e.you.position.y = 1.35 + Math.sin(performance.now() / 180) * 0.08;
-      if (e.pulseT > 0) { e.pulseT -= dt; const k = 1 - Math.max(0, e.pulseT); e.shield.visible = true; e.shield.scale.setScalar(1 + 1.2 * Math.sin(k * Math.PI)); e.shield.material.opacity = 0.38 + 0.45 * Math.sin(k * Math.PI); }
-      else { e.shield.scale.setScalar(1); e.shield.material.opacity = 0.38; }
-      if (e.flashT > 0) { e.flashT -= dt; const on = Math.floor(e.flashT * 12) % 2 === 0; e.root.traverse(o => { if (o.isMesh && o.material) { if (!o.material.__orig) o.material.__orig = o.material.color.clone(); o.material.color.copy(o.material.__orig); if (on) o.material.color.lerp(new THREE.Color(0xff2020), 0.7); } }); if (e.flashT <= 0) e.root.traverse(o => { if (o.isMesh && o.material && o.material.__orig) o.material.color.copy(o.material.__orig); }); }
+    for (const e of this.enemies.values()) if (e.root && e.holder.visible) {
+      if (e.mixer) e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion);
+      if (e.kind === 'ufo') { e.t += dt; e.root.position.y = 0.9 + Math.sin(e.t * 4) * 0.08; e.root.rotation.y += dt * 2; }
     }
-    for (let i = 0; i < this.defence.length; i++) { const t = this.defence[i]; const y = this.defYaw ? this.defYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); } }
+    for (let i = 0; i < this.guns.length; i++) { const t = this.guns[i]; if (!t || !t.weapon) continue; const y = this.gunYaw ? this.gunYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); } }
     this.shots = this.shots.filter(s => {
-      s.t += dt / s.dur; if (s.t >= 1) { this.scene.remove(s.m); return false; }
-      const aim = s.tgt.holder.position.clone().setY(0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
+      s.t += dt / s.dur; if (s.t >= 1 || !s.tgt.root) { this.scene.remove(s.m); return false; }
+      const aim = s.tgt.holder.position.clone().setY(s.tgt.kind === 'ufo' ? 0.9 : 0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
     });
     this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
-    if (this.gremlinMixer) this.gremlinMixer.update(dt);
-    if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.PATH[TR.PATH.length - 1][0] + (Math.random() - .5) * .06; } else this.keep.position.x = TR.PATH[TR.PATH.length - 1][0]; }
-    if (this.follow) {
-      // Third-person: behind and above the raider, looking down the road.
-      const e = this.raiders.get(this.follow); const p = e && e.holder.visible ? e.holder.position : null;
-      if (p) {
-        const yaw = e.root.rotation.y; const back = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const want = p.clone().add(back.multiplyScalar(7.5)).add(new THREE.Vector3(0, 8, 0));
-        this.camera.position.lerp(want, Math.min(1, 5 * dt));
-        const look = p.clone().add(new THREE.Vector3(Math.sin(yaw) * 0.6, 0.3, Math.cos(yaw) * 0.6)); this.camera.lookAt(look);
-        this.scene.fog.near = 16; this.scene.fog.far = 40;
-      } else this.placeCamera();
-    }
+    if (this.crystal) this.crystal.rotation.y += dt * 0.8;
+    if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.END[0] + (Math.random() - .5) * .08; } else this.keep.position.x = TR.END[0]; }
+    if (this.ghost && this.ghost.visible) this.ghost.children[0].scale.setScalar(1 + 0.08 * Math.sin(performance.now() / 150));
     this.renderer.render(this.scene, this.camera);
   }
 }
@@ -464,52 +459,56 @@ function link(url, onMsg, onState) {
 async function openRoom() { const res = await fetch('/api/room', { method: 'POST' }); return (await res.json()).code; }
 
 /* ===================== HOST (big screen: runs the rules, streams the state) ===================== */
-const host = { link: null, code: '', view: null, S: null, total: 6, names: new Map(), lastSnap: 0, betweenT: 0, running: false, answers: new Map(), fx: { s: [], b: [] } };
+const host = { link: null, code: '', view: null, S: null, total: 6, lastSnap: 0, betweenT: 0, running: false, answers: new Map(), fx: { s: [], b: [] } };
 async function startHost() {
   show('s-hostlobby');
   try { host.code = await openRoom(); } catch (e) { toast('Could not open a room — this page has to be served by the game server.'); return; }
   const joinUrl = location.origin + '/tr/' + host.code;
   $('#code').textContent = host.code.split('').join(' '); $('#joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
   const qr = qrcode(0, 'M'); qr.addData(joinUrl); qr.make(); $('#qr').innerHTML = qr.createImgTag(5, 8);
-  host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHpPer; $('#h-waves').textContent = TR.RULES.waves;
+  host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHp; $('#qtnote').textContent = TR.RULES.quizTime;
   host.link = link(WS_BASE() + host.code + '?role=host', hostReceive, st => { if (st === 'down') toast('Room link lost — reconnecting…'); });
   host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.64, y: 0.64, yBias: -0.12 } }); await host.view.buildMap();
   renderRoster();
 }
+function helloFor(p) { const S = host.S; return { t: 'hello', name: p.name, skin: p.skin, ph: S.phase, wave: S.wave, quizTime: S.rules.quizTime, towerHp: S.tower.max, streak: p.streak, kills: p.kills, guns: p.guns, pending: p.pending }; }
 function hostReceive(m) {
   const S = host.S; if (!S) return;
   if (m.t === 'join') {
-    const r = TR.addPlayer(S, m.id, m.name, false); if (S.phase === 'lobby') TR.setBots(S, host.total);
-    host.link.send({ to: m.id, t: 'hello', name: r.name, skin: r.skin, ph: S.phase, wave: S.wave, rules: { hp: S.rules.raiderHp, shield: S.rules.shield, wrong: S.rules.wrongHp }, waves: S.rules.waves, waveTime: S.rules.waveTime });
-    if (S.phase === 'wave' && S.quiz) host.link.send({ to: m.id, t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, done: r.answered });
-    host.link.send({ to: m.id, t: 'defence', list: S.defence.map(t => ({ type: t.type, x: t.x, z: t.z, level: t.level })) });
-    sendRoster(); renderRoster(); if (!m.rejoin) toast(r.name + ' joined');
+    const p = TR.addPlayer(S, m.id, m.name, false); if (S.phase === 'lobby') TR.setBots(S, host.total);
+    host.link.send(Object.assign({ to: m.id }, helloFor(p)));
+    host.link.send({ to: m.id, t: 'guns', list: TR.gunList(S) });
+    if (S.phase === 'wave' && S.quiz) host.link.send({ to: m.id, t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, done: p.answered, left: Math.ceil(S.quizLeft) });
+    sendRoster(); renderRoster(); if (!m.rejoin) toast(p.name + ' joined');
     return;
   }
   if (m.t === 'leave') { TR.removePlayer(S, m.id); if (S.phase === 'lobby') TR.setBots(S, host.total); sendRoster(); renderRoster(); return; }
-  if (m.t === 'tap') { TR.tap(S, m.id, m.n); return; }
   if (m.t === 'ans') {
-    const res = TR.answer(S, m.id, m.i);
-    host.link.send({ to: m.id, t: 'ans', res, correct: S.quiz ? S.quiz.answer : -1, shield: S.rules.shield });
+    const res = TR.answer(S, m.id, m.i); const p = S.players.get(m.id);
+    host.link.send({ to: m.id, t: 'ans', res, correct: S.quiz ? S.quiz.answer : -1, level: p && p.pending ? p.pending.level : 0, streak: p ? p.streak : 0 });
     if (res === 'right' || res === 'wrong') { host.answers.set(m.id, m.i); renderQuiz(); }
+    return;
+  }
+  if (m.t === 'place') {
+    const res = TR.place(S, m.id, m.x, m.z, m.type);
+    host.link.send({ to: m.id, t: 'placed', res });
+    return;
   }
 }
-function sendRoster() { if (host.link) host.link.send({ t: 'roster', list: TR.roster(host.S), tmax: host.S.tower.max }); }
+function sendRoster() { if (host.link) host.link.send({ t: 'roster', list: TR.roster(host.S) }); }
 function renderRoster() {
   const list = TR.roster(host.S);
   $('#count').textContent = '(' + list.length + ')';
-  $('#roster').innerHTML = list.length ? list.map(r => `<span class="chip ${r.bot ? 'bot' : ''}"><span class="dot" style="background:#${COLORS[r.skin % COLORS.length].toString(16).padStart(6, '0')}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}</span>`).join('') : '<span class="hint">Waiting for phones…</span>';
+  $('#roster').innerHTML = list.length ? list.map(r => `<span class="chip ${r.bot ? 'bot' : ''}"><span class="dot" style="background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}</span>`).join('') : '<span class="hint">Waiting for phones…</span>';
   $('#total').textContent = host.total;
 }
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 $('#b-less').onclick = () => { host.total = Math.max(1, host.total - 1); TR.setBots(host.S, host.total); renderRoster(); sendRoster(); };
 $('#b-more').onclick = () => { host.total = Math.min(16, host.total + 1); TR.setBots(host.S, host.total); renderRoster(); sendRoster(); };
 $('#b-start').onclick = async () => {
   const S = host.S; if (!S) return;
-  if (![...S.raiders.values()].some(r => !r.bot) && !confirm('No phones have joined. Start with bots only?')) return;
+  if (![...S.players.values()].some(r => !r.bot) && !confirm('No phones have joined. Start with bots only?')) return;
   $('#b-start').disabled = true; $('#b-start').textContent = 'Loading…';
   try { await preload(); } catch (e) {}
-  for (const r of S.raiders.values()) await host.view.ensureRaider(r.id, r);
   show('s-hostgame'); host.running = true;
   beginWave();
 }
@@ -517,35 +516,32 @@ function beginWave() {
   const S = host.S;
   host.answers.clear();
   TR.startWave(S);
-  // Phones hear about the wave straight away; the models for towers and raiders load in the background.
-  host.link.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave });
-  host.link.send({ t: 'defence', list: S.defence.map(t => ({ type: t.type, x: t.x, z: t.z, level: t.level })) });
+  host.link.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, left: S.rules.quizTime });
   sendRoster();
-  bigMsg('Wave ' + S.wave + ' — attack the Gremlin!', 1800);
+  bigMsg('Wave ' + S.wave + ' — ' + S.queue.length + ' gremlins incoming!', 2000);
   renderQuiz(); $('#h-quiz').classList.add('on'); $('#b-next').style.display = 'none';
-  host.view.setDefence(S.defence);
-  for (const r of S.raiders.values()) host.view.ensureRaider(r.id, r);
 }
 function preload() {
-  const names = new Set(['dungeon/coin']);
-  for (const wave of TR.DEFENCE) for (const [type, , , level] of wave) { names.add('kit/' + WEAPON[type]); names.add('kit/' + AMMO[type]); for (const p of TOWER_PARTS[level]) names.add('kit/' + p); }
-  for (const r of host.S.raiders.values()) names.add(r.bot ? BOT_SKIN : 'mini/character-' + SKINS[r.skin % SKINS.length]);
+  const names = new Set(['dungeon/coin', 'dungeon/character-orc', 'kit/enemy-ufo-a']);
+  for (const type of TR.GUN_TYPES) { names.add('kit/' + WEAPON[type]); names.add('kit/' + AMMO[type]); }
+  for (const lvl of [0, 1, 2]) for (const p of TOWER_PARTS[lvl]) names.add('kit/' + p);
   return Promise.all([...names].map(loadGLB));
 }
 function renderQuiz() {
   const S = host.S; if (!S.quiz) return;
   $('#hq-q').textContent = '❓ ' + S.quiz.q;
   const counts = [0, 0, 0, 0]; for (const i of host.answers.values()) counts[i]++;
-  const total = [...S.raiders.values()].filter(r => !r.gone).length;
-  const reveal = S.phase !== 'wave' || host.answers.size >= total;
+  const total = [...S.players.values()].filter(r => !r.gone).length;
+  const reveal = S.phase !== 'wave' || S.quizLeft <= 0 || host.answers.size >= total;
   $('#hq-opts').innerHTML = S.quiz.opts.map((o, i) => `<div class="opt ${reveal && i === S.quiz.answer ? 'right' : ''}"><span>${'ABCD'[i]}. ${esc(o)}</span><span>${counts[i] || ''}</span></div>`).join('');
-  $('#hq-who').innerHTML = [...host.answers.entries()].map(([id, i]) => { const r = S.raiders.get(id); if (!r) return ''; const ok = i === S.quiz.answer; return `<span class="chip ${ok ? 'ok' : 'bad'}">${ok ? '🛡' : '❌'} ${r.bot ? '🤖 ' : ''}${esc(r.name)}</span>`; }).join('');
-  $('#hq-note').textContent = reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got it' : host.answers.size + ' of ' + total + ' answered · right = 🛡 shield, wrong = −' + S.rules.wrongHp + ' HP';
+  $('#hq-who').innerHTML = [...host.answers.entries()].map(([id, i]) => { const p = S.players.get(id); if (!p) return ''; const ok = i === S.quiz.answer; return `<span class="chip ${ok ? 'ok' : 'bad'}">${ok ? '🔫' : '❌'} ${p.bot ? '🤖 ' : ''}${esc(p.name)}${ok && p.streak > 1 ? ' 🔥' + p.streak : ''}</span>`; }).join('');
+  $('#hq-note').textContent = reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got a gun' : host.answers.size + ' of ' + total + ' answered · right = place a gun · streak = bigger gun';
+  $('#hq-time').style.width = (S.phase === 'wave' ? 100 * Math.max(0, S.quizLeft) / S.rules.quizTime : 0) + '%';
 }
 function bigMsg(text, ms) { const el = $('#h-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 function renderBoard() {
-  const S = host.S; const list = TR.roster(S).map(r => ({ ...r, state: S.raiders.get(r.id).state })).sort((a, b) => b.dmg - a.dmg);
-  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Damage dealt</div>' + list.map(r => `<div class="r ${r.state === 'dead' ? 'dead' : ''}"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:#${COLORS[r.skin % COLORS.length].toString(16).padStart(6, '0')}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.correct ? ' 🛡' : ''}</span><span>${r.dmg}</span></div>`).join('');
+  const list = TR.roster(host.S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
+  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Gremlins shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''} <span class="hint">🔫${r.guns}</span></span><span>${r.kills}</span></div>`).join('');
 }
 // The rules tick on a timer so a hidden tab keeps the game going in real time; rendering stays on the frame callback.
 function hostSim() {
@@ -554,15 +550,14 @@ function hostSim() {
   if (host.running && S.phase === 'wave') {
     while (elapsed > 0) { const dt = Math.min(1 / 60, elapsed); elapsed -= dt; TR.step(S, dt); if (S.phase !== 'wave') break; }
     for (const ev of TR.takeEvents(S)) {
-      if (ev.e === 'shot') { view.shot(ev.tower, ev.target, ev.dur, ev.splash); host.fx.s.push([ev.tower, ev.target, +ev.dur.toFixed(2), ev.splash]); }
+      if (ev.e === 'shot') { view.shot(ev.gun, ev.target, ev.dur, ev.splash); host.fx.s.push([ev.gun, ev.target, +ev.dur.toFixed(2), ev.splash]); }
       else if (ev.e === 'boom') { view.boom(ev.x, ev.z, ev.r); host.fx.b.push([+ev.x.toFixed(2), +ev.z.toFixed(2), ev.r]); }
-      else if (ev.e === 'strike') { view.hitKeep(); view.strikeText(ev.dmg); if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: '⚔️ Hit the tower for ' + ev.dmg + ' (' + ev.n + '/' + S.rules.strikes + ')' }); }
-      else if (ev.e === 'weak') { view.flash(ev.id); if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'weak', hp: S.rules.wrongHp }); }
-      else if (ev.e === 'reach') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: 'At the walls — striking!' }); }
-      else if (ev.e === 'shield') { view.pulse(ev.id); if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'shield', n: S.rules.shield }); }
+      else if (ev.e === 'die') { const p = S.players.get(ev.owner); if (p && !p.bot) host.link.send({ to: ev.owner, t: 'kill', n: ev.kills }); }
+      else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
+      else if (ev.e === 'placed') { view.addGun(ev.gun); host.link.send({ t: 'gun', g: ev.gun }); }
       else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); }
-      else if (ev.e === 'die') { if (!S.raiders.get(ev.id).bot) host.link.send({ to: ev.id, t: 'msg', m: 'Down! Back next wave.' }); }
-      else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = 8; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' over — ' + Math.round(100 * S.tower.hp / S.tower.max) + '% of the tower left', 2500); sendRoster(); }
+      else if (ev.e === 'quizEnd') { renderQuiz(); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); }
+      else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = S.rules.between; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' held! Tower at ' + Math.max(0, S.tower.hp) + ' / ' + S.tower.max, 2500); sendRoster(); }
       else if (ev.e === 'over') finish(ev.won);
     }
     const snap = TR.snapshot(S); host.snap = snap;
@@ -579,15 +574,17 @@ function hostTick() {
   const view = host.view; if (!view) return;
   const dt = Math.min(0.05, view.clock.getDelta());
   const S = host.S, snap = host.snap;
-  if (snap) { for (const a of snap.a) view.applyRaider(a, null, S.rules.raiderHp, S.rules.shield); view.defYaw = snap.dy; }
-  if (host.running && S.phase === 'wave') {
-    $('#h-hp').textContent = Math.max(0, Math.round(S.tower.hp)) + ' / ' + S.tower.max; $('#h-hpbar').style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%';
-    $('#h-wave').textContent = S.wave; $('#h-time').textContent = Math.max(0, Math.ceil(S.timeLeft));
-    $('#h-alive').textContent = '⚔️ ' + [...S.raiders.values()].filter(r => r.state === 'run' || r.state === 'attack').length + ' raiding · ✓ ' + [...S.raiders.values()].filter(r => r.state === 'done').length + ' struck';
-    const now = performance.now(); if (Math.floor(now / 500) !== host.boardT) { host.boardT = Math.floor(now / 500); renderBoard(); }
-  } else if (host.running && S.phase === 'between') {
+  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; }
+  if (host.running && (S.phase === 'wave' || S.phase === 'between')) {
+    $('#h-hp').textContent = Math.max(0, S.tower.hp) + ' / ' + S.tower.max; const bar = $('#h-hpbar'); bar.style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%'; bar.classList.toggle('low', S.tower.hp <= S.tower.max * 0.3);
+    $('#h-wave').textContent = S.wave; $('#h-guns').textContent = S.guns.length;
+    $('#h-enemies').textContent = snap ? snap.left : 0;
+    const now = performance.now(); if (Math.floor(now / 500) !== host.boardT) { host.boardT = Math.floor(now / 500); renderBoard(); if (S.phase === 'wave' && S.quizLeft > 0) renderQuiz(); }
+  }
+  if (host.running && S.phase === 'wave') $('#h-time').textContent = S.quizLeft > 0 ? '❓ ' + Math.ceil(S.quizLeft) + ' s to answer' : '';
+  else if (host.running && S.phase === 'between') {
     const n = Math.max(0, Math.ceil(host.betweenT));
-    $('#h-time').textContent = 'next in ' + n; $('#b-next').style.display = '';
+    $('#h-time').textContent = 'next wave in ' + n; $('#b-next').style.display = '';
     if (n <= 3 && n > 0 && n !== host.lastCount) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); }
   }
   view.frame(dt);
@@ -598,17 +595,18 @@ $('#b-recenter').onclick = () => { const v = host.view; if (!v) return; v.cam.th
 $('#b-abort').onclick = () => { if (confirm('End the game for everyone?')) finish(false, true); };
 function finish(won, aborted) {
   const S = host.S; host.running = false; S.phase = 'over';
-  const list = TR.roster(S).sort((a, b) => b.dmg - a.dmg);
-  host.link.send({ t: 'over', won, board: list, left: Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max), aborted: !!aborted, waves: S.rules.waves });
-  $('#ov-title').textContent = won ? '💥 The Gremlin Tower has fallen!' : '❌ The raid has failed — the Gremlin wins';
-  $('#ov-text').textContent = won ? 'The raiders broke through in wave ' + S.wave + '. Attention restored!' : (aborted ? 'The game was ended early.' : S.rules.waves + ' waves and the walls held, with ' + Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max) + '% of the tower still standing. The Attention Gremlin keeps the room.');
-  $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.correct ? ' 🛡×' + r.correct : ''}</td><td>${r.dmg} dmg</td></tr>`).join('');
+  const survived = aborted ? Math.max(0, S.wave - 1) : S.survived;
+  const list = TR.roster(S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
+  host.link.send({ t: 'over', won, board: list, survived, aborted: !!aborted });
+  $('#ov-title').textContent = won ? '🏆 Legendary! The tower held every wave' : '💥 The Attention Tower has fallen';
+  $('#ov-text').textContent = won ? 'All ' + S.rules.maxWaves + ' waves held. The Gremlins give up.' : (aborted ? 'The game was ended early after ' + survived + ' wave' + (survived === 1 ? '' : 's') + '.' : 'The defence held for ' + survived + ' wave' + (survived === 1 ? '' : 's') + ' and fell in wave ' + S.wave + '. The Attention Gremlins have the room.');
+  $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)} <span class="hint">🔫${r.guns} · best streak ${r.best}</span></td><td>${r.kills} kills</td></tr>`).join('');
   show('s-hostover');
 }
 $('#b-again').onclick = () => location.href = location.pathname;
 
 /* ===================== PLAYER (phone) ===================== */
-const player = { link: null, code: '', id: null, name: '', view: null, taps: 0, ph: 'lobby', roster: [], rules: { hp: 100, shield: 70 }, answered: false, me: null, snap: null, tmax: 1 };
+const player = { link: null, code: '', id: null, name: '', view: null, ph: 'lobby', roster: [], answered: false, snap: null, quizTime: 15, pending: null, sel: null, type: 'ballista', guns: [], streak: 0, kills: 0, gunsN: 0 };
 function joinGame(code, name) {
   player.code = code; player.name = name;
   let token = ''; try { token = localStorage.getItem('tk-tr-tok-' + code) || ''; if (!token) { token = Math.random().toString(36).slice(2, 12); localStorage.setItem('tk-tr-tok-' + code, token); } } catch (e) {}
@@ -618,45 +616,127 @@ function joinGame(code, name) {
   playerTick();
 }
 function playerReceive(m) {
-  if (m.t === 'welcome') { player.id = m.id; return; }
+  const v = player.view;
+  if (m.t === 'welcome') { player.id = m.id; v.me = m.id; return; }
   if (m.t === 'nohost') { pMsg('The big screen is not open yet…', 4000); return; }
-  if (m.t === 'hostgone') { pMsg('Big screen disconnected', 5000); setBtn('off', 'Waiting…'); return; }
-  if (m.t === 'hello') { player.rules = m.rules || player.rules; player.waves = m.waves || 3; player.waveTime = m.waveTime || 30; player.ph = m.ph; if (m.ph === 'lobby') { setBtn('off', 'Waiting for the host…'); pMsg('You are in!\nEach wave: answer the quiz right to gain a 🛡 shield', 5000); } return; }
-  if (m.t === 'roster') { player.roster = m.list; player.tmax = m.tmax || player.tmax; for (const r of m.list) player.view.ensureRaider(r.id, r); return; }
-  if (m.t === 'defence') { player.view.setDefence(m.list); return; }
+  if (m.t === 'hostgone') { pMsg('Big screen disconnected', 5000); setBtn('', 'Waiting…'); return; }
+  if (m.t === 'hello') {
+    player.quizTime = m.quizTime || 15; player.ph = m.ph; player.streak = m.streak || 0; player.kills = m.kills || 0; player.gunsN = m.guns || 0; updateMe();
+    if (m.pending) openPlace(m.pending.level, player.streak);
+    if (m.ph === 'lobby') { setBtn('', 'Waiting for the host…'); pMsg('You are in!\nEach wave: answer right → place a gun with your name on it', 5000); }
+    return;
+  }
+  if (m.t === 'roster') { player.roster = m.list; const me = m.list.find(r => r.id === player.id); if (me) { player.streak = me.streak; player.kills = me.kills; player.gunsN = me.guns; updateMe(); } return; }
+  if (m.t === 'guns') { player.guns = m.list; v.setGuns(m.list); drawMap(); return; }
+  if (m.t === 'gun') { player.guns.push(m.g); v.addGun(m.g); if (m.g.owner === player.id) { player.gunsN++; updateMe(); } drawMap(); return; }
   if (m.t === 'quiz') { showQuiz(m); return; }
   if (m.t === 'ans') {
     const btns = $('#pq-opts').querySelectorAll('button'); btns.forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (b.classList.contains('picked')) b.classList.add('wrong'); });
-    $('#pq-note').textContent = m.res === 'right' ? '🛡 Shield up — it soaks ' + m.shield + ' damage' : m.res === 'wrong' ? 'Not this time. No shield this wave.' : 'Too late for this wave.';
-    const u = $('#pq-urgent'); u.className = 'urgent calm'; u.textContent = m.res === 'right' ? '🛡 Shielded — charge!' : '💔 No shield this wave — hold on…';
-    if (navigator.vibrate) navigator.vibrate(m.res === 'right' ? [30, 40, 30] : 60);
-    setTimeout(() => $('#p-quiz').classList.remove('on'), 1800); return;
+    player.streak = m.streak; updateMe();
+    const u = $('#pq-urgent');
+    if (m.res === 'right') {
+      $('#pq-note').textContent = '🔫 Right! Place your ' + LEVEL_NAME[m.level] + ' gun below.'; u.className = 'urgent good'; u.textContent = m.streak > 1 ? '🔥 ' + m.streak + ' in a row — a ' + LEVEL_NAME[m.level] + ' gun!' : '✅ Right — you get a gun!';
+      if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
+      pMsg(m.streak > 1 ? '🔥 STREAK ' + m.streak + '!\n' + LEVEL_NAME[m.level] + ' gun unlocked' : '✅ RIGHT!\nPlace your gun', 1600);
+      setTimeout(() => { $('#p-quiz').classList.remove('on'); openPlace(m.level, m.streak); }, 900);
+    } else {
+      $('#pq-note').textContent = m.res === 'wrong' ? 'Not this time — no gun this wave, streak lost.' : 'Too late for this wave.'; u.className = 'urgent calm'; u.textContent = '💔 No gun this wave';
+      redFlash(); if (navigator.vibrate) navigator.vibrate(120); pMsg('❌ WRONG!\nNo gun this wave — streak lost', 2200);
+      setTimeout(() => $('#p-quiz').classList.remove('on'), 2200);
+    }
+    return;
   }
-  if (m.t === 'msg') { pMsg(m.m, 1800); if (navigator.vibrate) navigator.vibrate(20); return; }
-  if (m.t === 'fx') { for (const f of m.s || []) player.view.shot(f[0], f[1], f[2], f[3]); for (const b of m.b || []) player.view.boom(b[0], b[1], b[2]); return; }
-  if (m.t === 'shield') { player.view.pulse(player.id); pMsg('🛡 SHIELD UP!\nBlocks the next ' + m.n + ' damage', 2600); if (navigator.vibrate) navigator.vibrate([30, 40, 30]); return; }
-  if (m.t === 'weak') { player.view.flash(player.id); redFlash(); pMsg('❌ WRONG!\n−' + m.hp + ' HP — you are bleeding', 2600); if (navigator.vibrate) navigator.vibrate(120); return; }
+  if (m.t === 'quizEnd') {
+    if (!player.answered && $('#p-quiz').classList.contains('on')) {
+      $('#pq-opts').querySelectorAll('button').forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); });
+      $('#pq-note').textContent = 'Time is up — no gun this wave.'; const u = $('#pq-urgent'); u.className = 'urgent calm'; u.textContent = '⏰ Too late';
+      player.streak = 0; updateMe(); setTimeout(() => $('#p-quiz').classList.remove('on'), 2500);
+    }
+    return;
+  }
+  if (m.t === 'placed') {
+    if (m.res === 'ok') { closePlace(); pMsg('🔫 GUN PLACED!\nIt is firing for you now', 2000); if (navigator.vibrate) navigator.vibrate(40); }
+    else if (m.res === 'taken') { toast('That spot is taken — pick another'); player.sel = null; drawMap(); $('#b-place').disabled = true; $('#pl-hint').textContent = 'Tap a free green tile next to the road'; }
+    else closePlace();
+    return;
+  }
+  if (m.t === 'kill') { player.kills = m.n; updateMe(); const now = performance.now(); if (now - (player.killT || 0) > 1500) { player.killT = now; pMsg('🎯 Gremlin shot! (' + m.n + ')', 900); } return; }
+  if (m.t === 'bite') { redFlash(); v.hitKeep(); if (navigator.vibrate) navigator.vibrate(60); pMsg('👹 One got through!\nTower ' + m.hp + ' / ' + m.max, 1200); return; }
+  if (m.t === 'msg') { pMsg(m.m, 1800); return; }
+  if (m.t === 'fx') { for (const f of m.s || []) v.shot(f[0], f[1], f[2], f[3]); for (const b of m.b || []) v.boom(b[0], b[1], b[2]); return; }
   if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950); return; }
   if (m.t === 's') { player.snap = m; player.ph = m.ph; return; }
   if (m.t === 'over') {
-    player.ph = 'over'; $('#p-quiz').classList.remove('on'); setBtn('off', m.won ? '💥 Gremlin Tower down — victory!' : '❌ Raid failed — the Gremlin wins');
+    player.ph = 'over'; $('#p-quiz').classList.remove('on'); closePlace();
     const me = m.board.find(r => r.id === player.id); const rank = m.board.findIndex(r => r.id === player.id) + 1;
-    pMsg((m.won ? '🎉 The Gremlin Tower has fallen!\n' : '❌ RAID FAILED\nThe Gremlin Tower held with ' + m.left + '% left after ' + (m.waves || 3) + ' waves.\n') + (me ? 'You dealt ' + me.dmg + ' damage (#' + rank + ')' : ''), 60000);
-    player.view.follow = null; player.view.placeCamera();
+    setBtn(m.won ? 'ok' : 'hot', m.won ? '🏆 Every wave held!' : '💥 The tower fell after ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's'));
+    pMsg((m.won ? '🏆 LEGENDARY!\nThe tower held every wave.\n' : '💥 THE TOWER HAS FALLEN\nHeld for ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's') + '.\n') + (me ? 'You shot ' + me.kills + ' gremlins (#' + rank + ')' : ''), 60000);
   }
 }
+function updateMe() { $('#p-streak').textContent = player.streak; $('#p-kills').textContent = player.kills; $('#p-guns').textContent = player.gunsN; }
 function showQuiz(m) {
+  player.answered = !!m.done;
   $('#pq-q').textContent = '❓ Wave ' + m.wave + ': ' + m.q;
   $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}">${esc(o)}</button>`).join('');
-  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = 🛡 shield that blocks ' + player.rules.shield + ' damage · ❌ Wrong = lose HP';
-  $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.link.send({ t: 'ans', i: +b.dataset.i }); }; });
-  $('#pq-urgent').className = 'urgent' + (m.done ? ' calm' : ''); $('#pq-time').style.width = '100%';
+  const next = LEVEL_NAME[Math.min(2, player.streak)];
+  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = place a ' + next + ' gun · ❌ Wrong = no gun, streak lost';
+  $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { player.answered = true; b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.link.send({ t: 'ans', i: +b.dataset.i }); }; });
+  const u = $('#pq-urgent'); u.className = 'urgent' + (m.done ? ' calm' : ''); u.textContent = player.streak > 0 ? '🔥 Streak ' + player.streak + ' — answer right for a ' + next + ' gun!' : '⚠️ Answer right to place a gun. Keep the streak for a bigger gun!';
+  $('#pq-time').style.width = (100 * (m.left || player.quizTime) / player.quizTime) + '%';
   $('#p-quiz').classList.add('on');
 }
+/* --- placement: a top-down map of the board on the phone --- */
+function openPlace(level, streak) {
+  player.pending = { level }; player.sel = null; $('#b-place').disabled = true;
+  $('#pl-h').textContent = '🔫 Place your ' + LEVEL_NAME[level] + ' gun' + (streak > 1 ? ' (streak ' + streak + ')' : '');
+  $('#pl-hint').textContent = 'Tap a free green tile next to the road';
+  $('#p-place').classList.add('on'); pickType(player.type); drawMap();
+}
+function closePlace() { player.pending = null; player.sel = null; $('#p-place').classList.remove('on'); player.view.setGhost(null); }
+function pickType(t) { player.type = t; $('#p-place .types').querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.t === t)); if (player.sel) player.view.setGhost(player.sel.x, player.sel.z, gunRange()); drawMap(); }
+function gunRange() { return TR.GUNS[player.type].levels[player.pending ? player.pending.level : 0].range; }
+$('#p-place .types').querySelectorAll('button').forEach(b => b.onclick = () => pickType(b.dataset.t));
+$('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#b-place').disabled = true; $('#pl-hint').textContent = 'Placing…'; player.link.send({ t: 'place', x: player.sel.x, z: player.sel.z, type: player.type }); };
+const mapCv = $('#p-map');
+function mapCell() { const w = mapCv.clientWidth || 300; return w / TR.COLS; }
+function drawMap() {
+  if (!$('#p-place').classList.contains('on')) return;
+  const cell = mapCell(); const dpr = Math.min(2, devicePixelRatio || 1);
+  const W = Math.round(cell * TR.COLS), H = Math.round(cell * TR.ROWS);
+  if (mapCv.width !== Math.round(W * dpr)) { mapCv.width = Math.round(W * dpr); mapCv.height = Math.round(H * dpr); mapCv.style.height = H + 'px'; }
+  const cx = mapCv.getContext('2d'); cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, W, H);
+  const occupied = new Map(); for (const g of player.guns) occupied.set(g.x + ',' + g.z, g);
+  for (let x = 0; x < TR.COLS; x++) for (let z = 0; z < TR.ROWS; z++) {
+    const key = x + ',' + z; const d = TR.DECOR.get(key); const road = TR.PATH_SET.has(key); const blocked = d && d.kind; const g = occupied.get(key);
+    cx.fillStyle = road ? '#d9b382' : blocked ? '#5aa465' : '#a9e39c'; cx.fillRect(x * cell + 0.5, z * cell + 0.5, cell - 1, cell - 1);
+    if (blocked) { cx.font = Math.round(cell * 0.6) + 'px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(d.kind === 'rock' ? '🪨' : '🌲', x * cell + cell / 2, z * cell + cell / 2 + 1); }
+    if (g) {
+      const mine = g.owner === player.id; cx.beginPath(); cx.arc(x * cell + cell / 2, z * cell + cell / 2, cell * 0.36, 0, Math.PI * 2); cx.fillStyle = hex(COLORS[g.skin % COLORS.length]); cx.fill();
+      if (mine) { cx.lineWidth = 3; cx.strokeStyle = '#e5533d'; cx.stroke(); }
+      cx.fillStyle = '#fff'; cx.font = '700 ' + Math.round(cell * 0.42) + 'px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText((mine ? '★' : g.name.slice(0, 1).toUpperCase()), x * cell + cell / 2, z * cell + cell / 2 + 1);
+    }
+  }
+  const em = (x, z, t) => { cx.font = Math.round(cell * 0.7) + 'px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(t, x * cell + cell / 2, z * cell + cell / 2 + 1); };
+  em(TR.PATH[0][0], TR.PATH[0][1], '👹'); em(TR.END[0], TR.END[1], '🏰');
+  if (player.snap) for (const e of player.snap.e) if (e[6] === 'run') { cx.beginPath(); cx.arc((e[3] + 0.5) * cell, (e[4] + 0.5) * cell, cell * 0.16, 0, Math.PI * 2); cx.fillStyle = '#c0392b'; cx.fill(); }
+  if (player.sel) {
+    const r = gunRange() * cell; cx.beginPath(); cx.arc((player.sel.x + 0.5) * cell, (player.sel.z + 0.5) * cell, r, 0, Math.PI * 2); cx.fillStyle = 'rgba(243,181,62,.28)'; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = '#f3b53e'; cx.stroke();
+    cx.lineWidth = 3; cx.strokeStyle = '#e5533d'; cx.strokeRect(player.sel.x * cell + 1.5, player.sel.z * cell + 1.5, cell - 3, cell - 3);
+  }
+}
+mapCv.addEventListener('pointerdown', e => {
+  if (!player.pending) return;
+  const r = mapCv.getBoundingClientRect(); const cell = mapCell();
+  const x = Math.floor((e.clientX - r.left) / cell), z = Math.floor((e.clientY - r.top) / cell);
+  const key = x + ',' + z;
+  if (!TR.freeTile({ guns: player.guns }, x, z)) { toast(TR.PATH_SET.has(key) ? 'Not on the road' : player.guns.some(g => g.x === x && g.z === z) ? 'That spot has a gun already' : 'Blocked — pick a green tile'); return; }
+  player.sel = { x, z }; $('#b-place').disabled = false; $('#pl-hint').textContent = TYPE_NAME[player.type] + ' at ' + String.fromCharCode(65 + x) + (z + 1) + ' — covers ' + TR.coverage(x, z, gunRange()) + ' road points';
+  player.view.setGhost(x, z, gunRange()); drawMap();
+  if (navigator.vibrate) navigator.vibrate(10);
+});
 function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
 function redFlash() { const r = $('#p-red'); r.classList.add('on'); setTimeout(() => r.classList.remove('on'), 120); }
 function pMsg(text, ms) { const el = $('#p-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
-const btn = $('#p-btn');
 
 function playerTick() {
   requestAnimationFrame(playerTick);
@@ -664,24 +744,18 @@ function playerTick() {
   const dt = Math.min(0.05, v.clock.getDelta());
   const s = player.snap;
   if (s) {
-    for (const a of s.a) { v.applyRaider(a, null, player.rules.hp, player.rules.shield); if (a[0] === player.id) player.me = a; }
-    v.defYaw = s.dy;
-    $('#p-thp').style.width = (100 * s.th / s.tm) + '%'; $('#p-tpct').textContent = Math.round(100 * s.th / s.tm) + '%';
-    $('#p-wave').textContent = s.w + '/' + (player.waves || 3); $('#p-time').textContent = s.ph === 'wave' ? s.tl : '–';
-    if (s.ph === 'wave' && player.waveTime) $('#pq-time').style.width = Math.max(0, 100 * s.tl / player.waveTime) + '%';
-    const me = player.me;
-    if (me) {
-      $('#p-hp').style.width = (100 * me[2] / player.rules.hp) + '%'; $('#p-shield').textContent = '🛡 ' + me[3];
-      if (player.ph === 'over') {}
-      else if (s.ph === 'between') { setBtn('off', 'Next wave soon…'); v.follow = null; }
-      else if (me[4] === 'run') { setBtn('run', '🏃 Charging the walls…'); v.follow = player.id; v.hideSelf = player.id; }
-      else if (me[4] === 'attack') { setBtn('attack', '⚔️ Striking the tower!'); v.follow = player.id; v.hideSelf = player.id; }
-      else if (me[4] === 'done') { setBtn('off', '✓ Struck for ' + me[8] + ' — next wave soon'); v.follow = null; }
-      else if (me[4] === 'dead') { setBtn('off', '💀 Down — next wave'); v.follow = null; }
-      else { setBtn('off', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…'); v.follow = null; }
-    }
+    v.applyEnemies(s.e); v.gunYaw = s.gy;
+    const bar = $('#p-thp'); bar.style.width = (100 * s.th / s.tm) + '%'; bar.classList.toggle('low', s.th <= s.tm * 0.3); $('#p-tpct').textContent = s.th + '/' + s.tm;
+    $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
+    if (s.ph === 'wave') $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';
+    if (player.ph === 'over') {}
+    else if (s.ph === 'between') setBtn('', '✅ Wave ' + s.w + ' held — next wave soon…');
+    else if (player.pending) setBtn('hot', '📍 Place your gun now!');
+    else if (s.ph === 'wave' && !player.answered && s.ql > 0) setBtn('hot', '❓ Answer the quiz — ' + s.ql + ' s');
+    else if (s.ph === 'wave') setBtn('ok', '🌊 Wave ' + s.w + ' · 👹 ' + s.left + ' left');
+    else setBtn('', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…');
+    if ($('#p-place').classList.contains('on') && Math.floor(performance.now() / 250) !== player.mapT) { player.mapT = Math.floor(performance.now() / 250); drawMap(); }
   }
-  if (v.follow === null && !v.cam.freeSet) v.placeCamera();
   v.frame(dt);
 }
 
@@ -692,7 +766,7 @@ $('#in-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('#b-jo
 function askName(code) {
   show('s-join'); $('#j-code').textContent = code;
   try { $('#in-name').value = localStorage.getItem('tk-name') || ''; } catch (e) {}
-  const go = () => { const n = $('#in-name').value.trim().slice(0, 16) || 'Raider'; try { localStorage.setItem('tk-name', n); } catch (e) {} joinGame(code, n); };
+  const go = () => { const n = $('#in-name').value.trim().slice(0, 16) || 'Defender'; try { localStorage.setItem('tk-name', n); } catch (e) {} joinGame(code, n); };
   $('#b-go').onclick = go; $('#in-name').onkeydown = e => { if (e.key === 'Enter') go(); };
   setTimeout(() => $('#in-name').focus(), 50);
 }

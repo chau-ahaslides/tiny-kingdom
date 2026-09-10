@@ -1,4 +1,6 @@
-/* Tower Raid — the game rules, with no rendering in them.
+/* Gremlin Siege — the game rules, with no rendering in them.
+   Players defend the Attention Tower. Each wave opens with a quiz: a right answer lets the player place a gun (bigger with a
+   streak of right answers), a wrong one breaks the streak. Gremlins march the road; every one that gets through bites the tower.
    The big screen runs this and streams snapshots to the phones; test/tower-raid.test.js runs it in node to tune the numbers.
    Units: tiles and seconds. */
 (function (root, factory) {
@@ -13,45 +15,75 @@
   const SEG = []; let total = 0;
   for (let i = 0; i < PATH.length - 1; i++) { const dx = PATH[i + 1][0] - PATH[i][0], dz = PATH[i + 1][1] - PATH[i][1]; const l = Math.hypot(dx, dz); SEG.push({ ax: PATH[i][0], az: PATH[i][1], dx: dx / l, dz: dz / l, start: total, len: l }); total += l; }
   const PATH_LEN = total;
-  // Position and heading along the road; `side` is a lateral offset so raiders do not stack on one line.
+  const PATH_SET = new Set(PATH.map(([x, z]) => x + ',' + z));
+  // Position and heading along the road; `side` is a lateral offset so enemies do not stack on one line.
   function posAt(d, side) {
-    d = Math.max(0, Math.min(PATH_LEN, d));
+    d = Math.max(-2, Math.min(PATH_LEN, d));
     let s = SEG[SEG.length - 1];
     for (const seg of SEG) if (d <= seg.start + seg.len) { s = seg; break; }
     const k = d - s.start;
     return { x: s.ax + s.dx * k - s.dz * (side || 0), z: s.az + s.dz * k + s.dx * (side || 0), yaw: Math.atan2(s.dx, s.dz) };
   }
+  // Scenery is decided here (seeded), so the rules and both renderers agree on which tiles are blocked.
+  const DECOR = new Map();
+  { let seed = 42; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let x = 0; x < COLS; x++) for (let z = 0; z < ROWS; z++) {
+      if (PATH_SET.has(x + ',' + z)) continue;
+      const r = rnd(); const yaw = Math.floor(rnd() * 4) * Math.PI / 2;
+      DECOR.set(x + ',' + z, { kind: r < 0.07 ? 'tree' : r < 0.11 ? 'tree2' : r < 0.14 ? 'rock' : '', yaw });
+    } }
+  const END = PATH[PATH.length - 1];
+  function freeTile(S, x, z) {
+    if (!Number.isInteger(x) || !Number.isInteger(z) || x < 0 || z < 0 || x >= COLS || z >= ROWS) return false;
+    if (PATH_SET.has(x + ',' + z)) return false;
+    const d = DECOR.get(x + ',' + z); if (d && d.kind) return false;
+    return !S.guns.some(g => g.x === x && g.z === z);
+  }
+  // Road points a gun at (x,z) with `range` can hit — the score bots use to pick a spot.
+  const ROAD_PTS = []; for (let d = 0; d <= PATH_LEN; d += 0.5) ROAD_PTS.push(posAt(d, 0));
+  function coverage(x, z, range) { let n = 0; for (const p of ROAD_PTS) if (Math.hypot(p.x - x, p.z - z) <= range) n++; return n; }
 
   // ------------------------------------------------------------ numbers to tune
   const RULES = {
-    waves: 3,
-    waveTime: 20,          // seconds before the defenders regroup and the wave is called off
-    towerHpPer: 130,       // tower HP per raider (humans + bots), so a bigger party faces a bigger tower
-    towerHpMin: 550,
-    towerRegen: 0.02,      // share of max HP the tower repairs between waves
-    raiderHp: 120,
-    shield: 150,           // damage a correct quiz answer soaks up
-    wrongHp: 90,           // HP lost for a wrong answer
-    runSpeed: 2.0,         // tiles per second; raiders run on their own
-    strikes: 3,            // swings a raider gets at the walls before the wave is over for them
-    strikeGap: 0.5,        // seconds between swings (the wall cannon keeps firing meanwhile)
-    strike: 12,            // tower damage per swing…
-    strikeBonus: 0.06,     // …plus this share of the raider's remaining HP and shield
-    stopAtEnd: 1.0,        // path distance from the end where raiders strike
-    towerDmg: 1.7,         // multiplier on every defence tower's damage
+    maxWaves: 10,          // hold all of these and the room wins outright
+    quizTime: 15,          // seconds from the wave start to answer the quiz
+    towerHp: 10,           // attention points; every gremlin that gets through bites some off
+    spawnGap: 1.0,         // seconds between gremlins leaving the spawn
+    countBase: 3, countPerWave: 2, countPerPlayer: 1.1,   // gremlins per wave
+    hpGrow: 0.7,           // enemy HP compounds by this share each wave
+    hpPerPlayer: 0.03,     // …and grows by this share for every player beyond six, since bigger rooms place more guns
+    botRight: 0.5,         // how often a bot answers right (the tuning target: half the room)
+    botAnsMin: 3, botAnsMax: 10, botPlace: 2.5,
+    between: 6,            // seconds between waves
+    maxStreakLevel: 2,     // gun level = min(this, streak - 1)
   };
-
-  // Defence towers per wave: spot, type, level. Later waves add towers and upgrade earlier ones.
-  const DEFENCE = [
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 0], ['turret', 5, 5, 0], ['ballista', 7, 3, 0]],
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 0], ['ballista', 7, 3, 0], ['cannon', 8, 4, 0], ['turret', 2, 5, 0], ['cannon', 4, 3, 0]],
-    [['cannon', 11, 6, 1], ['ballista', 2, 2, 1], ['turret', 5, 5, 1], ['ballista', 7, 3, 1], ['cannon', 8, 4, 0], ['turret', 2, 5, 0], ['cannon', 4, 3, 0], ['turret', 10, 3, 0]],
-  ];
-  const TOWERS = {
-    ballista: { ammoSpeed: 9, splash: 0, levels: [{ dmg: 6, range: 2.4, reload: 1.1 }, { dmg: 8, range: 2.6, reload: 1.0 }, { dmg: 11, range: 2.8, reload: 0.9 }] },
-    cannon: { ammoSpeed: 6, splash: 0.9, levels: [{ dmg: 12, range: 2.2, reload: 2.2 }, { dmg: 18, range: 2.3, reload: 2.0 }, { dmg: 24, range: 2.3, reload: 1.6 }] },
-    turret: { ammoSpeed: 14, splash: 0, levels: [{ dmg: 2, range: 2.1, reload: 0.25 }, { dmg: 2.5, range: 2.3, reload: 0.22 }, { dmg: 3, range: 2.5, reload: 0.2 }] },
+  const ENEMY = {
+    gremlin: { hp: 110, speed: 1.15, bite: 1 },
+    runner: { hp: 60, speed: 2.0, bite: 1 },
+    brute: { hp: 420, speed: 0.72, bite: 3 },
+    ufo: { hp: 180, speed: 1.45, bite: 2, fly: true },
   };
+  const GUNS = {
+    ballista: { ammoSpeed: 9, splash: 0, levels: [{ dmg: 15, range: 2.4, reload: 1.0 }, { dmg: 24, range: 2.7, reload: 0.9 }, { dmg: 38, range: 3.0, reload: 0.8 }] },
+    cannon: { ammoSpeed: 6, splash: 0.9, levels: [{ dmg: 22, range: 2.2, reload: 2.0 }, { dmg: 34, range: 2.4, reload: 1.8 }, { dmg: 52, range: 2.6, reload: 1.5 }] },
+    turret: { ammoSpeed: 14, splash: 0, levels: [{ dmg: 4, range: 2.2, reload: 0.22 }, { dmg: 6.5, range: 2.4, reload: 0.2 }, { dmg: 10, range: 2.6, reload: 0.18 }] },
+  };
+  const GUN_TYPES = Object.keys(GUNS);
+  // What marches in each wave: a list of kinds, in spawn order.
+  function waveList(wave, players, R) {
+    R = R || RULES;
+    const n = Math.round(R.countBase + R.countPerWave * (wave - 1) + R.countPerPlayer * players);
+    const list = [];
+    for (let i = 0; i < n; i++) {
+      let kind = 'gremlin';
+      if (wave >= 3 && i % 6 === 5) kind = 'brute';
+      else if (wave >= 2 && i % 3 === 1) kind = 'runner';
+      else if (wave >= 4 && i % 5 === 3) kind = 'ufo';
+      list.push(kind);
+    }
+    if (wave >= 3) list.push('brute');
+    return list;
+  }
 
   const QUIZ = [
     ['What feeds the Attention Gremlin?', ['Live polls', 'A one-way monologue with 40 slides', 'A quick quiz', 'Audience Q&A'], 1],
@@ -72,159 +104,170 @@
     const rules = Object.assign({}, RULES, opts && opts.rules);
     return {
       rules, rand: (opts && opts.rand) || Math.random,
-      phase: 'lobby', wave: 0, time: 0, timeLeft: 0,
-      tower: { hp: rules.towerHpMin, max: rules.towerHpMin },
-      raiders: new Map(), order: [], defence: [], shots: [], quiz: null, events: [], seq: 0,
-      won: null, lastQuiz: -1,
+      phase: 'lobby', wave: 0, time: 0, timeLeft: 0, quizLeft: 0,
+      tower: { hp: rules.towerHp, max: rules.towerHp },
+      players: new Map(), order: [], guns: [], enemies: [], queue: [], spawnT: 0, shots: [], quiz: null, events: [], seq: 0, eid: 0,
+      won: null, survived: 0, lastQuiz: -1,
     };
   }
   function addPlayer(S, id, name, bot) {
-    if (S.raiders.has(id)) { S.raiders.get(id).name = name || S.raiders.get(id).name; S.raiders.get(id).gone = false; return S.raiders.get(id); }
-    const r = { id, name: name || 'Raider', bot: !!bot, skin: S.order.length % 12, d: 0, side: 0, hp: 0, shield: 0, state: 'wait', dmg: 0, reached: 0, answered: false, correct: 0, wrong: 0, gone: false, bot_ans: 0, struck: 0, swings: 0, swingT: 0 };
-    S.raiders.set(id, r); S.order.push(id);
-    return r;
+    if (S.players.has(id)) { const p = S.players.get(id); p.name = name || p.name; p.gone = false; return p; }
+    const p = { id, name: name || 'Defender', bot: !!bot, skin: S.order.length % 12, correct: 0, wrong: 0, streak: 0, best: 0, kills: 0, dmg: 0, answered: false, pending: null, guns: 0, gone: false, bot_ans: 0, bot_place: 0 };
+    S.players.set(id, p); S.order.push(id);
+    return p;
   }
   function removePlayer(S, id) {
-    const r = S.raiders.get(id); if (!r) return;
-    if (S.phase === 'lobby') { S.raiders.delete(id); S.order = S.order.filter(x => x !== id); }
-    else r.gone = true;                                      // keep the score; the phone may come back
+    const p = S.players.get(id); if (!p) return;
+    if (S.phase === 'lobby') { S.players.delete(id); S.order = S.order.filter(x => x !== id); }
+    else p.gone = true;                                      // keep the score and the guns; the phone may come back
   }
   function setBots(S, totalPlayers) {
     // Fill (or trim) bots so that humans + bots === totalPlayers. Only in the lobby.
     if (S.phase !== 'lobby') return;
-    const humans = [...S.raiders.values()].filter(r => !r.bot);
-    const bots = [...S.raiders.values()].filter(r => r.bot);
+    const humans = [...S.players.values()].filter(r => !r.bot);
+    const bots = [...S.players.values()].filter(r => r.bot);
     let want = Math.max(0, totalPlayers - humans.length);
-    while (bots.length > want) { const b = bots.pop(); S.raiders.delete(b.id); S.order = S.order.filter(x => x !== b.id); }
+    while (bots.length > want) { const b = bots.pop(); S.players.delete(b.id); S.order = S.order.filter(x => x !== b.id); }
     let n = 0;
-    while (bots.length < want) { const name = BOT_NAMES[(bots.length + n++) % BOT_NAMES.length]; if ([...S.raiders.values()].some(r => r.name === name)) continue; bots.push(addPlayer(S, 'bot' + bots.length + '_' + Math.floor(S.rand() * 1e6), name, true)); }
+    while (bots.length < want) { const name = BOT_NAMES[(bots.length + n++) % BOT_NAMES.length]; if ([...S.players.values()].some(r => r.name === name)) continue; bots.push(addPlayer(S, 'bot' + bots.length + '_' + Math.floor(S.rand() * 1e6), name, true)); }
   }
 
   // ------------------------------------------------------------ waves
   function startWave(S) {
-    if (S.phase === 'over' || S.wave >= S.rules.waves) return false;
-    if (S.wave === 0) { const n = [...S.raiders.values()].filter(r => !r.gone).length; S.tower.max = S.tower.hp = Math.max(S.rules.towerHpMin, Math.round(S.rules.towerHpPer * n)); }
-    S.wave++; S.phase = 'wave'; S.timeLeft = S.rules.waveTime; S.shots = [];
-    S.defence = DEFENCE[Math.min(S.wave, DEFENCE.length) - 1].map(([type, x, z, level], i) => ({ i, type, x, z, level, cool: S.rand() * 0.5, yaw: 0, target: null }));
+    if (S.phase === 'over' || S.wave >= S.rules.maxWaves) return false;
+    S.wave++; S.phase = 'wave'; S.quizLeft = S.rules.quizTime; S.shots = []; S.enemies = []; S.spawnT = 0.5;
+    const active = [...S.players.values()].filter(p => !p.gone).length;
+    S.queue = waveList(S.wave, active, S.rules);
     let qi; do { qi = Math.floor(S.rand() * QUIZ.length); } while (qi === S.lastQuiz);
     S.lastQuiz = qi; S.quiz = { i: qi, q: QUIZ[qi][0], opts: QUIZ[qi][1], answer: QUIZ[qi][2] };
-    let n = 0;
-    for (const id of S.order) {
-      const r = S.raiders.get(id);
-      if (r.gone && !r.bot) { r.state = 'wait'; continue; }
-      r.hp = S.rules.raiderHp; r.state = 'run'; r.answered = false; r.struck = 0; r.swings = 0; r.swingT = 0;
-      r.d = -0.4 - (n % 4) * 0.35; r.side = ((n % 3) - 1) * 0.28;
-      if (r.bot) r.bot_ans = 3 + S.rand() * 8;
-      n++;
+    for (const p of S.players.values()) {
+      p.answered = false;
+      if (p.bot) { p.bot_ans = S.rules.botAnsMin + S.rand() * (S.rules.botAnsMax - S.rules.botAnsMin); p.bot_place = 0; }
     }
-    S.events.push({ e: 'wave', wave: S.wave });
+    S.events.push({ e: 'wave', wave: S.wave, count: S.queue.length });
     return true;
   }
   function endWave(S) {
-    S.phase = S.wave >= S.rules.waves ? 'over' : 'between';
-    for (const r of S.raiders.values()) r.state = r.state === 'dead' ? 'dead' : r.state === 'done' ? 'done' : 'wait';
-    S.shots = [];
-    if (S.phase === 'over') { S.won = false; S.events.push({ e: 'over', won: false }); }
-    else { S.tower.hp = Math.min(S.tower.max, S.tower.hp + S.tower.max * S.rules.towerRegen); S.events.push({ e: 'waveEnd', wave: S.wave }); }
+    S.survived = S.wave; S.shots = []; S.enemies = []; S.queue = [];
+    // A quiz nobody answered still counts against the streak; a gun that was never placed is lost.
+    for (const p of S.players.values()) { if (!p.answered && !p.gone) { p.streak = 0; } p.pending = null; }
+    if (S.wave >= S.rules.maxWaves) { S.phase = 'over'; S.won = true; S.events.push({ e: 'over', won: true, survived: S.survived }); }
+    else { S.phase = 'between'; S.events.push({ e: 'waveEnd', wave: S.wave }); }
   }
-  function towerDown(S) { S.phase = 'over'; S.won = true; S.tower.hp = 0; S.events.push({ e: 'over', won: true }); }
+  function towerDown(S) { S.phase = 'over'; S.won = false; S.tower.hp = 0; S.survived = S.wave - 1; S.shots = []; S.events.push({ e: 'over', won: false, survived: S.survived }); }
 
   // ------------------------------------------------------------ inputs
-  function tap() {}                                        // raiders run and strike on their own now; kept so old phones stay harmless
   function answer(S, id, i) {
-    const r = S.raiders.get(id); if (!r || !S.quiz || S.phase !== 'wave') return 'late';
-    if (r.answered) return 'dup';
-    r.answered = true;
-    if (i === S.quiz.answer) { r.correct++; r.shield = S.rules.shield; S.events.push({ e: 'shield', id }); return 'right'; }
-    r.wrong++;
-    if (r.state === 'run') { damage(S, r, S.rules.wrongHp, 'wrong'); S.events.push({ e: 'weak', id }); }
+    const p = S.players.get(id); if (!p || !S.quiz || S.phase !== 'wave' || S.quizLeft <= 0) return 'late';
+    if (p.answered) return 'dup';
+    p.answered = true;
+    if (i === S.quiz.answer) {
+      p.correct++; p.streak++; p.best = Math.max(p.best, p.streak);
+      const level = Math.min(S.rules.maxStreakLevel, p.streak - 1);
+      p.pending = { level, wave: S.wave };
+      S.events.push({ e: 'right', id, level, streak: p.streak });
+      return 'right';
+    }
+    p.wrong++; p.streak = 0;
+    S.events.push({ e: 'wrong', id });
     return 'wrong';
+  }
+  function place(S, id, x, z, type) {
+    const p = S.players.get(id); if (!p || !p.pending || S.phase === 'over') return 'none';
+    if (!GUNS[type]) type = 'ballista';
+    if (!freeTile(S, x, z)) return 'taken';
+    const g = { i: S.guns.length, owner: id, type, level: p.pending.level, x, z, cool: 0.2, yaw: 0, target: null, kills: 0 };
+    S.guns.push(g); p.pending = null; p.guns++;
+    S.events.push({ e: 'placed', id, gun: gunInfo(S, g) });
+    return 'ok';
+  }
+  function gunInfo(S, g) { const p = S.players.get(g.owner); return { i: g.i, owner: g.owner, name: p ? p.name : '', skin: p ? p.skin : 0, bot: p ? p.bot : false, type: g.type, level: g.level, x: g.x, z: g.z }; }
+  // Bots pick a spot that covers a lot of road, with some randomness so they do not all pile onto one tile.
+  function botSpot(S, level, type) {
+    const range = GUNS[type].levels[level].range; const cands = [];
+    for (let x = 0; x < COLS; x++) for (let z = 0; z < ROWS; z++) if (freeTile(S, x, z)) cands.push({ x, z, s: coverage(x, z, range) + S.rand() * 3 });
+    cands.sort((a, b) => b.s - a.s);
+    return cands[Math.floor(S.rand() * Math.min(4, cands.length))] || null;
   }
 
   // ------------------------------------------------------------ simulation
-  function damage(S, r, dmg, byId) {
-    if (r.state !== 'run' && r.state !== 'attack') return;
-    if (r.shield > 0) { const s = Math.min(r.shield, dmg); r.shield -= s; dmg -= s; }
-    r.hp -= dmg;
-    S.events.push({ e: 'hit', id: r.id, dmg });
-    if (r.hp <= 0) { r.hp = 0; r.state = 'dead'; S.events.push({ e: 'die', id: r.id }); }
+  function spawn(S, kind) {
+    const def = ENEMY[kind]; const grow = Math.pow(1 + S.rules.hpGrow, S.wave - 1) * Math.max(1, 1 + S.rules.hpPerPlayer * (S.players.size - 6));
+    const e = { id: ++S.eid, kind, hp: Math.round(def.hp * grow), max: Math.round(def.hp * grow), d: -0.6, side: ((S.eid % 3) - 1) * 0.26, speed: def.speed, bite: def.bite, fly: !!def.fly, state: 'run', t: 0 };
+    S.enemies.push(e); S.events.push({ e: 'spawn', id: e.id, kind });
+  }
+  function hurt(S, e, dmg, gun) {
+    if (e.state !== 'run') return;
+    e.hp -= dmg;
+    const p = gun && S.players.get(gun.owner); if (p) p.dmg += dmg;
+    if (e.hp <= 0) { e.hp = 0; e.state = 'dead'; e.t = 0; if (gun) { gun.kills++; if (p) p.kills++; } S.events.push({ e: 'die', id: e.id, gun: gun ? gun.i : -1, owner: gun ? gun.owner : null, kills: p ? p.kills : 0 }); }
   }
   function step(S, dt) {
     if (S.phase !== 'wave') return;
-    S.time += dt; S.timeLeft -= dt; S.seq++;
+    S.time += dt; S.seq++;
+    if (S.quizLeft > 0) { S.quizLeft -= dt; if (S.quizLeft <= 0) { S.quizLeft = 0; S.events.push({ e: 'quizEnd' }); } }
     const R = S.rules;
-    const endD = PATH_LEN - R.stopAtEnd;
-    // Raiders run on their own; at the walls each gets a few swings, then is done for the wave.
-    for (const r of S.raiders.values()) {
-      if (r.state !== 'run' && r.state !== 'attack') continue;
-      if (r.bot && !r.answered) { r.bot_ans -= dt; if (r.bot_ans <= 0) { const pick = Math.floor(S.rand() * 4); answer(S, r.id, pick); S.events.push({ e: 'answer', id: r.id, i: pick }); } }
-      if (r.state === 'run') {
-        r.d += R.runSpeed * dt;
-        if (r.d >= endD) { r.d = endD; r.reached++; r.state = 'attack'; r.swingT = 0.15; S.events.push({ e: 'reach', id: r.id }); }
-      } else if (r.state === 'attack') {
-        r.swingT -= dt;
-        if (r.swingT <= 0) {
-          r.swingT = R.strikeGap; r.swings++;
-          const hit = Math.round(R.strike + (r.hp + r.shield) * R.strikeBonus);
-          r.dmg += hit; r.struck += hit; S.tower.hp -= hit;
-          S.events.push({ e: 'strike', id: r.id, dmg: hit, n: r.swings });
-          if (S.tower.hp <= 0) return towerDown(S);
-          if (r.swings >= R.strikes) r.state = 'done';
-        }
-      }
+    // Bots answer, then place their gun somewhere sensible.
+    for (const p of S.players.values()) {
+      if (!p.bot) continue;
+      if (!p.answered && S.quizLeft > 0) { p.bot_ans -= dt; if (p.bot_ans <= 0) { const pick = S.rand() < R.botRight ? S.quiz.answer : (S.quiz.answer + 1 + Math.floor(S.rand() * 3)) % 4; answer(S, p.id, pick); S.events.push({ e: 'answer', id: p.id, i: pick }); p.bot_place = R.botPlace * (0.6 + 0.8 * S.rand()); } }
+      else if (p.pending) { p.bot_place -= dt; if (p.bot_place <= 0) { const type = GUN_TYPES[Math.floor(S.rand() * GUN_TYPES.length)]; const s = botSpot(S, p.pending.level, type); if (s) place(S, p.id, s.x, s.z, type); else p.pending = null; } }
     }
-    // Defence towers pick the raider furthest along the road in range and shoot.
-    for (const t of S.defence) {
-      const def = TOWERS[t.type], st = def.levels[t.level];
-      t.cool -= dt;
+    // Gremlins leave the spawn one at a time and march.
+    if (S.queue.length) { S.spawnT -= dt; if (S.spawnT <= 0) { S.spawnT = R.spawnGap * Math.min(1, 8 / Math.max(1, S.players.size)); spawn(S, S.queue.shift()); } }
+    for (const e of S.enemies) {
+      if (e.state === 'run') {
+        e.d += e.speed * dt;
+        if (e.d >= PATH_LEN - 0.5) { e.state = 'in'; e.t = 0; S.tower.hp -= e.bite; S.events.push({ e: 'reach', id: e.id, bite: e.bite, kind: e.kind }); if (S.tower.hp <= 0) return towerDown(S); }
+      } else e.t += dt;
+    }
+    S.enemies = S.enemies.filter(e => e.state === 'run' || e.t < 1.2);
+    // Guns pick the enemy furthest along the road in range and shoot.
+    for (const g of S.guns) {
+      const def = GUNS[g.type], st = def.levels[g.level];
+      g.cool -= dt;
       let best = null, bestD = -1;
-      for (const r of S.raiders.values()) {
-        if (r.state !== 'run' && r.state !== 'attack') continue;
-        const p = posAt(r.d, r.side); const dx = p.x - t.x, dz = p.z - t.z;
-        if (dx * dx + dz * dz <= st.range * st.range && r.d > bestD) { best = r; bestD = r.d; }
+      for (const e of S.enemies) {
+        if (e.state !== 'run') continue;
+        const p = posAt(e.d, e.side); const dx = p.x - g.x, dz = p.z - g.z;
+        if (dx * dx + dz * dz <= st.range * st.range && e.d > bestD) { best = e; bestD = e.d; }
       }
-      t.target = best ? best.id : null;
+      g.target = best ? best.id : null;
       if (best) {
         const p = posAt(best.d, best.side);
-        t.yaw = Math.atan2(p.x - t.x, p.z - t.z);
-        if (t.cool <= 0) {
-          t.cool = st.reload;
-          const dist = Math.hypot(p.x - t.x, p.z - t.z);
-          S.shots.push({ id: S.seq + ':' + t.i, tower: t.i, target: best.id, dmg: st.dmg * R.towerDmg, splash: def.splash, t: 0, dur: Math.max(0.08, dist / def.ammoSpeed), ax: p.x, az: p.z });
-          S.events.push({ e: 'shot', tower: t.i, target: best.id, dur: Math.max(0.08, dist / def.ammoSpeed), splash: def.splash });
+        g.yaw = Math.atan2(p.x - g.x, p.z - g.z);
+        if (g.cool <= 0) {
+          g.cool = st.reload;
+          const dist = Math.hypot(p.x - g.x, p.z - g.z); const dur = Math.max(0.08, dist / def.ammoSpeed);
+          S.shots.push({ gun: g, target: best.id, dmg: st.dmg, splash: def.splash, t: 0, dur, ax: p.x, az: p.z });
+          S.events.push({ e: 'shot', gun: g.i, target: best.id, dur, splash: def.splash });
         }
       }
     }
     // Shots land after their flight time.
     S.shots = S.shots.filter(s => {
       s.t += dt; if (s.t < s.dur) return true;
-      const tgt = S.raiders.get(s.target);
+      const tgt = S.enemies.find(e => e.id === s.target);
       if (s.splash > 0) {
-        const p = tgt && tgt.state !== 'wait' ? posAt(tgt.d, tgt.side) : { x: s.ax, z: s.az };
+        const p = tgt ? posAt(tgt.d, tgt.side) : { x: s.ax, z: s.az };
         S.events.push({ e: 'boom', x: p.x, z: p.z, r: s.splash });
-        for (const r of S.raiders.values()) { if (r.state !== 'run' && r.state !== 'attack') continue; const q = posAt(r.d, r.side); if (Math.hypot(q.x - p.x, q.z - p.z) <= s.splash + 0.3) damage(S, r, s.dmg); }
-      } else if (tgt) damage(S, tgt, s.dmg);
+        for (const e of S.enemies) { if (e.state !== 'run') continue; const q = posAt(e.d, e.side); if (Math.hypot(q.x - p.x, q.z - p.z) <= s.splash + 0.3) hurt(S, e, s.dmg, s.gun); }
+      } else if (tgt) hurt(S, tgt, s.dmg, s.gun);
       return false;
     });
-    if (S.phase !== 'wave') return;
-    const alive = [...S.raiders.values()].some(r => r.state === 'run' || r.state === 'attack');
-    if (!alive || S.timeLeft <= 0) endWave(S);
+    if (!S.queue.length && !S.enemies.some(e => e.state === 'run')) endWave(S);
   }
 
   // ------------------------------------------------------------ output
   function snapshot(S) {
-    const a = [];
-    for (const id of S.order) {
-      const r = S.raiders.get(id);
-      const p = posAt(r.d, r.side);
-      a.push([id, +r.d.toFixed(2), Math.round(r.hp), Math.round(r.shield), r.state, +p.x.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(2), r.struck]);
-    }
-    return { t: 's', ph: S.phase, w: S.wave, th: Math.round(S.tower.hp), tm: S.tower.max, tl: Math.ceil(S.timeLeft), a, dy: S.defence.map(t => +t.yaw.toFixed(2)) };
+    const e = S.enemies.map(e => { const p = posAt(e.d, e.side); return [e.id, e.kind, +(e.hp / e.max).toFixed(2), +p.x.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(2), e.state]; });
+    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)) };
   }
   function roster(S) {
-    return [...S.order].map(id => { const r = S.raiders.get(id); return { id, name: r.name, bot: r.bot, skin: r.skin, dmg: r.dmg, reached: r.reached, correct: r.correct, wrong: r.wrong, gone: r.gone }; });
+    return [...S.order].map(id => { const p = S.players.get(id); return { id, name: p.name, bot: p.bot, skin: p.skin, kills: p.kills, dmg: Math.round(p.dmg), correct: p.correct, wrong: p.wrong, streak: p.streak, best: p.best, guns: p.guns, gone: p.gone }; });
   }
+  function gunList(S) { return S.guns.map(g => gunInfo(S, g)); }
   function takeEvents(S) { const ev = S.events; S.events = []; return ev; }
 
-  return { COLS, ROWS, PATH, PATH_LEN, posAt, RULES, DEFENCE, TOWERS, QUIZ, create, addPlayer, removePlayer, setBots, startWave, endWave, tap, answer, step, snapshot, roster, takeEvents };
+  return { COLS, ROWS, PATH, PATH_LEN, PATH_SET, DECOR, END, posAt, freeTile, coverage, RULES, ENEMY, GUNS, GUN_TYPES, QUIZ, waveList, create, addPlayer, removePlayer, setBots, startWave, endWave, answer, place, step, snapshot, roster, gunList, takeEvents };
 });
