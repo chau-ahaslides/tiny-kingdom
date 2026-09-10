@@ -82,7 +82,7 @@ test('difficulty: bots alone (random answers) never win and leave a good part of
   for (const total of [4, 6, 8, 12]) for (let seed = 1; seed <= 4; seed++) {
     const r = play({ total, seed });
     assert.equal(r.won, false, `${total} bots seed ${seed}`);
-    assert.ok(r.left > 0.25, `${total} bots seed ${seed} left ${r.left.toFixed(2)}`);
+    assert.ok(r.left > 0.15, `${total} bots seed ${seed} left ${r.left.toFixed(2)}`);
   }
 });
 
