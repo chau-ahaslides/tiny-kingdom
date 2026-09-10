@@ -69,14 +69,14 @@
   #p-btn { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); width:min(78vw, 300px); height:96px; border-radius:48px; font-size:24px; background:var(--red); box-shadow:0 6px 0 rgba(0,0,0,.2); pointer-events:auto; user-select:none; }
   #p-btn.run { background:var(--green); } #p-btn.attack { background:var(--red); } #p-btn.off { background:#9aa7b5; }
   #p-btn:active { transform:translate(-50%, 4px); box-shadow:0 2px 0 rgba(0,0,0,.2); }
-  #p-quiz { position:absolute; left:10px; right:10px; bottom:130px; background:rgba(255,255,255,.96); border-radius:20px; padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.2); display:none; pointer-events:auto; }
+  #p-quiz { position:absolute; left:10px; right:10px; top:72px; background:rgba(255,255,255,.96); border-radius:20px; padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.2); display:none; pointer-events:auto; }
   #p-quiz.on { display:block; }
   #p-quiz .q { font-weight:700; font-size:16px; margin-bottom:8px; }
   #p-quiz .opts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   #p-quiz .opts button { background:#eef3f8; color:var(--ink); font-size:15px; padding:10px 8px; }
   #p-quiz .opts button.right { background:#d8f5e1; } #p-quiz .opts button.wrong { background:#fbd9d3; }
   #p-quiz .note { font-size:12px; opacity:.7; margin-top:6px; text-align:center; }
-  #p-msg { position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-size:30px; font-weight:700; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; width:90%; }
+  #p-msg { position:absolute; left:50%; top:30%; transform:translate(-50%,-50%); font-size:30px; font-weight:700; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; width:90%; }
   #p-msg.on { opacity:1; }
   #toast { position:fixed; left:50%; top:70px; transform:translateX(-50%); background:rgba(32,48,63,.92); color:#fff; padding:8px 16px; border-radius:14px; font-weight:600; opacity:0; transition:opacity .25s; white-space:nowrap; z-index:9; pointer-events:none; }
   #toast.show { opacity:1; }
@@ -207,7 +207,7 @@ class View {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene(); this.scene.background = new THREE.Color(0xcfe8ff); this.scene.fog = new THREE.Fog(0xcfe8ff, 20, 45);
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-    this.center = new THREE.Vector3(TR.COLS / 2 - 0.5, 0, TR.ROWS / 2 - 0.5);
+    this.center = new THREE.Vector3(TR.COLS / 2 - 0.5, 0, TR.ROWS / 2 - 0.5 + (this.opts.shiftZ || 0));
     this.cam = { theta: this.opts.theta !== undefined ? this.opts.theta : -0.55, phi: this.opts.orbit ? 1.05 : 0.95, dist: 13, fit: 13 };
     this.follow = null;
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x7fa86a, 0.85));
@@ -363,9 +363,9 @@ class View {
       const e = this.raiders.get(this.follow); const p = e && e.holder.visible ? e.holder.position : null;
       if (p) {
         const yaw = e.root.rotation.y; const back = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-        const want = p.clone().add(back.multiplyScalar(4.5)).add(new THREE.Vector3(0, 4.6, 0));
+        const want = p.clone().add(back.multiplyScalar(5.4)).add(new THREE.Vector3(0, 5.6, 0));
         this.camera.position.lerp(want, Math.min(1, 5 * dt));
-        const look = p.clone().add(new THREE.Vector3(Math.sin(yaw) * 2.2, 0.2, Math.cos(yaw) * 2.2)); this.camera.lookAt(look);
+        const look = p.clone().add(new THREE.Vector3(Math.sin(yaw) * 0.6, 0.3, Math.cos(yaw) * 0.6)); this.camera.lookAt(look);
         this.scene.fog.near = 16; this.scene.fog.far = 40;
       } else this.placeCamera();
     }
@@ -400,7 +400,7 @@ async function startHost() {
   const qr = qrcode(0, 'M'); qr.addData(joinUrl); qr.make(); $('#qr').innerHTML = qr.createImgTag(5, 8);
   host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHpPer;
   host.link = link(WS_BASE() + host.code + '?role=host', hostReceive, st => { if (st === 'down') toast('Room link lost — reconnecting…'); });
-  host.view = new View($('#gl'), { theta: -0.9, zoom: 1.2, orbit: true }); await host.view.buildMap();
+  host.view = new View($('#gl'), { theta: 0.22, zoom: 1.32, orbit: true, shiftZ: -1.1 }); await host.view.buildMap();
   renderRoster();
 }
 function hostReceive(m) {
