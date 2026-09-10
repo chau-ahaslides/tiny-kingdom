@@ -53,16 +53,16 @@
   };
 
   const QUIZ = [
-    ['What is AhaSlides?', ['A photo editor', 'An interactive presentation & audience engagement platform', 'A spreadsheet app', 'A video streaming service'], 1],
-    ['How does an audience join an AhaSlides presentation?', ['Install an app first', 'Scan the QR code or enter the code online', 'Email the presenter', 'Call a phone number'], 1],
-    ['Which of these is an AhaSlides slide type?', ['Word cloud', 'Pivot table', 'Gantt chart', 'Mail merge'], 0],
-    ['In an AhaSlides quiz, who scores the most points?', ['The slowest right answer', 'The fastest right answer', 'Everyone equally', 'The presenter'], 1],
-    ['Which AhaSlides feature picks a random participant or prize?', ['Spinner wheel', 'Heat map', 'Stopwatch', 'Mail merge'], 0],
-    ['What does the AhaSlides Q&A slide let the audience do?', ['Ask questions and upvote them', 'Edit the slides', 'Mute the presenter', 'Download the deck'], 0],
-    ['Which presentation tools can AhaSlides plug into?', ['PowerPoint and Google Slides', 'Photoshop', 'Excel only', 'Final Cut Pro'], 0],
-    ['An AhaSlides Brainstorm slide lets participants…', ['Submit ideas and vote on them', 'Draw a picture', 'Record a video', 'Book a meeting'], 0],
-    ['Which of these is NOT an AhaSlides slide type?', ['Open-ended', 'Scales', '3D render', 'Multiple choice'], 2],
-    ['When do live results appear in AhaSlides?', ['On the presenter screen in real time', 'The next day by email', 'Only after the session ends', 'Never'], 0],
+    ['What feeds the Attention Gremlin?', ['Live polls', 'A one-way monologue with 40 slides', 'A quick quiz', 'Audience Q&A'], 1],
+    ['Roughly how long can an audience stay focused before the Gremlin creeps in?', ['About 10 minutes', 'Three hours', 'A whole day', 'Forty-five seconds'], 0],
+    ["What is the Gremlin's favourite slide?", ['A word cloud', 'A live poll', 'A wall of text in 9-point font', 'A spinner wheel'], 2],
+    ['Which weapon hurts the Gremlin the most?', ['Reading the slides aloud', 'Turning the lights off', 'A smaller font', 'Asking the audience a question'], 3],
+    ['How does an audience join the fight in AhaSlides?', ['Install an app first', 'Send a fax', 'Scan the QR code or enter the code online', 'Email the presenter'], 2],
+    ['Which AhaSlides slide lets everyone shout ideas that grow on screen?', ['Gantt chart', 'Word cloud', 'Pivot table', 'Footnote'], 1],
+    ['In an AhaSlides quiz, who scores the most points?', ['The slowest right answer', 'Whoever shouts loudest', 'The presenter', 'The fastest right answer'], 3],
+    ['The room has gone quiet. What sends the Gremlin running?', ['Speak faster', 'Ask a question and show the live answers', 'Add more bullet points', 'Skip to the end'], 1],
+    ['Which of these does NOT fight the Gremlin?', ['A live Q&A', 'A quick poll', 'A spinner-wheel prize', 'A 40-slide monologue'], 3],
+    ['The Gremlin flees when the audience…', ['Checks email', 'Participates', 'Naps', 'Leaves early'], 1],
   ];
   const BOT_NAMES = ['Ava Bot', 'Bao Bot', 'Cleo Bot', 'Dex Bot', 'Eli Bot', 'Fin Bot', 'Gia Bot', 'Hugo Bot', 'Ivy Bot', 'Jax Bot', 'Kai Bot', 'Lou Bot', 'Mia Bot', 'Nox Bot', 'Oli Bot', 'Pip Bot'];
 

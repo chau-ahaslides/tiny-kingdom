@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Tower Raid</title>
+<title>Attack the Attention Gremlin Tower</title>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root { --ink:#20303f; --gold:#f3b53e; --red:#e5533d; --green:#4fbb6c; --blue:#4a8fe7; --purple:#8e6be8; }
@@ -100,8 +100,8 @@
 
 <!-- landing -->
 <div class="screen" id="s-home"><div class="center"><div class="card">
-  <h1>🏰 Tower Raid</h1>
-  <p>Everyone attacks the tower. Your raider charges the walls on their own and strikes three times if they get there. Answer the quiz right for a shield; get it wrong and you bleed. Three waves to bring it down, or the raid has failed.</p>
+  <h1>👹 Attack the Attention Gremlin Tower</h1>
+  <p>The Attention Gremlin has holed up in its tower. Everyone attacks. Your raider charges the walls on their own and strikes three times if they get there. Answer the quiz right for a shield; get it wrong and you bleed. Three waves to bring it down, or the raid has failed.</p>
   <div class="row"><button class="big" id="b-host">Host on this screen</button></div>
   <p style="margin-top:18px">Have a code?</p>
   <div class="row"><input id="in-code" placeholder="ROOM CODE" maxlength="8" style="width:170px;text-transform:uppercase"><button id="b-join">Join</button></div>
@@ -131,7 +131,7 @@
 
 <!-- host game -->
 <div class="screen" id="s-hostgame"><div class="hud">
-  <div id="h-tower"><div class="lbl"><span>🏰 The Tower</span><span id="h-hp"></span></div><div class="bar"><i id="h-hpbar" style="width:100%"></i></div></div>
+  <div id="h-tower"><div class="lbl"><span>👹 Attention Gremlin Tower</span><span id="h-hp"></span></div><div class="bar"><i id="h-hpbar" style="width:100%"></i></div></div>
   <div class="pill" id="h-left"><span>🌊 Wave <b id="h-wave">1</b> / <span id="h-waves">3</span></span><span>⏱ <b id="h-time">60</b> s</span><span id="h-alive"></span></div>
   <div id="h-quiz"><div class="q" id="hq-q"></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div><div id="hq-who"></div></div>
   <div id="h-board"></div>
@@ -148,7 +148,7 @@
 
 <!-- phone: name -->
 <div class="screen" id="s-join"><div class="center"><div class="card">
-  <h1>🏰 Tower Raid</h1><p>Room <b id="j-code"></b>. What's your name?</p>
+  <h1>👹 Attack the Attention Gremlin Tower</h1><p>Room <b id="j-code"></b>. What's your name?</p>
   <input id="in-name" placeholder="Your name" maxlength="16">
   <div class="row" style="margin-top:12px"><button class="big" id="b-go">Join the raid</button></div>
 </div></div></div>
@@ -161,7 +161,7 @@
   </div>
   <div id="p-red"></div>
   <div id="p-msg"></div>
-  <div id="p-quiz"><div class="urgent" id="pq-urgent">⚠️ Answer right to get a 🛡 shield, or you will die before reaching the tower!</div><div class="bar tbar"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note">Answer right for a 🛡 shield</div></div>
+  <div id="p-quiz"><div class="urgent" id="pq-urgent">⚠️ Answer right to get a 🛡 shield, or you will die before reaching the Gremlin Tower!</div><div class="bar tbar"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note">Answer right for a 🛡 shield</div></div>
   <div class="pill" id="p-howto">🛡 Answer right → shield · ❌ wrong → lose HP · reach the walls → 3 strikes</div>
   <button id="p-btn" class="off">Waiting…</button>
 </div></div>
@@ -503,7 +503,7 @@ function beginWave() {
   host.link.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave });
   host.link.send({ t: 'defence', list: S.defence.map(t => ({ type: t.type, x: t.x, z: t.z, level: t.level })) });
   sendRoster();
-  bigMsg('Wave ' + S.wave + ' — RAID!', 1800);
+  bigMsg('Wave ' + S.wave + ' — attack the Gremlin!', 1800);
   renderQuiz(); $('#h-quiz').classList.add('on'); $('#b-next').style.display = 'none';
   host.view.setDefence(S.defence);
   for (const r of S.raiders.values()) host.view.ensureRaider(r.id, r);
@@ -582,8 +582,8 @@ function finish(won, aborted) {
   const S = host.S; host.running = false; S.phase = 'over';
   const list = TR.roster(S).sort((a, b) => b.dmg - a.dmg);
   host.link.send({ t: 'over', won, board: list, left: Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max), aborted: !!aborted, waves: S.rules.waves });
-  $('#ov-title').textContent = won ? '💥 The tower has fallen!' : '❌ The raid has failed';
-  $('#ov-text').textContent = won ? 'The raiders broke through in wave ' + S.wave + '.' : (aborted ? 'The game was ended early.' : S.rules.waves + ' waves and the walls held, with ' + Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max) + '% of the tower still standing. The raiders have failed.');
+  $('#ov-title').textContent = won ? '💥 The Gremlin Tower has fallen!' : '❌ The raid has failed — the Gremlin wins';
+  $('#ov-text').textContent = won ? 'The raiders broke through in wave ' + S.wave + '. Attention restored!' : (aborted ? 'The game was ended early.' : S.rules.waves + ' waves and the walls held, with ' + Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max) + '% of the tower still standing. The Attention Gremlin keeps the room.');
   $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.correct ? ' 🛡×' + r.correct : ''}</td><td>${r.dmg} dmg</td></tr>`).join('');
   show('s-hostover');
 }
@@ -621,9 +621,9 @@ function playerReceive(m) {
   if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950); return; }
   if (m.t === 's') { player.snap = m; player.ph = m.ph; return; }
   if (m.t === 'over') {
-    player.ph = 'over'; $('#p-quiz').classList.remove('on'); setBtn('off', m.won ? '💥 Tower down — victory!' : '❌ Raid failed');
+    player.ph = 'over'; $('#p-quiz').classList.remove('on'); setBtn('off', m.won ? '💥 Gremlin Tower down — victory!' : '❌ Raid failed — the Gremlin wins');
     const me = m.board.find(r => r.id === player.id); const rank = m.board.findIndex(r => r.id === player.id) + 1;
-    pMsg((m.won ? '🎉 The tower has fallen!\n' : '❌ RAID FAILED\nThe tower held with ' + m.left + '% left after ' + (m.waves || 3) + ' waves.\n') + (me ? 'You dealt ' + me.dmg + ' damage (#' + rank + ')' : ''), 60000);
+    pMsg((m.won ? '🎉 The Gremlin Tower has fallen!\n' : '❌ RAID FAILED\nThe Gremlin Tower held with ' + m.left + '% left after ' + (m.waves || 3) + ' waves.\n') + (me ? 'You dealt ' + me.dmg + ' damage (#' + rank + ')' : ''), 60000);
     player.view.follow = null; player.view.placeCamera();
   }
 }
