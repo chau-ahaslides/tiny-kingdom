@@ -55,6 +55,40 @@ function weldedWith(sim, id) {
 function setMask(rec, filter) { rec.collider.setCollisionGroups(groups(rec.kind === 'glue' ? GROUP.GLUE : GROUP.PIECE, filter)); }
 /* world-space endpoints of a stick */
 export function ends(rec) { const h = rec.len / 2; return [toWorld(rec.body, v3(-h, 0, 0)), toWorld(rec.body, v3(h, 0, 0))]; }
+/* nearest free spot to where a phone wants a new piece: spiral outwards until nothing is in the way */
+function segDist(a, b, c, d) { // min distance between segments ab and cd, sampled (cheap and good enough for spawning)
+  let best = Infinity;
+  for (let i = 0; i <= 8; i++) { const t = i / 8; const p = add(a, scale(sub(b, a), t)); best = Math.min(best, dist(closestOnSeg(c, d, p), p)); const q = add(c, scale(sub(d, c), t)); best = Math.min(best, dist(closestOnSeg(a, b, q), q)); }
+  return best;
+}
+function freeSpot(sim, want, blocked) {
+  const cl = (v, m) => Math.max(-m, Math.min(m, v));
+  const inside = (x, z) => v3(cl(x, PH.TABLE.w / 2 - 4), 0, cl(z, PH.TABLE.d / 2 - 4));
+  const cands = [inside(want.x, want.z)];
+  for (const r of [4, 8, 12, 16]) for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + r; cands.push(inside(want.x + Math.cos(a) * r, want.z + Math.sin(a) * r)); }
+  for (const c of cands) if (!blocked(c)) return c;
+  return cands[0];
+}
+function spotForStick(sim, want, yaw, length) {
+  const d = v3(Math.cos(yaw), 0, -Math.sin(yaw));
+  return freeSpot(sim, want, (c) => {
+    const a = sub(c, scale(d, length / 2)), b = add(c, scale(d, length / 2));
+    for (const o of sim.bodies.values()) {
+      if (o.kind === 'stick') { const [e1, e2] = ends(o); if (segDist(a, b, e1, e2) < 1.6) return true; }
+      else if (dist(closestOnSeg(a, b, o.body.translation()), o.body.translation()) < reach(o) + 1.2) return true;
+    }
+    return false;
+  });
+}
+function spotForBlob(sim, want, r) {
+  return freeSpot(sim, want, (c) => {
+    for (const o of sim.bodies.values()) {
+      if (o.kind === 'stick') { const [e1, e2] = ends(o); if (dist(closestOnSeg(e1, e2, c), c) < r + 1.2) return true; }
+      else if (dist(o.body.translation(), c) < r + reach(o) + 0.5) return true;
+    }
+    return false;
+  });
+}
 function closestOnSeg(a, b, p) { const ab = sub(b, a); const t = Math.max(0, Math.min(1, dot(sub(p, a), ab) / Math.max(1e-6, dot(ab, ab)))); return add(a, scale(ab, t)); }
 /* ---- pins: a point spring between two bodies at a world point ---- */
 function pin(sim, A, B, worldPt, k, d) {
@@ -77,27 +111,33 @@ function addStick(sim, length, pos, quat) {
   const id = idn(sim); const rec = { id, kind: 'stick', len: length, body, collider }; sim.bodies.set(id, rec); sim.seq++;
   return rec;
 }
-export function spawnStick(sim, length = PH.STICK_LEN) {
+/* `at` = [x, z] where the phone wants it (its screen centre), `yaw` = that phone's camera angle so the stick lies across its view */
+export function spawnStick(sim, length = PH.STICK_LEN, at, yaw) {
   const cost = length / PH.STICK_LEN; // a half stick takes half a stick from the bag
   if (sim.bag < cost - 1e-6) return { ok: false, msg: sim.bag > 0 ? 'Only half a stick left — take a half.' : 'No sticks left in the bag.' };
   sim.bag = Math.round((sim.bag - cost) * 100) / 100;
-  const n = sim.bodies.size; const x = ((n * 7) % 41) - 20, z = 14 + (n % 3) * 5;
-  const b = addStick(sim, length, v3(x, PH.STICK_R + 0.2 + n * 0.02, z), quatFromEulerY(Math.PI / 2));
+  const n = sim.bodies.size;
+  const want = at ? v3(at[0], 0, at[1]) : v3(((n * 7) % 41) - 20, 0, 14 + (n % 3) * 5);
+  const a = at ? (yaw || 0) : Math.PI / 2;
+  const c = spotForStick(sim, want, a, length);
+  const b = addStick(sim, length, v3(c.x, PH.STICK_R + 0.2, c.z), quatFromEulerY(a));
   return { ok: true, id: b.id };
 }
-export function spawnMarsh(sim) {
+export function spawnMarsh(sim, at) {
   if (!sim.marshInBag) return { ok: false, msg: 'The marshmallow is already out.' };
   sim.marshInBag = false; const R = sim.R;
-  const body = sim.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(28, PH.MARSH / 2 + 0.2, 24).setLinearDamping(0.45).setAngularDamping(1.0));
+  const c = spotForBlob(sim, at ? v3(at[0], 0, at[1]) : v3(28, 0, 24), PH.MARSH / 2);
+  const body = sim.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(c.x, PH.MARSH / 2 + 0.2, c.z).setLinearDamping(0.45).setAngularDamping(1.0));
   const collider = sim.world.createCollider(R.ColliderDesc.cuboid(PH.MARSH / 2, PH.MARSH / 2, PH.MARSH / 2).setMass(PH.MARSH_MASS).setFriction(0.8).setRestitution(0).setCollisionGroups(groups(GROUP.PIECE, GROUP.TABLE | GROUP.PIECE)), body);
   const id = 'marsh'; const rec = { id, kind: 'marsh', len: PH.MARSH, body, collider, links: [] }; sim.bodies.set(id, rec); sim.seq++;
   return { ok: true, id };
 }
-export function spawnGlue(sim) {
+export function spawnGlue(sim, at) {
   if (sim.tape < PH.TAPE_COST) return { ok: false, msg: 'No tape left.' };
   sim.tape -= PH.TAPE_COST; const R = sim.R;
   const n = sim.bodies.size;
-  const body = sim.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(-22 + (n % 5) * 3, PH.GLUE_R + 0.2, 28).setLinearDamping(1.5).setAngularDamping(9));
+  const c = spotForBlob(sim, at ? v3(at[0], 0, at[1]) : v3(-22 + (n % 5) * 3, 0, 28), PH.GLUE_R);
+  const body = sim.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(c.x, PH.GLUE_R + 0.2, c.z).setLinearDamping(1.5).setAngularDamping(9));
   const collider = sim.world.createCollider(R.ColliderDesc.ball(PH.GLUE_R).setMass(PH.GLUE_MASS).setFriction(0.9).setRestitution(0).setCollisionGroups(groups(GROUP.GLUE, GROUP.TABLE)), body);
   const id = idn(sim); const rec = { id, kind: 'glue', len: PH.GLUE_R, body, collider, links: [] }; sim.bodies.set(id, rec); sim.seq++;
   return { ok: true, id };

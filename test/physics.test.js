@@ -112,3 +112,23 @@ test('step cost stays small with a full kit on the table', () => {
   console.log(`      ${ms.toFixed(3)} ms per 60 Hz tick, ${sim.bodies.size} bodies`);
   assert.ok(ms < 3, 'tick under 3 ms');
 });
+
+test('new pieces land where the phone asks, and step aside when the spot is taken', () => {
+  const sim = createSim(RAPIER);
+  const a = spawnStick(sim, PH.STICK_LEN, [10, -5], 0.7);
+  const pa = rec(sim, a.id).body.translation();
+  assert.ok(Math.abs(pa.x - 10) < 0.01 && Math.abs(pa.z + 5) < 0.01, 'first stick at the asked spot: ' + JSON.stringify(pa));
+  const [e1, e2] = ends(rec(sim, a.id)); const dir = { x: e2.x - e1.x, z: e2.z - e1.z };
+  assert.ok(Math.abs(Math.atan2(-dir.z, dir.x) - 0.7) < 0.01, 'lies at the asked yaw');
+  const b = spawnStick(sim, PH.STICK_LEN, [10, -5], 0.7);
+  const pb = rec(sim, b.id).body.translation();
+  assert.ok(Math.hypot(pb.x - 10, pb.z + 5) >= 3.9, 'second stick moved aside: ' + JSON.stringify(pb));
+  const g = spawnGlue(sim, [10, -5]);
+  const pg = rec(sim, g.id).body.translation();
+  assert.ok(Math.hypot(pg.x - 10, pg.z + 5) >= 3.9, 'glue not inside the stick: ' + JSON.stringify(pg));
+  const m = spawnMarsh(sim, [200, 200]);
+  const pm = rec(sim, m.id).body.translation();
+  assert.ok(Math.abs(pm.x) <= PH.TABLE.w / 2 - 4 && Math.abs(pm.z) <= PH.TABLE.d / 2 - 4, 'clamped onto the table: ' + JSON.stringify(pm));
+  run(sim, 1);
+  assert.ok(sim.bodies.size === 4);
+});

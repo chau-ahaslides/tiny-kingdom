@@ -82,9 +82,12 @@ export class MarshRoom {
     const reply = (text) => this.send(who && who.ws, { t: 'toast', msg: text });
     if (!who || this.phase !== 'build') return;
     let r = { ok: true };
-    if (msg.t === 'spawn') { const L = msg.len < PH.STICK_LEN * 0.75 ? PH.STICK_LEN / 2 : PH.STICK_LEN; r = spawnStick(S, L); if (r.ok) this.logLine(`${who.name} took a ${L < 20 ? 'half ' : ''}stick from the bag`); }
-    else if (msg.t === 'marsh') { r = spawnMarsh(S); if (r.ok) this.logLine(`${who.name} took out the marshmallow`); }
-    else if (msg.t === 'glue') { r = spawnGlue(S); if (r.ok) this.logLine(`${who.name} tore off a bit of tape`); }
+    // where the phone wants a new piece: the middle of its screen, clamped to the table
+    const at = Array.isArray(msg.at) && msg.at.length === 2 && msg.at.every(Number.isFinite) ? [Math.max(-PH.TABLE.w / 2, Math.min(PH.TABLE.w / 2, +msg.at[0])), Math.max(-PH.TABLE.d / 2, Math.min(PH.TABLE.d / 2, +msg.at[1]))] : null;
+    const yaw = Number.isFinite(+msg.yaw) ? +msg.yaw : 0;
+    if (msg.t === 'spawn') { const L = msg.len < PH.STICK_LEN * 0.75 ? PH.STICK_LEN / 2 : PH.STICK_LEN; r = spawnStick(S, L, at, yaw); if (r.ok) this.logLine(`${who.name} took a ${L < 20 ? 'half ' : ''}stick from the bag`); }
+    else if (msg.t === 'marsh') { r = spawnMarsh(S, at); if (r.ok) this.logLine(`${who.name} took out the marshmallow`); }
+    else if (msg.t === 'glue') { r = spawnGlue(S, at); if (r.ok) this.logLine(`${who.name} tore off a bit of tape`); }
     else if (msg.t === 'grab') { if (!Array.isArray(msg.local) || msg.local.length !== 3) return; r = grab(S, pid + ':' + msg.h, String(msg.piece), msg.local.map(Number)); }
     else if (msg.t === 'move') { if (Array.isArray(msg.p) && msg.p.length === 3) move(S, pid + ':' + msg.h, msg.p.map(Number)); return; }
     else if (msg.t === 'release') { const x = release(S, pid + ':' + msg.h); if (x.taped) { this.logLine(`${who.name} glued ${x.taped} piece${x.taped > 1 ? 's' : ''}`); reply(`Stuck to ${x.taped} piece${x.taped > 1 ? 's' : ''}`); } }
