@@ -126,7 +126,7 @@
   <div id="h-quiz"><div class="q" id="hq-q"></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div></div>
   <div id="h-board"></div>
   <div id="h-msg"></div>
-  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-abort">✕ End game</button></div>
+  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
 </div></div>
 
 <!-- host results -->
@@ -243,22 +243,28 @@ class View {
     this.fitBoard();
   }
   // Pull back and re-centre until the whole board (trees included) sits inside the view, leaving room for the HUD.
+  // Starts from the true board centre every time so nothing accumulates, and recentres by intersecting the ground plane,
+  // which is exact at any orbit angle.
   fitBoard() {
     const m = this.opts.margins || { x: 0.9, y: 0.9, yBias: 0 };
     const corners = [];
     for (const x of [-1.5, TR.COLS + 0.5]) for (const z of [-1.5, TR.ROWS + 0.5]) for (const y of [0, 1.2]) corners.push(new THREE.Vector3(x, y, z));
-    const userZoom = this.cam.fit ? this.cam.dist / this.cam.fit : 1;
-    this.cam.dist = this.cam.fit = 14;
-    for (let it = 0; it < 6; it++) {
+    const userZoom = this.cam.fit ? Math.max(0.4, Math.min(2, this.cam.dist / this.cam.fit)) : 1;
+    this.center.set(TR.COLS / 2 - 0.5, 0, TR.ROWS / 2 - 0.5);
+    this.cam.dist = 16;
+    const ray = new THREE.Raycaster(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+    for (let it = 0; it < 10; it++) {
       this.placeCamera();
       const p = corners.map(c => c.clone().project(this.camera));
+      if (p.some(v => !isFinite(v.x) || v.z > 1)) { this.cam.dist *= 1.5; continue; }      // a corner behind the camera: back off first
       const minx = Math.min(...p.map(v => v.x)), maxx = Math.max(...p.map(v => v.x)), miny = Math.min(...p.map(v => v.y)), maxy = Math.max(...p.map(v => v.y));
       const cx = (minx + maxx) / 2, cy = (miny + maxy) / 2, w = (maxx - minx) / 2, h = (maxy - miny) / 2;
-      const t = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.cam.dist;
-      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion); right.y = 0; right.normalize();
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion); fwd.y = 0; fwd.normalize();
-      this.center.add(right.multiplyScalar(cx * t * this.camera.aspect)).add(fwd.multiplyScalar((cy - m.yBias) * t / Math.sin(this.cam.phi)));
-      this.cam.dist *= Math.max(w / m.x, h / m.y);
+      // Where on the ground does the board's on-screen centre sit? Move the look-at point there (minus the HUD bias).
+      ray.setFromCamera({ x: cx, y: cy - m.yBias }, this.camera);
+      if (ray.ray.intersectPlane(ground, hit)) { this.center.x += (hit.x - this.center.x) * 0.9; this.center.z += (hit.z - this.center.z) * 0.9; }
+      const k = Math.max(w / m.x, h / m.y);
+      this.cam.dist *= Math.max(0.5, Math.min(2, k));
+      if (Math.abs(k - 1) < 0.01 && Math.abs(cx) < 0.01 && Math.abs(cy - m.yBias) < 0.01) break;
     }
     this.cam.fit = this.cam.dist; this.cam.dist *= userZoom; this.placeCamera();
   }
@@ -538,6 +544,7 @@ function hostTick() {
 }
 setInterval(hostSim, 1000 / 60);
 $('#b-next').onclick = () => { host.betweenT = 0; };
+$('#b-recenter').onclick = () => { const v = host.view; if (!v) return; v.cam.theta = 0.18; v.cam.phi = 0.78; v.cam.fit = 0; v.fitBoard(); };
 $('#b-abort').onclick = () => { if (confirm('End the game for everyone?')) finish(false, true); };
 function finish(won, aborted) {
   const S = host.S; host.running = false; S.phase = 'over';
