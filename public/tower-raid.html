@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Tower Raid</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#20303f; --gold:#f3b53e; --red:#e5533d; --green:#4fbb6c; --blue:#4a8fe7; --purple:#8e6be8; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#cfe8ff; font-family:Fredoka,system-ui,sans-serif; color:var(--ink); touch-action:none; }
+  canvas.gl { position:fixed; inset:0; display:block; }
+  .screen { position:fixed; inset:0; display:none; }
+  .screen.on { display:block; }
+  .center { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .card { background:#fff; border-radius:24px; padding:24px 28px; box-shadow:0 10px 40px rgba(0,0,0,.18); max-width:420px; width:100%; text-align:center; }
+  h1 { margin:0 0 4px; font-size:30px; } h2 { margin:0 0 8px; font-size:22px; }
+  p { margin:6px 0 14px; line-height:1.4; opacity:.85; }
+  button { font-family:inherit; font-weight:600; font-size:16px; border:0; border-radius:14px; padding:10px 18px; cursor:pointer; background:var(--blue); color:#fff; box-shadow:0 2px 0 rgba(0,0,0,.18); }
+  button:active { transform:translateY(1px); box-shadow:none; }
+  button:disabled { opacity:.45; cursor:default; }
+  button.ghost { background:#e9eef4; color:var(--ink); }
+  button.big { font-size:20px; padding:14px 26px; border-radius:18px; }
+  input { font-family:inherit; font-size:18px; padding:10px 12px; border:2px solid #d8e0ea; border-radius:12px; width:100%; text-align:center; }
+  input:focus { outline:none; border-color:var(--blue); }
+  .row { display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; }
+  .credit { font-size:11px; opacity:.55; margin-top:12px; }
+  .pill { position:absolute; background:rgba(255,255,255,.93); border-radius:14px; padding:6px 12px; font-weight:600; font-size:15px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:flex; gap:12px; align-items:center; pointer-events:auto; }
+  .hud { position:absolute; inset:0; pointer-events:none; }
+  /* host lobby */
+  #s-hostlobby .wrap { position:absolute; inset:0; display:grid; grid-template-columns:1fr 1fr; gap:24px; padding:28px; align-items:center; }
+  #s-hostlobby .card { max-width:none; }
+  #code { font-size:56px; letter-spacing:.2em; font-weight:700; margin:4px 0; }
+  #qr { display:flex; justify-content:center; margin:8px 0; } #qr img { border-radius:12px; image-rendering:pixelated; }
+  #roster { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; min-height:48px; margin:10px 0; }
+  .chip { background:#eef3f8; border-radius:999px; padding:6px 12px; font-weight:600; display:flex; align-items:center; gap:6px; }
+  .chip .dot { width:12px; height:12px; border-radius:50%; }
+  .chip.bot { opacity:.7; }
+  .stepper { display:inline-flex; align-items:center; gap:10px; background:#eef3f8; border-radius:14px; padding:6px 10px; }
+  .stepper b { min-width:34px; font-size:22px; }
+  .stepper button { padding:4px 12px; font-size:20px; background:#fff; color:var(--ink); }
+  .hint { font-size:13px; opacity:.7; }
+  /* host game hud */
+  #h-tower { position:absolute; top:14px; left:50%; transform:translateX(-50%); width:min(560px, 60vw); background:rgba(255,255,255,.93); border-radius:18px; padding:8px 14px 10px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
+  .bar { height:16px; background:#e3e9f0; border-radius:8px; overflow:hidden; position:relative; }
+  .bar i { position:absolute; left:0; top:0; bottom:0; background:var(--red); border-radius:8px; transition:width .25s; }
+  .bar i.ok { background:var(--green); }
+  .bar i.shield { background:var(--blue); opacity:.8; }
+  #h-tower .lbl { display:flex; justify-content:space-between; font-weight:600; font-size:14px; margin-bottom:4px; }
+  #h-left { top:14px; left:14px; flex-direction:column; align-items:flex-start; gap:4px; }
+  #h-quiz { position:absolute; right:14px; top:14px; width:min(340px, 34vw); background:rgba(255,255,255,.95); border-radius:18px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:none; }
+  #h-quiz.on { display:block; }
+  #h-quiz .q { font-weight:700; font-size:17px; margin-bottom:8px; }
+  #h-quiz .opt { background:#eef3f8; border-radius:10px; padding:6px 10px; margin:4px 0; font-weight:600; font-size:14px; display:flex; justify-content:space-between; }
+  #h-quiz .opt.right { background:#d8f5e1; }
+  #h-board { position:absolute; left:14px; bottom:14px; background:rgba(255,255,255,.93); border-radius:18px; padding:10px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); min-width:220px; max-height:46vh; overflow:auto; }
+  #h-board .r { display:flex; justify-content:space-between; gap:12px; font-weight:600; font-size:14px; padding:3px 0; }
+  #h-board .r .n { display:flex; align-items:center; gap:6px; }
+  #h-board .r.dead { opacity:.45; }
+  #h-msg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:min(9vw,64px); font-weight:700; color:#fff; text-shadow:0 4px 18px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; }
+  #h-msg.on { opacity:1; }
+  #h-ctl { right:14px; bottom:14px; }
+  /* phone */
+  #p-top { position:absolute; left:10px; right:10px; top:10px; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+  #p-top .pill { position:static; width:100%; justify-content:space-between; font-size:13px; padding:6px 10px; }
+  #p-top .bar { height:10px; flex:1; }
+  #p-btn { position:absolute; left:50%; bottom:20px; transform:translateX(-50%); width:min(78vw, 300px); height:96px; border-radius:48px; font-size:24px; background:var(--red); box-shadow:0 6px 0 rgba(0,0,0,.2); pointer-events:auto; user-select:none; }
+  #p-btn.run { background:var(--green); } #p-btn.attack { background:var(--red); } #p-btn.off { background:#9aa7b5; }
+  #p-btn:active { transform:translate(-50%, 4px); box-shadow:0 2px 0 rgba(0,0,0,.2); }
+  #p-quiz { position:absolute; left:10px; right:10px; bottom:130px; background:rgba(255,255,255,.96); border-radius:20px; padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.2); display:none; pointer-events:auto; }
+  #p-quiz.on { display:block; }
+  #p-quiz .q { font-weight:700; font-size:16px; margin-bottom:8px; }
+  #p-quiz .opts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  #p-quiz .opts button { background:#eef3f8; color:var(--ink); font-size:15px; padding:10px 8px; }
+  #p-quiz .opts button.right { background:#d8f5e1; } #p-quiz .opts button.wrong { background:#fbd9d3; }
+  #p-quiz .note { font-size:12px; opacity:.7; margin-top:6px; text-align:center; }
+  #p-msg { position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); font-size:30px; font-weight:700; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; width:90%; }
+  #p-msg.on { opacity:1; }
+  #toast { position:fixed; left:50%; top:70px; transform:translateX(-50%); background:rgba(32,48,63,.92); color:#fff; padding:8px 16px; border-radius:14px; font-weight:600; opacity:0; transition:opacity .25s; white-space:nowrap; z-index:9; pointer-events:none; }
+  #toast.show { opacity:1; }
+  table.res { width:100%; border-collapse:collapse; font-size:15px; } table.res td { padding:4px 6px; text-align:left; } table.res td:last-child { text-align:right; font-weight:700; }
+  @media (max-width:800px) { #s-hostlobby .wrap { grid-template-columns:1fr; overflow:auto; align-items:start; } #h-board { display:none; } #h-quiz { width:44vw; } }
+</style>
+</head>
+<body>
+<canvas class="gl" id="gl"></canvas>
+<div id="toast"></div>
+
+<!-- landing -->
+<div class="screen" id="s-home"><div class="center"><div class="card">
+  <h1>🏰 Tower Raid</h1>
+  <p>Everyone attacks the tower. Mash to run, answer the quiz for a shield, and break the walls before five waves are up.</p>
+  <div class="row"><button class="big" id="b-host">Host on this screen</button></div>
+  <p style="margin-top:18px">Have a code?</p>
+  <div class="row"><input id="in-code" placeholder="ROOM CODE" maxlength="8" style="width:170px;text-transform:uppercase"><button id="b-join">Join</button></div>
+  <div class="credit">Models by Kenney (CC0): Tower Defense Kit, Mini Characters, Mini Dungeon</div>
+</div></div></div>
+
+<!-- host lobby -->
+<div class="screen" id="s-hostlobby"><div class="wrap">
+  <div class="card">
+    <h2>Scan to join</h2>
+    <div id="qr"></div>
+    <div id="code">····</div>
+    <div class="hint" id="joinurl"></div>
+  </div>
+  <div class="card">
+    <h2>Raiders <span id="count" style="opacity:.6"></span></h2>
+    <div id="roster"><span class="hint">Waiting for phones…</span></div>
+    <div class="row" style="margin:12px 0">
+      <span style="font-weight:600">Party size</span>
+      <span class="stepper"><button id="b-less">−</button><b id="total">6</b><button id="b-more">+</button></span>
+      <span class="hint">bots fill the empty seats</span>
+    </div>
+    <div class="row"><button class="big" id="b-start">⚔️ Start the raid</button></div>
+    <p class="hint" style="margin-top:12px">5 waves · 60 s each · the tower gets <span id="hpnote">220</span> HP per raider</p>
+  </div>
+</div></div>
+
+<!-- host game -->
+<div class="screen" id="s-hostgame"><div class="hud">
+  <div id="h-tower"><div class="lbl"><span>🏰 The Tower</span><span id="h-hp"></span></div><div class="bar"><i id="h-hpbar" style="width:100%"></i></div></div>
+  <div class="pill" id="h-left"><span>🌊 Wave <b id="h-wave">1</b> / 5</span><span>⏱ <b id="h-time">60</b> s</span><span id="h-alive"></span></div>
+  <div id="h-quiz"><div class="q" id="hq-q"></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div></div>
+  <div id="h-board"></div>
+  <div id="h-msg"></div>
+  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-abort">✕ End game</button></div>
+</div></div>
+
+<!-- host results -->
+<div class="screen" id="s-hostover"><div class="center"><div class="card" style="max-width:520px">
+  <h1 id="ov-title"></h1><p id="ov-text"></p>
+  <table class="res" id="ov-table"></table>
+  <div class="row" style="margin-top:14px"><button class="big" id="b-again">Play again</button></div>
+</div></div></div>
+
+<!-- phone: name -->
+<div class="screen" id="s-join"><div class="center"><div class="card">
+  <h1>🏰 Tower Raid</h1><p>Room <b id="j-code"></b>. What's your name?</p>
+  <input id="in-name" placeholder="Your name" maxlength="16">
+  <div class="row" style="margin-top:12px"><button class="big" id="b-go">Join the raid</button></div>
+</div></div></div>
+
+<!-- phone: game -->
+<div class="screen" id="s-play"><div class="hud">
+  <div id="p-top">
+    <div class="pill"><span id="p-name">You</span><span>❤️</span><div class="bar"><i class="ok" id="p-hp" style="width:100%"></i></div><span id="p-shield">🛡 0</span></div>
+    <div class="pill"><span>🏰</span><div class="bar"><i id="p-thp" style="width:100%"></i></div><span id="p-tpct">100%</span><span>🌊 <b id="p-wave">-</b></span><span>⏱ <b id="p-time">-</b></span></div>
+  </div>
+  <div id="p-msg"></div>
+  <div id="p-quiz"><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note">Answer right for a 🛡 shield</div></div>
+  <button id="p-btn" class="off">Waiting…</button>
+</div></div>
+
+<script src="/vendor/three.min.js"></script>
+<script src="/vendor/GLTFLoader.js"></script>
+<script src="/vendor/qr.js"></script>
+<script src="/js/tr-sim.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const show = id => { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); };
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
+const ASSETS = '/assets/td/';
+const COLORS = [0xe5533d, 0x4a8fe7, 0x4fbb6c, 0xf3b53e, 0x8e6be8, 0xef8fb5, 0x2bb3c0, 0xa46a3c, 0x6c7a89, 0xd94fd0, 0x9ccc3d, 0xff7a3d];
+const SKINS = ['male-a', 'female-a', 'male-b', 'female-b', 'male-c', 'female-c', 'male-d', 'female-d', 'male-e', 'female-e', 'male-f', 'female-f'];
+const BOT_SKIN = 'dungeon/character-orc';
+
+/* ===================== LOADER ===================== */
+const loader = new THREE.GLTFLoader();
+const cache = new Map();
+function loadGLB(name) {
+  if (!cache.has(name)) cache.set(name, new Promise((res, rej) => loader.load(ASSETS + name + '.glb', res, undefined, rej)));
+  return cache.get(name);
+}
+function cloneSkinned(source) {
+  const clone = source.clone(true);
+  const skinned = [], cloneBones = new Map();
+  clone.traverse(n => { if (n.isBone) cloneBones.set(n.name, n); if (n.isSkinnedMesh) skinned.push(n); });
+  for (const mesh of skinned) mesh.bind(new THREE.Skeleton(mesh.skeleton.bones.map(b => cloneBones.get(b.name) || b), mesh.skeleton.boneInverses), mesh.bindMatrix);
+  return clone;
+}
+const fixMaterials = root => root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material && o.material.map) o.material.map.encoding = THREE.sRGBEncoding; } });
+
+/* ===================== VIEW (the 3D board; the big screen and the phones both use it) ===================== */
+const OPENINGS = { 'tile-straight': [[0, 1], [0, -1]], 'tile-corner-square': [[1, 0], [0, 1]], 'tile-end': [[0, 1]], 'tile-spawn-end': [[0, 1]] };
+const rotXZ = ([x, z], yaw) => [Math.round(x * Math.cos(yaw) + z * Math.sin(yaw)), Math.round(-x * Math.sin(yaw) + z * Math.cos(yaw))];
+function yawFor(name, wanted) {
+  const key = v => v.map(d => d.join(',')).sort().join('|'); const want = key(wanted);
+  for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) if (key(OPENINGS[name].map(o => rotXZ(o, yaw))) === want) return yaw;
+  return 0;
+}
+const TOWER_PARTS = { 0: ['tower-round-bottom-a'], 1: ['tower-round-bottom-b', 'tower-round-middle-a'], 2: ['tower-round-bottom-c', 'tower-round-middle-b', 'tower-round-top-a'] };
+const WEAPON = { ballista: 'weapon-ballista', cannon: 'weapon-cannon', turret: 'weapon-turret' };
+const AMMO = { ballista: 'weapon-ammo-arrow', cannon: 'weapon-ammo-cannonball', turret: 'weapon-ammo-bullet' };
+
+class View {
+  constructor(canvas, opts) {
+    this.opts = opts || {};
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.outputEncoding = THREE.sRGBEncoding;
+    this.renderer.shadowMap.enabled = !this.opts.lite;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.scene = new THREE.Scene(); this.scene.background = new THREE.Color(0xcfe8ff); this.scene.fog = new THREE.Fog(0xcfe8ff, 20, 45);
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+    this.center = new THREE.Vector3(TR.COLS / 2 - 0.5, 0, TR.ROWS / 2 - 0.5);
+    this.cam = { theta: this.opts.theta !== undefined ? this.opts.theta : -0.55, phi: 0.95, dist: 13, fit: 13 };
+    this.follow = null;
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x7fa86a, 0.85));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.95); sun.position.set(6, 12, 4); sun.castShadow = !this.opts.lite;
+    sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 }); sun.shadow.bias = -0.0005;
+    this.scene.add(sun, sun.target); sun.target.position.copy(this.center);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({ color: 0x6fcf8a })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; this.scene.add(ground);
+    this.raiders = new Map(); this.defence = []; this.shots = []; this.fx = []; this.clock = new THREE.Clock();
+    this.hpGeo = new THREE.PlaneGeometry(0.6, 0.07);
+    addEventListener('resize', () => this.resize()); this.resize();
+    this.placeCamera();
+  }
+  resize() {
+    const w = innerWidth, h = innerHeight; this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    const portrait = this.camera.aspect < 1;
+    const fit = portrait ? 6.8 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.1 : 13 * Math.max(1, 1.7 / this.camera.aspect);
+    if (portrait !== this.cam.portrait) { this.cam.portrait = portrait; this.cam.theta = portrait ? Math.PI / 2 - 0.35 : (this.opts.theta !== undefined ? this.opts.theta : -0.55); }
+    this.cam.dist = this.cam.dist / this.cam.fit * fit; this.cam.fit = fit; this.placeCamera();
+  }
+  placeCamera() {
+    const c = this.cam, C = this.center;
+    this.camera.position.set(C.x + c.dist * Math.cos(c.phi) * Math.sin(c.theta), C.y + c.dist * Math.sin(c.phi), C.z + c.dist * Math.cos(c.phi) * Math.cos(c.theta));
+    this.camera.lookAt(C.x, 0.2, C.z);
+    this.scene.fog.near = c.dist * 1.4; this.scene.fog.far = c.dist * 3.2;
+  }
+  async inst(name, x, z, yaw = 0, y = 0, parent) { const g = await loadGLB('kit/' + name); const o = g.scene.clone(true); fixMaterials(o); o.position.set(x, y, z); o.rotation.y = yaw; (parent || this.scene).add(o); return o; }
+  async buildMap() {
+    const PATH = TR.PATH; const pathSet = new Set(PATH.map(([x, z]) => x + ',' + z));
+    await Promise.all(['tile', 'tile-straight', 'tile-corner-square', 'tile-spawn-end', 'tile-end', 'tile-tree', 'tile-tree-double', 'tile-rock', 'detail-rocks', 'tower-square-bottom-a', 'tower-square-middle-a', 'tower-square-top-a', 'tower-square-roof-a', 'tower-round-base', 'tile-crystal'].map(n => loadGLB('kit/' + n)));
+    let seed = 42; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const g = new THREE.Group(); this.scene.add(g);
+    for (let x = 0; x < TR.COLS; x++) for (let z = 0; z < TR.ROWS; z++) {
+      if (pathSet.has(x + ',' + z)) continue;
+      const r = rnd(); let name = 'tile';
+      if (r < 0.07) name = 'tile-tree'; else if (r < 0.11) name = 'tile-tree-double'; else if (r < 0.14) name = 'tile-rock';
+      if (TR.DEFENCE[TR.DEFENCE.length - 1].some(t => t[1] === x && t[2] === z)) name = 'tile';
+      await this.inst(name, x, z, Math.floor(rnd() * 4) * Math.PI / 2, 0, g);
+    }
+    for (let i = 0; i < PATH.length; i++) {
+      const [x, z] = PATH[i]; const prev = PATH[i - 1], next = PATH[i + 1]; const dirTo = (a, b) => [b[0] - a[0], b[1] - a[1]];
+      let name, yaw;
+      if (!prev) { name = 'tile-spawn-end'; yaw = yawFor(name, [dirTo([x, z], next)]); }
+      else if (!next) { name = 'tile-end'; const a = dirTo(prev, [x, z]); yaw = yawFor(name, [[-a[0], -a[1]]]); }
+      else { const a = dirTo(prev, [x, z]), b = dirTo([x, z], next); name = (a[0] === b[0] && a[1] === b[1]) ? 'tile-straight' : 'tile-corner-square'; yaw = yawFor(name, [[-a[0], -a[1]], b]); }
+      await this.inst(name, x, z, yaw, 0, g);
+    }
+    // The Tower: a tall square keep on the last road tile, with the crystal on top.
+    const end = PATH[PATH.length - 1]; const keep = new THREE.Group(); keep.position.set(end[0], 0.2, end[1]); keep.scale.setScalar(1.15); this.scene.add(keep); this.keep = keep;
+    let y = 0;
+    for (const p of ['tower-square-bottom-a', 'tower-square-middle-a', 'tower-square-middle-a', 'tower-square-top-a', 'tower-square-roof-a']) { const o = await this.inst(p, 0, 0, Math.PI / 2, y, keep); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y / 1.15 - 0.02; }
+    const c = await this.inst('tile-crystal', 0, 0, 0, y - 0.15, keep); c.scale.setScalar(0.7);
+    for (let x = -1; x <= TR.COLS; x++) for (const z of [-1, TR.ROWS]) if (rnd() < 0.7) await this.inst(rnd() < .5 ? 'tile-tree' : 'tile-tree-double', x, z, rnd() * 6, 0, g);
+    for (let z = 0; z < TR.ROWS; z++) for (const x of [-1, TR.COLS]) if (rnd() < 0.7 && !(x === -1 && z === PATH[0][1])) await this.inst(rnd() < .5 ? 'tile-tree' : 'tile-tree-double', x, z, rnd() * 6, 0, g);
+  }
+  async setDefence(list) {
+    const gen = this.defGen = (this.defGen || 0) + 1;
+    for (const t of this.defence) this.scene.remove(t.group); this.defence = [];
+    for (const d of list) {
+      if (gen !== this.defGen) return;
+      const group = new THREE.Group(); group.position.set(d.x, 0.2, d.z); this.scene.add(group);
+      await this.inst('tower-round-base', 0, 0, 0, -0.2, group);
+      let y = 0;
+      for (const name of TOWER_PARTS[d.level]) { const o = await this.inst(name, 0, 0, 0, y, group); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y - 0.02; }
+      const w = await this.inst(WEAPON[d.type], 0, 0, 0, y + (d.type === 'cannon' ? 0.15 : 0.02), group);
+      this.defence.push({ group, weapon: w, muzzleY: 0.2 + w.position.y + 0.3, type: d.type, x: d.x, z: d.z });
+    }
+  }
+  async ensureRaider(id, info) {
+    if (this.raiders.has(id)) return this.raiders.get(id);
+    const entry = { id, holder: new THREE.Group(), mixer: null, clips: {}, cur: null, hp: 1, sh: 0, state: 'wait', root: null, label: null };
+    this.raiders.set(id, entry); this.scene.add(entry.holder); entry.holder.visible = false;
+    const model = info.bot ? BOT_SKIN : 'mini/character-' + SKINS[info.skin % SKINS.length];
+    const g = await loadGLB(model);
+    const root = cloneSkinned(g.scene); fixMaterials(root); entry.root = root; entry.holder.add(root);
+    entry.mixer = new THREE.AnimationMixer(root);
+    for (const c of g.animations) entry.clips[c.name] = entry.mixer.clipAction(c);
+    entry.clips.die.setLoop(THREE.LoopOnce); entry.clips.die.clampWhenFinished = true;
+    this.play(entry, 'idle');
+    // HP + shield bar and a name tag.
+    const bar = new THREE.Group(); bar.position.y = 0.95; bar.renderOrder = 10;
+    const bg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x20303f, depthTest: false, transparent: true, opacity: .8 }));
+    const fg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x4fbb6c, depthTest: false })); fg.position.z = 0.001;
+    const sh = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x4a8fe7, depthTest: false, transparent: true, opacity: .9 })); sh.position.z = 0.002; sh.position.y = 0.075; sh.scale.y = 0.6;
+    bar.add(bg, fg, sh); entry.holder.add(bar); entry.bar = bar; entry.fg = fg; entry.sh = sh;
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64; const cx = cv.getContext('2d');
+    cx.font = '600 34px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.fillStyle = '#20303f'; cx.fillText(info.name.slice(0, 14), 128, 44);
+    cx.lineWidth = 0; const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); label.scale.set(1.1, 0.275, 1); label.position.y = 1.16; label.renderOrder = 11; entry.holder.add(label); entry.label = label;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.3, 32), new THREE.MeshBasicMaterial({ color: COLORS[info.skin % COLORS.length], side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; entry.holder.add(ring);
+    const shield = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 14), new THREE.MeshBasicMaterial({ color: 0x7fb6ff, transparent: true, opacity: 0.28, depthWrite: false })); shield.position.y = 0.42; shield.visible = false; entry.holder.add(shield); entry.shield = shield;
+    return entry;
+  }
+  play(e, name) {
+    const a = e.clips[name]; if (!a || e.cur === a) return;
+    if (e.cur) e.cur.fadeOut(0.15);
+    a.reset().fadeIn(0.15).play(); e.cur = a;
+  }
+  // a = [id, d, hp, shield, state, x, z, yaw, tapping]
+  applyRaider(a, info, maxHp, maxShield) {
+    const e = this.raiders.get(a[0]); if (!e || !e.root) return;
+    const [, , hp, sh, state, x, z, yaw, tapping] = a;
+    const wasState = e.state; e.state = state;
+    e.holder.visible = state !== 'wait';
+    e.holder.position.set(x, 0, z);
+    if (state === 'run' || state === 'attack') { let diff = yaw - e.root.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); e.root.rotation.y += diff * 0.35; }
+    if (state === 'run') this.play(e, tapping ? 'sprint' : 'walk');
+    else if (state === 'attack') this.play(e, 'attack-melee-right');
+    else if (state === 'dead') { if (wasState !== 'dead') { this.play(e, 'die'); this.coin(e.holder.position); } }
+    else this.play(e, 'idle');
+    e.bar.visible = state === 'run' || state === 'attack';
+    const f = Math.max(0, hp / maxHp); e.fg.scale.x = f; e.fg.position.x = -(1 - f) * 0.3; e.fg.material.color.set(f > .5 ? 0x4fbb6c : f > .25 ? 0xf3b53e : 0xe5533d);
+    const s = Math.max(0, sh / maxShield); e.sh.visible = s > 0; e.sh.scale.x = s; e.sh.position.x = -(1 - s) * 0.3;
+    e.shield.visible = s > 0 && e.bar.visible;
+    if (a[0] === this.hideSelf) { e.bar.visible = false; e.label.visible = false; }   // the phone's own raider: the HUD already shows these
+  }
+  async shot(fromTower, targetId, dur, splash) {
+    const t = this.defence[fromTower]; const tgt = this.raiders.get(targetId); if (!t || !tgt) return;
+    const g = await loadGLB('kit/' + AMMO[t.type]); const m = g.scene.clone(true); m.scale.setScalar(t.type === 'turret' ? 1.6 : 1.1);
+    const from = new THREE.Vector3(t.x, t.muzzleY, t.z); m.position.copy(from); this.scene.add(m);
+    this.shots.push({ m, from, tgt, t: 0, dur, arc: splash > 0 });
+    t.weapon.position.y -= 0.05; setTimeout(() => t.weapon.position.y += 0.05, 90);
+  }
+  boom(x, z, r) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: .8 })); m.position.set(x, 0.4, z); m.scale.setScalar(.1); this.scene.add(m); this.fx.push({ m, t: 0, life: .35, r: r + .2, kind: 'boom' }); }
+  async coin(pos) { const g = await loadGLB('dungeon/coin'); const m = g.scene.clone(true); m.position.copy(pos).setY(0.6); this.scene.add(m); this.fx.push({ m, t: 0, life: .8, kind: 'coin' }); }
+  hitKeep() { this.keepFlash = 0.25; }
+  frame(dt) {
+    for (const e of this.raiders.values()) if (e.mixer && e.holder.visible) { e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion); }
+    for (let i = 0; i < this.defence.length; i++) { const t = this.defence[i]; const y = this.defYaw ? this.defYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); } }
+    this.shots = this.shots.filter(s => {
+      s.t += dt / s.dur; if (s.t >= 1) { this.scene.remove(s.m); return false; }
+      const aim = s.tgt.holder.position.clone().setY(0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
+    });
+    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
+    if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.PATH[TR.PATH.length - 1][0] + (Math.random() - .5) * .06; } else this.keep.position.x = TR.PATH[TR.PATH.length - 1][0]; }
+    if (this.follow) {
+      // Third-person: behind and above the raider, looking down the road.
+      const e = this.raiders.get(this.follow); const p = e && e.holder.visible ? e.holder.position : null;
+      if (p) {
+        const yaw = e.root.rotation.y; const back = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+        const want = p.clone().add(back.multiplyScalar(3.0)).add(new THREE.Vector3(0, 2.2, 0));
+        this.camera.position.lerp(want, Math.min(1, 6 * dt));
+        const look = p.clone().add(new THREE.Vector3(Math.sin(yaw) * 1.8, 0.4, Math.cos(yaw) * 1.8)); this.camera.lookAt(look);
+        this.scene.fog.near = 12; this.scene.fog.far = 30;
+      } else this.placeCamera();
+    }
+    this.renderer.render(this.scene, this.camera);
+  }
+}
+
+/* ===================== ROOM LINK ===================== */
+const WS_BASE = () => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/';
+function link(url, onMsg, onState) {
+  let ws = null, retries = 0, closed = false;
+  const connect = () => {
+    const me = ws = new WebSocket(url);
+    me.onopen = () => { retries = 0; if (onState) onState('up'); };
+    me.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMsg(m); };
+    me.onclose = () => { if (me !== ws || closed) return; retries++; if (onState) onState('down'); setTimeout(() => { if (me === ws && !closed) connect(); }, Math.min(5000, 800 * retries)); };
+  };
+  connect();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && ws && ws.readyState > 1 && !closed) connect(); });
+  setInterval(() => { if (ws && ws.readyState === 1) { try { ws.send('{"t":"ping"}'); } catch (e) {} } }, 20000);
+  return { send: (m) => { if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(m)); } catch (e) {} } }, close: () => { closed = true; try { ws.close(); } catch (e) {} } };
+}
+async function openRoom() { const res = await fetch('/api/room', { method: 'POST' }); return (await res.json()).code; }
+
+/* ===================== HOST (big screen: runs the rules, streams the state) ===================== */
+const host = { link: null, code: '', view: null, S: null, total: 6, names: new Map(), lastSnap: 0, betweenT: 0, running: false, answers: new Map() };
+async function startHost() {
+  show('s-hostlobby');
+  try { host.code = await openRoom(); } catch (e) { toast('Could not open a room — this page has to be served by the game server.'); return; }
+  const joinUrl = location.origin + '/tr/' + host.code;
+  $('#code').textContent = host.code.split('').join(' '); $('#joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
+  const qr = qrcode(0, 'M'); qr.addData(joinUrl); qr.make(); $('#qr').innerHTML = qr.createImgTag(5, 8);
+  host.S = TR.create(); TR.setBots(host.S, host.total); $('#hpnote').textContent = TR.RULES.towerHpPer;
+  host.link = link(WS_BASE() + host.code + '?role=host', hostReceive, st => { if (st === 'down') toast('Room link lost — reconnecting…'); });
+  host.view = new View($('#gl'), { theta: -2.3 }); await host.view.buildMap();
+  renderRoster();
+}
+function hostReceive(m) {
+  const S = host.S; if (!S) return;
+  if (m.t === 'join') {
+    const r = TR.addPlayer(S, m.id, m.name, false); if (S.phase === 'lobby') TR.setBots(S, host.total);
+    host.link.send({ to: m.id, t: 'hello', name: r.name, skin: r.skin, ph: S.phase, wave: S.wave, rules: { hp: S.rules.raiderHp, shield: S.rules.shield } });
+    if (S.phase === 'wave' && S.quiz) host.link.send({ to: m.id, t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, done: r.answered });
+    host.link.send({ to: m.id, t: 'defence', list: S.defence.map(t => ({ type: t.type, x: t.x, z: t.z, level: t.level })) });
+    sendRoster(); renderRoster(); if (!m.rejoin) toast(r.name + ' joined');
+    return;
+  }
+  if (m.t === 'leave') { TR.removePlayer(S, m.id); if (S.phase === 'lobby') TR.setBots(S, host.total); sendRoster(); renderRoster(); return; }
+  if (m.t === 'tap') { TR.tap(S, m.id, m.n); return; }
+  if (m.t === 'ans') {
+    const res = TR.answer(S, m.id, m.i);
+    host.link.send({ to: m.id, t: 'ans', res, correct: S.quiz ? S.quiz.answer : -1, shield: S.rules.shield });
+    if (res === 'right' || res === 'wrong') { host.answers.set(m.id, m.i); renderQuiz(); }
+  }
+}
+function sendRoster() { if (host.link) host.link.send({ t: 'roster', list: TR.roster(host.S), tmax: host.S.tower.max }); }
+function renderRoster() {
+  const list = TR.roster(host.S);
+  $('#count').textContent = '(' + list.length + ')';
+  $('#roster').innerHTML = list.length ? list.map(r => `<span class="chip ${r.bot ? 'bot' : ''}"><span class="dot" style="background:#${COLORS[r.skin % COLORS.length].toString(16).padStart(6, '0')}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}</span>`).join('') : '<span class="hint">Waiting for phones…</span>';
+  $('#total').textContent = host.total;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+$('#b-less').onclick = () => { host.total = Math.max(1, host.total - 1); TR.setBots(host.S, host.total); renderRoster(); sendRoster(); };
+$('#b-more').onclick = () => { host.total = Math.min(16, host.total + 1); TR.setBots(host.S, host.total); renderRoster(); sendRoster(); };
+$('#b-start').onclick = async () => {
+  const S = host.S; if (!S) return;
+  if (![...S.raiders.values()].some(r => !r.bot) && !confirm('No phones have joined. Start with bots only?')) return;
+  $('#b-start').disabled = true; $('#b-start').textContent = 'Loading…';
+  try { await preload(); } catch (e) {}
+  for (const r of S.raiders.values()) await host.view.ensureRaider(r.id, r);
+  show('s-hostgame'); host.running = true;
+  beginWave();
+}
+function beginWave() {
+  const S = host.S;
+  host.answers.clear();
+  TR.startWave(S);
+  // Phones hear about the wave straight away; the models for towers and raiders load in the background.
+  host.link.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave });
+  host.link.send({ t: 'defence', list: S.defence.map(t => ({ type: t.type, x: t.x, z: t.z, level: t.level })) });
+  sendRoster();
+  bigMsg('Wave ' + S.wave + ' — RAID!', 1800);
+  renderQuiz(); $('#h-quiz').classList.add('on'); $('#b-next').style.display = 'none';
+  host.view.setDefence(S.defence);
+  for (const r of S.raiders.values()) host.view.ensureRaider(r.id, r);
+}
+function preload() {
+  const names = new Set(['dungeon/coin']);
+  for (const wave of TR.DEFENCE) for (const [type, , , level] of wave) { names.add('kit/' + WEAPON[type]); names.add('kit/' + AMMO[type]); for (const p of TOWER_PARTS[level]) names.add('kit/' + p); }
+  for (const r of host.S.raiders.values()) names.add(r.bot ? BOT_SKIN : 'mini/character-' + SKINS[r.skin % SKINS.length]);
+  return Promise.all([...names].map(loadGLB));
+}
+function renderQuiz() {
+  const S = host.S; if (!S.quiz) return;
+  $('#hq-q').textContent = '❓ ' + S.quiz.q;
+  const counts = [0, 0, 0, 0]; for (const i of host.answers.values()) counts[i]++;
+  const reveal = S.phase !== 'wave';
+  $('#hq-opts').innerHTML = S.quiz.opts.map((o, i) => `<div class="opt ${reveal && i === S.quiz.answer ? 'right' : ''}"><span>${'ABCD'[i]}. ${esc(o)}</span><span>${counts[i] || ''}</span></div>`).join('');
+  const humans = [...S.raiders.values()].filter(r => !r.bot && !r.gone).length;
+  $('#hq-note').textContent = reveal ? 'Answer: ' + S.quiz.opts[S.quiz.answer] : host.answers.size + ' of ' + humans + ' phones answered · right answer = 🛡 shield';
+}
+function bigMsg(text, ms) { const el = $('#h-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
+function renderBoard() {
+  const S = host.S; const list = TR.roster(S).map(r => ({ ...r, state: S.raiders.get(r.id).state })).sort((a, b) => b.dmg - a.dmg);
+  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Damage dealt</div>' + list.map(r => `<div class="r ${r.state === 'dead' ? 'dead' : ''}"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:#${COLORS[r.skin % COLORS.length].toString(16).padStart(6, '0')}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.correct ? ' 🛡' : ''}</span><span>${r.dmg}</span></div>`).join('');
+}
+// The rules tick on a timer so a hidden tab keeps the game going in real time; rendering stays on the frame callback.
+function hostSim() {
+  const S = host.S, view = host.view; if (!S || !view) return;
+  const now = performance.now(); let elapsed = Math.min(2, (now - (host.simT || now)) / 1000); host.simT = now;
+  if (host.running && S.phase === 'wave') {
+    while (elapsed > 0) { const dt = Math.min(1 / 60, elapsed); elapsed -= dt; TR.step(S, dt); if (S.phase !== 'wave') break; }
+    for (const ev of TR.takeEvents(S)) {
+      if (ev.e === 'shot') view.shot(ev.tower, ev.target, ev.dur, ev.splash);
+      else if (ev.e === 'boom') view.boom(ev.x, ev.z, ev.r);
+      else if (ev.e === 'towerhit') view.hitKeep();
+      else if (ev.e === 'reach') host.link.send({ to: ev.id, t: 'msg', m: 'At the walls — TAP to attack!' });
+      else if (ev.e === 'shield') host.link.send({ to: ev.id, t: 'msg', m: '🛡 Shield up!' });
+      else if (ev.e === 'die') host.link.send({ to: ev.id, t: 'msg', m: 'Down! Back next wave.' });
+      else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = 8; bigMsg('Wave ' + S.wave + ' over — ' + Math.round(100 * S.tower.hp / S.tower.max) + '% of the tower left', 2500); sendRoster(); }
+      else if (ev.e === 'over') finish(ev.won);
+    }
+    const snap = TR.snapshot(S); host.snap = snap;
+    if (now - host.lastSnap > 100) { host.lastSnap = now; host.link.send(snap); }
+  } else if (host.running && S.phase === 'between') {
+    host.betweenT -= elapsed;
+    if (host.betweenT <= 0) beginWave();
+    const snap = TR.snapshot(S); host.snap = snap;
+    if (now - host.lastSnap > 500) { host.lastSnap = now; host.link.send(snap); }
+  }
+}
+function hostTick() {
+  requestAnimationFrame(hostTick);
+  const view = host.view; if (!view) return;
+  const dt = Math.min(0.05, view.clock.getDelta());
+  const S = host.S, snap = host.snap;
+  if (snap) { for (const a of snap.a) view.applyRaider(a, null, S.rules.raiderHp, S.rules.shield); view.defYaw = snap.dy; }
+  if (host.running && S.phase === 'wave') {
+    $('#h-hp').textContent = Math.max(0, Math.round(S.tower.hp)) + ' / ' + S.tower.max; $('#h-hpbar').style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%';
+    $('#h-wave').textContent = S.wave; $('#h-time').textContent = Math.max(0, Math.ceil(S.timeLeft));
+    $('#h-alive').textContent = '⚔️ ' + [...S.raiders.values()].filter(r => r.state === 'run' || r.state === 'attack').length + ' raiding';
+    const now = performance.now(); if (Math.floor(now / 500) !== host.boardT) { host.boardT = Math.floor(now / 500); renderBoard(); }
+  } else if (host.running && S.phase === 'between') {
+    $('#h-time').textContent = 'next in ' + Math.max(0, Math.ceil(host.betweenT)); $('#b-next').style.display = '';
+  }
+  view.frame(dt);
+}
+setInterval(hostSim, 1000 / 60);
+$('#b-next').onclick = () => { host.betweenT = 0; };
+$('#b-abort').onclick = () => { if (confirm('End the game for everyone?')) finish(false, true); };
+function finish(won, aborted) {
+  const S = host.S; host.running = false; S.phase = 'over';
+  const list = TR.roster(S).sort((a, b) => b.dmg - a.dmg);
+  host.link.send({ t: 'over', won, board: list, left: Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max), aborted: !!aborted });
+  $('#ov-title').textContent = won ? '💥 The tower has fallen!' : '🏰 The tower stands';
+  $('#ov-text').textContent = won ? 'The raiders broke through in wave ' + S.wave + '.' : (aborted ? 'The game was ended early.' : 'Five waves and the walls held, with ' + Math.round(100 * Math.max(0, S.tower.hp) / S.tower.max) + '% still standing. Game over for the raiders.');
+  $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.correct ? ' 🛡×' + r.correct : ''}</td><td>${r.dmg} dmg</td></tr>`).join('');
+  show('s-hostover');
+}
+$('#b-again').onclick = () => location.href = location.pathname;
+
+/* ===================== PLAYER (phone) ===================== */
+const player = { link: null, code: '', id: null, name: '', view: null, taps: 0, ph: 'lobby', roster: [], rules: { hp: 100, shield: 70 }, answered: false, me: null, snap: null, tmax: 1 };
+function joinGame(code, name) {
+  player.code = code; player.name = name;
+  let token = ''; try { token = localStorage.getItem('tk-tr-tok-' + code) || ''; if (!token) { token = Math.random().toString(36).slice(2, 12); localStorage.setItem('tk-tr-tok-' + code, token); } } catch (e) {}
+  show('s-play'); $('#p-name').textContent = name;
+  player.view = new View($('#gl'), { lite: true }); player.view.buildMap().then(() => { player.mapReady = true; });
+  player.link = link(WS_BASE() + code + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token), playerReceive, st => { if (st === 'down') toast('Reconnecting…'); });
+  playerTick();
+  setInterval(() => { if (player.taps > 0 && player.link) { player.link.send({ t: 'tap', n: player.taps }); player.taps = 0; } }, 120);
+}
+function playerReceive(m) {
+  if (m.t === 'welcome') { player.id = m.id; return; }
+  if (m.t === 'nohost') { pMsg('The big screen is not open yet…', 4000); return; }
+  if (m.t === 'hostgone') { pMsg('Big screen disconnected', 5000); setBtn('off', 'Waiting…'); return; }
+  if (m.t === 'hello') { player.rules = m.rules || player.rules; player.ph = m.ph; if (m.ph === 'lobby') { setBtn('off', 'Waiting for the host…'); pMsg('You are in! Watch the big screen.', 2500); } return; }
+  if (m.t === 'roster') { player.roster = m.list; player.tmax = m.tmax || player.tmax; for (const r of m.list) player.view.ensureRaider(r.id, r); return; }
+  if (m.t === 'defence') { player.view.setDefence(m.list); return; }
+  if (m.t === 'quiz') { showQuiz(m); return; }
+  if (m.t === 'ans') {
+    const btns = $('#pq-opts').querySelectorAll('button'); btns.forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (b.classList.contains('picked')) b.classList.add('wrong'); });
+    $('#pq-note').textContent = m.res === 'right' ? '🛡 Shield up — it soaks ' + m.shield + ' damage' : m.res === 'wrong' ? 'Not this time. No shield this wave.' : 'Too late for this wave.';
+    if (navigator.vibrate) navigator.vibrate(m.res === 'right' ? [30, 40, 30] : 60);
+    setTimeout(() => $('#p-quiz').classList.remove('on'), 1800); return;
+  }
+  if (m.t === 'msg') { pMsg(m.m, 1800); if (navigator.vibrate) navigator.vibrate(20); return; }
+  if (m.t === 's') { player.snap = m; player.ph = m.ph; return; }
+  if (m.t === 'over') {
+    player.ph = 'over'; $('#p-quiz').classList.remove('on'); setBtn('off', m.won ? '💥 Tower down!' : '🏰 Tower stands');
+    const me = m.board.find(r => r.id === player.id); const rank = m.board.findIndex(r => r.id === player.id) + 1;
+    pMsg((m.won ? 'The tower has fallen! ' : 'Game over — ' + m.left + '% of the tower left. ') + (me ? 'You dealt ' + me.dmg + ' damage (#' + rank + ')' : ''), 60000);
+    player.view.follow = null; player.view.placeCamera();
+  }
+}
+function showQuiz(m) {
+  $('#pq-q').textContent = '❓ Wave ' + m.wave + ': ' + m.q;
+  $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}">${esc(o)}</button>`).join('');
+  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : 'Answer right for a 🛡 shield — any time this wave';
+  $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.link.send({ t: 'ans', i: +b.dataset.i }); }; });
+  $('#p-quiz').classList.add('on');
+}
+function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
+function pMsg(text, ms) { const el = $('#p-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
+const btn = $('#p-btn');
+btn.addEventListener('pointerdown', e => { e.preventDefault(); if (player.me && (player.me[4] === 'run' || player.me[4] === 'attack')) { player.taps++; btn.style.transform = 'translate(-50%,4px) scale(.97)'; setTimeout(() => btn.style.transform = '', 60); } });
+function playerTick() {
+  requestAnimationFrame(playerTick);
+  const v = player.view; if (!v) return;
+  const dt = Math.min(0.05, v.clock.getDelta());
+  const s = player.snap;
+  if (s) {
+    for (const a of s.a) { v.applyRaider(a, null, player.rules.hp, player.rules.shield); if (a[0] === player.id) player.me = a; }
+    v.defYaw = s.dy;
+    $('#p-thp').style.width = (100 * s.th / s.tm) + '%'; $('#p-tpct').textContent = Math.round(100 * s.th / s.tm) + '%';
+    $('#p-wave').textContent = s.w + '/5'; $('#p-time').textContent = s.ph === 'wave' ? s.tl : '–';
+    const me = player.me;
+    if (me) {
+      $('#p-hp').style.width = (100 * me[2] / player.rules.hp) + '%'; $('#p-shield').textContent = '🛡 ' + me[3];
+      if (player.ph === 'over') {}
+      else if (s.ph === 'between') { setBtn('off', 'Next wave soon…'); v.follow = null; }
+      else if (me[4] === 'run') { setBtn('run', '🏃 TAP TO RUN'); v.follow = player.id; v.hideSelf = player.id; }
+      else if (me[4] === 'attack') { setBtn('attack', '⚔️ TAP TO ATTACK'); v.follow = player.id; v.hideSelf = player.id; }
+      else if (me[4] === 'dead') { setBtn('off', '💀 Down — next wave'); v.follow = null; }
+      else { setBtn('off', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…'); v.follow = null; }
+    }
+  }
+  if (v.follow === null && !v.cam.freeSet) v.placeCamera();
+  v.frame(dt);
+}
+
+/* ===================== ENTRY ===================== */
+$('#b-host').onclick = () => { startHost(); hostTick(); };
+$('#b-join').onclick = () => { const c = $('#in-code').value.trim().toUpperCase(); if (/^[A-Z0-9]{4,8}$/.test(c)) askName(c); else toast('Enter the 4-letter room code'); };
+$('#in-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('#b-join').click(); });
+function askName(code) {
+  show('s-join'); $('#j-code').textContent = code;
+  try { $('#in-name').value = localStorage.getItem('tk-name') || ''; } catch (e) {}
+  const go = () => { const n = $('#in-name').value.trim().slice(0, 16) || 'Raider'; try { localStorage.setItem('tk-name', n); } catch (e) {} joinGame(code, n); };
+  $('#b-go').onclick = go; $('#in-name').onkeydown = e => { if (e.key === 'Enter') go(); };
+  setTimeout(() => $('#in-name').focus(), 50);
+}
+{
+  const q = new URLSearchParams(location.search);
+  const join = (q.get('join') || '').toUpperCase(); const name = (q.get('name') || '').trim();
+  if (/^[A-Z0-9]{4,8}$/.test(join)) { if (name) joinGame(join, name.slice(0, 16)); else askName(join); }
+  else if (q.has('host')) { startHost(); hostTick(); }
+  else show('s-home');
+}
+</script>
+</body>
+</html>
