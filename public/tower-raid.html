@@ -84,13 +84,10 @@
   #p-quiz .note { font-size:12px; opacity:.7; margin-top:6px; text-align:center; }
   #p-place { position:absolute; left:8px; right:8px; bottom:14px; background:rgba(255,255,255,.97); border-radius:20px; padding:10px 10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.25); display:none; pointer-events:auto; }
   #p-place.on { display:block; }
-  #p-place.on ~ #p-btn { display:none; }
+  #p-place.on ~ #p-btn, #p-place.on ~ #p-recenter { display:none; }
+  #p-recenter { position:absolute; right:10px; bottom:92px; width:44px; height:44px; border-radius:22px; padding:0; font-size:22px; background:rgba(255,255,255,.9); }
   #p-place .h { font-weight:700; font-size:16px; text-align:center; margin-bottom:6px; }
-  #p-place .types { display:flex; gap:6px; justify-content:center; margin-bottom:8px; }
-  #p-place .types button { background:#eef3f8; color:var(--ink); font-size:13px; padding:7px 10px; border-radius:10px; }
-  #p-place .types button.sel { background:var(--blue); color:#fff; }
-  #p-map { display:block; width:100%; border-radius:12px; touch-action:none; }
-  #p-place .foot { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:8px; }
+  #p-place .foot { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:4px; }
   #p-place .foot .hint { flex:1; text-align:left; }
   #b-place { background:var(--green); }
   #p-red { position:absolute; inset:0; background:rgba(229,83,61,.45); opacity:0; transition:opacity .4s; pointer-events:none !important; }
@@ -110,7 +107,7 @@
 <!-- landing -->
 <div class="screen" id="s-home"><div class="center"><div class="card">
   <h1>🏰 Defend the Attention Tower</h1>
-  <p>The Attention Gremlins are marching on the tower. Every wave opens with a quiz: answer right and you get to place a gun with your name on it, wherever you like. Keep a streak of right answers going and your guns get bigger. Hold as many waves as you can.</p>
+  <p>The Attention Gremlins are marching on the tower. Every wave opens with a quiz: answer right and you get to place a gun with your name on it, wherever you like. Keep a streak of right answers going and your guns get bigger. Guns carry limited ammo and vanish when empty. Hold as many waves as you can.</p>
   <div class="row"><button class="big" id="b-host">Host on this screen</button></div>
   <p style="margin-top:18px">Have a code?</p>
   <div class="row"><input id="in-code" placeholder="ROOM CODE" maxlength="8" style="width:170px;text-transform:uppercase"><button id="b-join">Join</button></div>
@@ -134,7 +131,7 @@
       <span class="hint">bots fill the empty seats</span>
     </div>
     <div class="row"><button class="big" id="b-start">🏰 Start the siege</button></div>
-    <p class="hint" style="margin-top:12px">Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Right again next wave = a bigger gun. Wrong = no gun and the streak is gone.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
+    <p class="hint" style="margin-top:12px">The gremlins march the moment a wave starts. Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Right again next wave = a bigger gun (ballista → cannon → turret). Wrong = no gun and the streak is gone.<br>Every gun carries a limited load of ammo and vanishes when it runs dry — keep placing new ones.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
   </div>
 </div></div>
 
@@ -170,20 +167,19 @@
   </div>
   <div id="p-red"></div>
   <div id="p-msg"></div>
-  <div id="p-quiz"><div class="urgent" id="pq-urgent">⚠️ Answer right to place a gun. Keep the streak for a bigger gun!</div><div class="bar tbar"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note"></div></div>
+  <div id="p-quiz"><div class="urgent" id="pq-urgent">⚠️ Gremlins are already marching! Answer right to place a gun</div><div class="bar tbar"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note"></div></div>
   <div id="p-place">
     <div class="h" id="pl-h">🔫 Place your gun</div>
-    <div class="types"><button data-t="ballista">🏹 Ballista</button><button data-t="cannon">💣 Cannon</button><button data-t="turret">🔩 Turret</button></div>
-    <canvas id="p-map"></canvas>
-    <div class="foot"><span class="hint" id="pl-hint">Tap a free green tile next to the road</span><button id="b-place" disabled>Place here</button></div>
+    <div class="foot"><span class="hint" id="pl-hint">👆 Drag the gun onto a free tile on the board</span><button id="b-place" disabled>Place here</button></div>
   </div>
+  <button class="ghost" id="p-recenter" title="Reset the camera">⌖</button>
   <button id="p-btn">Waiting…</button>
 </div></div>
 
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/GLTFLoader.js"></script>
 <script src="/vendor/qr.js"></script>
-<script src="/js/tr-sim.js"></script>
+<script src="/js/tr-sim.js?v=4"></script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
@@ -194,7 +190,7 @@ const ASSETS = '/assets/td/';
 const COLORS = [0xe5533d, 0x4a8fe7, 0x4fbb6c, 0xf3b53e, 0x8e6be8, 0xef8fb5, 0x2bb3c0, 0xa46a3c, 0x6c7a89, 0xd94fd0, 0x9ccc3d, 0xff7a3d];
 const hex = c => '#' + c.toString(16).padStart(6, '0');
 const LEVEL_NAME = ['Small', 'Medium', 'BIG'];
-const TYPE_NAME = { ballista: '🏹 Ballista', cannon: '💣 Cannon', turret: '🔩 Turret' };
+const LEVEL_LABEL = ['🏹 Small ballista', '💣 Medium cannon', '🔩 BIG turret'];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ===================== LOADER ===================== */
@@ -262,11 +258,11 @@ class View {
     // Drag to orbit, wheel or pinch to zoom — the same feel as Tiny Towers.
     const pointers = new Map(); let lastPinch = 0; const cam = this.cam;
     const zoom = k => { cam.dist = Math.max(cam.fit * 0.4, Math.min(cam.fit * 2, cam.dist * k)); this.placeCamera(); };
-    el.addEventListener('pointerdown', e => { pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); el.setPointerCapture(e.pointerId); });
+    el.addEventListener('pointerdown', e => { pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); el.setPointerCapture(e.pointerId); if (this.onPick && pointers.size === 1) this.onPick(e.clientX, e.clientY); });
     el.addEventListener('pointermove', e => {
       const p = pointers.get(e.pointerId); if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-      if (pointers.size === 1) { cam.theta -= dx * 0.006; cam.phi = Math.max(0.35, Math.min(1.4, cam.phi + dy * 0.005)); this.placeCamera(); }
+      if (pointers.size === 1) { if (this.onPick) this.onPick(e.clientX, e.clientY); else { cam.theta -= dx * 0.006; cam.phi = Math.max(0.35, Math.min(1.4, cam.phi + dy * 0.005)); this.placeCamera(); } }
       else if (pointers.size === 2) { const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (lastPinch) zoom(lastPinch / d); lastPinch = d; }
     });
     const up = e => { pointers.delete(e.pointerId); if (pointers.size < 2) lastPinch = 0; };
@@ -336,7 +332,33 @@ class View {
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.46, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide, transparent: true, opacity: 0.95 })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.22; this.ghost.add(ring);
     const reach = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.22, depthWrite: false })); reach.rotation.x = -Math.PI / 2; reach.position.y = 0.21; this.ghost.add(reach); this.ghostReach = reach;
   }
-  setGhost(x, z, range) { if (!this.ghost) return; if (x === null) { this.ghost.visible = false; return; } this.ghost.visible = true; this.ghost.position.set(x, 0, z); this.ghostReach.scale.setScalar(range); }
+  // Which board tile is under a screen point (ground-plane hit), or null off the board.
+  pickTile(cx, cy) {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ray = new THREE.Raycaster(); ray.setFromCamera({ x: (cx - r.left) / r.width * 2 - 1, y: -((cy - r.top) / r.height) * 2 + 1 }, this.camera);
+    const hit = new THREE.Vector3(); if (!ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) return null;
+    const x = Math.round(hit.x), z = Math.round(hit.z);
+    return x < 0 || z < 0 || x >= TR.COLS || z >= TR.ROWS ? null : { x, z };
+  }
+  setGhost(x, z, range, ok = true) {
+    if (!this.ghost) return; if (x === null) { this.ghost.visible = false; return; }
+    this.ghost.visible = true; this.ghost.position.set(x, 0, z); this.ghostReach.scale.setScalar(range);
+    const c = ok ? 0xffd23f : 0xe5533d; this.ghost.children[0].material.color.set(c); this.ghostReach.material.color.set(c);
+    if (this.ghostGun) this.ghostGun.traverse(o => { if (o.isMesh) o.material.color.copy(o.material.__orig).lerp(new THREE.Color(0xe5533d), ok ? 0 : 0.6); });
+  }
+  // A see-through gun of the right type and size rides on the ghost while the player drags it around.
+  async setGhostGun(type, level) {
+    const gen = this.ghostGen = (this.ghostGen || 0) + 1;
+    if (this.ghostGun) { this.ghost.remove(this.ghostGun); this.ghostGun = null; }
+    const g = new THREE.Group(); g.position.y = 0.2;
+    await this.inst('tower-round-base', 0, 0, 0, -0.2, g);
+    let y = 0;
+    for (const name of TOWER_PARTS[level]) { const o = await this.inst(name, 0, 0, 0, y, g); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y - 0.02; }
+    await this.inst(WEAPON[type], 0, 0, 0, y + (type === 'cannon' ? 0.15 : 0.02), g);
+    if (gen !== this.ghostGen) return;
+    g.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.6; o.material.depthWrite = false; o.material.__orig = o.material.color.clone(); o.castShadow = false; } });
+    this.ghost.add(g); this.ghostGun = g;
+  }
   // Guns persist for the whole game, so only new ones are built. `d` is one entry of TR.gunList().
   async addGun(d) {
     if (this.guns[d.i]) return;
@@ -346,13 +368,30 @@ class View {
     let y = 0;
     for (const name of TOWER_PARTS[d.level]) { const o = await this.inst(name, 0, 0, 0, y, group); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y - 0.02; }
     const w = await this.inst(WEAPON[d.type], 0, 0, 0, y + (d.type === 'cannon' ? 0.15 : 0.02), group);
-    entry.weapon = w; entry.muzzleY = 0.2 + w.position.y + 0.3;
+    entry.weapon = w; entry.muzzleY = 0.2 + w.position.y + 0.3; entry.top = y;
+    const bar = new THREE.Group(); bar.position.y = y + 0.72; bar.renderOrder = 10; bar.visible = false;
+    const bg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x20303f, depthTest: false, transparent: true, opacity: .8 }));
+    const fg = new THREE.Mesh(this.hpGeo, new THREE.MeshBasicMaterial({ color: 0x4a8fe7, depthTest: false })); fg.position.z = 0.001;
+    bar.add(bg, fg); group.add(bar); entry.bar = bar; entry.fg = fg;
+    if (this.guns[d.i] !== entry) { this.scene.remove(group); return; }      // collapsed while loading
     const mine = d.owner === this.me;
     const label = textSprite((mine ? '★ ' : '') + d.name.slice(0, 14), { fill: mine ? '#e5533d' : hex(COLORS[d.skin % COLORS.length]), size: 44, scale: mine ? 1.9 : 1.6 }); label.position.y = y + 1.0; group.add(label);
     // A puff so the new gun is easy to spot.
     const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .7 })); puff.position.set(d.x, 0.5, d.z); this.scene.add(puff); this.fx.push({ m: puff, t: 0, life: .5, r: 0.9, kind: 'boom' });
   }
-  setGuns(list) { for (const d of list) this.addGun(d); }
+  setGuns(list) { for (const d of list) if (!d.dead) this.addGun(d); }
+  // gh = ammo left per gun, as a fraction
+  applyGuns(gh) {
+    for (let i = 0; i < gh.length; i++) {
+      const t = this.guns[i]; if (!t || !t.bar) continue;
+      const f = gh[i]; t.bar.visible = f < 1; t.fg.scale.x = Math.max(0.02, f); t.fg.position.x = -(1 - f) * 0.3; t.fg.material.color.set(f > .5 ? 0x4a8fe7 : f > .25 ? 0xf3b53e : 0xe5533d);
+    }
+  }
+  removeGun(i) {
+    const t = this.guns[i]; if (!t) return; this.guns[i] = null; this.scene.remove(t.group);
+    this.boom(t.x, t.z, 0.7);
+    for (let k = 0; k < 6; k++) { const m = new THREE.Mesh(new THREE.BoxGeometry(.18, .18, .18), new THREE.MeshLambertMaterial({ color: 0x9aa7b5 })); m.position.set(t.x + (Math.random() - .5) * .5, 0.6, t.z + (Math.random() - .5) * .5); this.scene.add(m); this.fx.push({ m, t: 0, life: .9, kind: 'rubble', vx: (Math.random() - .5) * 2, vz: (Math.random() - .5) * 2, vy: 2 + Math.random() * 2 }); }
+  }
   // Enemies come and go every wave, so their models are pooled.
   async ensureEnemy(id, kind) {
     if (this.enemies.has(id)) return this.enemies.get(id);
@@ -428,12 +467,15 @@ class View {
       if (e.mixer) e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion);
       if (e.kind === 'ufo') { e.t += dt; e.root.position.y = 0.9 + Math.sin(e.t * 4) * 0.08; e.root.rotation.y += dt * 2; }
     }
-    for (let i = 0; i < this.guns.length; i++) { const t = this.guns[i]; if (!t || !t.weapon) continue; const y = this.gunYaw ? this.gunYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); } }
+    for (let i = 0; i < this.guns.length; i++) {
+      const t = this.guns[i]; if (!t || !t.weapon) continue; const y = this.gunYaw ? this.gunYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); }
+      if (t.bar) t.bar.quaternion.copy(this.camera.quaternion);
+    }
     this.shots = this.shots.filter(s => {
       s.t += dt / s.dur; if (s.t >= 1 || !s.tgt.root) { this.scene.remove(s.m); return false; }
       const aim = s.tgt.holder.position.clone().setY(s.tgt.kind === 'ufo' ? 0.9 : 0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
     });
-    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
+    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'rubble') { f.vy -= 9 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y = Math.max(0.05, f.m.position.y + f.vy * dt); f.m.rotation.x += dt * 5; } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
     if (this.crystal) this.crystal.rotation.y += dt * 0.8;
     if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.END[0] + (Math.random() - .5) * .08; } else this.keep.position.x = TR.END[0]; }
     if (this.ghost && this.ghost.visible) this.ghost.children[0].scale.setScalar(1 + 0.08 * Math.sin(performance.now() / 150));
@@ -471,7 +513,7 @@ async function startHost() {
   host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.64, y: 0.64, yBias: -0.12 } }); await host.view.buildMap();
   renderRoster();
 }
-function helloFor(p) { const S = host.S; return { t: 'hello', name: p.name, skin: p.skin, ph: S.phase, wave: S.wave, quizTime: S.rules.quizTime, towerHp: S.tower.max, streak: p.streak, kills: p.kills, guns: p.guns, pending: p.pending }; }
+function helloFor(p) { const S = host.S; return { t: 'hello', name: p.name, skin: p.skin, ph: S.phase, wave: S.wave, quizTime: S.rules.quizTime, towerHp: S.tower.max, streak: p.streak, kills: p.kills, alive: S.guns.filter(g => !g.dead && g.owner === p.id).length, pending: p.pending }; }
 function hostReceive(m) {
   const S = host.S; if (!S) return;
   if (m.t === 'join') {
@@ -490,7 +532,7 @@ function hostReceive(m) {
     return;
   }
   if (m.t === 'place') {
-    const res = TR.place(S, m.id, m.x, m.z, m.type);
+    const res = TR.place(S, m.id, m.x, m.z);
     host.link.send({ to: m.id, t: 'placed', res });
     return;
   }
@@ -518,7 +560,7 @@ function beginWave() {
   TR.startWave(S);
   host.link.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, left: S.rules.quizTime });
   sendRoster();
-  bigMsg('Wave ' + S.wave + ' — ' + S.queue.length + ' gremlins incoming!', 2000);
+  bigMsg('Wave ' + S.wave + ' — ' + S.queue.length + ' gremlins marching!', 2000);
   renderQuiz(); $('#h-quiz').classList.add('on'); $('#b-next').style.display = 'none';
 }
 function preload() {
@@ -541,7 +583,7 @@ function renderQuiz() {
 function bigMsg(text, ms) { const el = $('#h-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 function renderBoard() {
   const list = TR.roster(host.S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
-  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Gremlins shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''} <span class="hint">🔫${r.guns}</span></span><span>${r.kills}</span></div>`).join('');
+  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Gremlins shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''} <span class="hint">🔫${r.alive}${r.lost ? ' 🪫' + r.lost : ''}</span></span><span>${r.kills}</span></div>`).join('');
 }
 // The rules tick on a timer so a hidden tab keeps the game going in real time; rendering stays on the frame callback.
 function hostSim() {
@@ -555,6 +597,7 @@ function hostSim() {
       else if (ev.e === 'die') { const p = S.players.get(ev.owner); if (p && !p.bot) host.link.send({ to: ev.owner, t: 'kill', n: ev.kills }); }
       else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
       else if (ev.e === 'placed') { view.addGun(ev.gun); host.link.send({ t: 'gun', g: ev.gun }); }
+      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) bigMsg('🪫 ' + p.name + "'s gun is out of ammo", 1500); }
       else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); }
       else if (ev.e === 'quizEnd') { renderQuiz(); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); }
       else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = S.rules.between; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' held! Tower at ' + Math.max(0, S.tower.hp) + ' / ' + S.tower.max, 2500); sendRoster(); }
@@ -574,10 +617,10 @@ function hostTick() {
   const view = host.view; if (!view) return;
   const dt = Math.min(0.05, view.clock.getDelta());
   const S = host.S, snap = host.snap;
-  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; }
+  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh); }
   if (host.running && (S.phase === 'wave' || S.phase === 'between')) {
     $('#h-hp').textContent = Math.max(0, S.tower.hp) + ' / ' + S.tower.max; const bar = $('#h-hpbar'); bar.style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%'; bar.classList.toggle('low', S.tower.hp <= S.tower.max * 0.3);
-    $('#h-wave').textContent = S.wave; $('#h-guns').textContent = S.guns.length;
+    $('#h-wave').textContent = S.wave; $('#h-guns').textContent = S.guns.filter(g => !g.dead).length;
     $('#h-enemies').textContent = snap ? snap.left : 0;
     const now = performance.now(); if (Math.floor(now / 500) !== host.boardT) { host.boardT = Math.floor(now / 500); renderBoard(); if (S.phase === 'wave' && S.quizLeft > 0) renderQuiz(); }
   }
@@ -600,7 +643,7 @@ function finish(won, aborted) {
   host.link.send({ t: 'over', won, board: list, survived, aborted: !!aborted });
   $('#ov-title').textContent = won ? '🏆 Legendary! The tower held every wave' : '💥 The Attention Tower has fallen';
   $('#ov-text').textContent = won ? 'All ' + S.rules.maxWaves + ' waves held. The Gremlins give up.' : (aborted ? 'The game was ended early after ' + survived + ' wave' + (survived === 1 ? '' : 's') + '.' : 'The defence held for ' + survived + ' wave' + (survived === 1 ? '' : 's') + ' and fell in wave ' + S.wave + '. The Attention Gremlins have the room.');
-  $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)} <span class="hint">🔫${r.guns} · best streak ${r.best}</span></td><td>${r.kills} kills</td></tr>`).join('');
+  $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)} <span class="hint">🔫${r.guns} placed · best streak ${r.best}</span></td><td>${r.kills} kills</td></tr>`).join('');
   show('s-hostover');
 }
 $('#b-again').onclick = () => location.href = location.pathname;
@@ -611,7 +654,7 @@ function joinGame(code, name) {
   player.code = code; player.name = name;
   let token = ''; try { token = localStorage.getItem('tk-tr-tok-' + code) || ''; if (!token) { token = Math.random().toString(36).slice(2, 12); localStorage.setItem('tk-tr-tok-' + code, token); } } catch (e) {}
   show('s-play'); $('#p-name').textContent = name;
-  player.view = new View($('#gl'), { lite: true, margins: { x: 0.9, y: 0.6, yBias: -0.05 } }); player.view.buildMap().then(() => { player.mapReady = true; });
+  player.view = new View($('#gl'), { lite: true, orbit: true, margins: { x: 0.96, y: 0.72, yBias: -0.12 } }); player.view.buildMap().then(() => { player.mapReady = true; });
   player.link = link(WS_BASE() + code + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token), playerReceive, st => { if (st === 'down') toast('Reconnecting…'); });
   playerTick();
 }
@@ -621,23 +664,24 @@ function playerReceive(m) {
   if (m.t === 'nohost') { pMsg('The big screen is not open yet…', 4000); return; }
   if (m.t === 'hostgone') { pMsg('Big screen disconnected', 5000); setBtn('', 'Waiting…'); return; }
   if (m.t === 'hello') {
-    player.quizTime = m.quizTime || 15; player.ph = m.ph; player.streak = m.streak || 0; player.kills = m.kills || 0; player.gunsN = m.guns || 0; updateMe();
+    player.quizTime = m.quizTime || 15; player.ph = m.ph; player.streak = m.streak || 0; player.kills = m.kills || 0; player.gunsN = m.alive || 0; updateMe();
     if (m.pending) openPlace(m.pending.level, player.streak);
     if (m.ph === 'lobby') { setBtn('', 'Waiting for the host…'); pMsg('You are in!\nEach wave: answer right → place a gun with your name on it', 5000); }
     return;
   }
-  if (m.t === 'roster') { player.roster = m.list; const me = m.list.find(r => r.id === player.id); if (me) { player.streak = me.streak; player.kills = me.kills; player.gunsN = me.guns; updateMe(); } return; }
-  if (m.t === 'guns') { player.guns = m.list; v.setGuns(m.list); drawMap(); return; }
-  if (m.t === 'gun') { player.guns.push(m.g); v.addGun(m.g); if (m.g.owner === player.id) { player.gunsN++; updateMe(); } drawMap(); return; }
+  if (m.t === 'roster') { player.roster = m.list; const me = m.list.find(r => r.id === player.id); if (me) { player.streak = me.streak; player.kills = me.kills; player.gunsN = me.alive; updateMe(); } return; }
+  if (m.t === 'guns') { player.guns = m.list; v.setGuns(m.list); return; }
+  if (m.t === 'gunDown') { const g = player.guns.find(g => g.i === m.i); if (g) g.dead = true; v.removeGun(m.i); if (m.owner === player.id) { player.gunsN = Math.max(0, player.gunsN - 1); updateMe(); redFlash(); pMsg('🪫 YOUR GUN IS OUT OF AMMO\nAnswer right to place another', 2200); if (navigator.vibrate) navigator.vibrate(80); } return; }
+  if (m.t === 'gun') { player.guns.push(m.g); v.addGun(m.g); if (m.g.owner === player.id) { player.gunsN++; updateMe(); } if (player.sel && player.sel.x === m.g.x && player.sel.z === m.g.z) placeAt(m.g.x, m.g.z); return; }
   if (m.t === 'quiz') { showQuiz(m); return; }
   if (m.t === 'ans') {
     const btns = $('#pq-opts').querySelectorAll('button'); btns.forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (b.classList.contains('picked')) b.classList.add('wrong'); });
     player.streak = m.streak; updateMe();
     const u = $('#pq-urgent');
     if (m.res === 'right') {
-      $('#pq-note').textContent = '🔫 Right! Place your ' + LEVEL_NAME[m.level] + ' gun below.'; u.className = 'urgent good'; u.textContent = m.streak > 1 ? '🔥 ' + m.streak + ' in a row — a ' + LEVEL_NAME[m.level] + ' gun!' : '✅ Right — you get a gun!';
+      $('#pq-note').textContent = 'Right! Drag your ' + LEVEL_LABEL[m.level] + ' onto the board.'; u.className = 'urgent good'; u.textContent = m.streak > 1 ? '🔥 ' + m.streak + ' in a row — a ' + LEVEL_LABEL[m.level] + '!' : '✅ Right — you get a gun!';
       if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
-      pMsg(m.streak > 1 ? '🔥 STREAK ' + m.streak + '!\n' + LEVEL_NAME[m.level] + ' gun unlocked' : '✅ RIGHT!\nPlace your gun', 1600);
+      pMsg(m.streak > 1 ? '🔥 STREAK ' + m.streak + '!\n' + LEVEL_LABEL[m.level] + ' unlocked' : '✅ RIGHT!\nPlace your gun', 1600);
       setTimeout(() => { $('#p-quiz').classList.remove('on'); openPlace(m.level, m.streak); }, 900);
     } else {
       $('#pq-note').textContent = m.res === 'wrong' ? 'Not this time — no gun this wave, streak lost.' : 'Too late for this wave.'; u.className = 'urgent calm'; u.textContent = '💔 No gun this wave';
@@ -656,7 +700,7 @@ function playerReceive(m) {
   }
   if (m.t === 'placed') {
     if (m.res === 'ok') { closePlace(); pMsg('🔫 GUN PLACED!\nIt is firing for you now', 2000); if (navigator.vibrate) navigator.vibrate(40); }
-    else if (m.res === 'taken') { toast('That spot is taken — pick another'); player.sel = null; drawMap(); $('#b-place').disabled = true; $('#pl-hint').textContent = 'Tap a free green tile next to the road'; }
+    else if (m.res === 'taken') { toast('That spot is taken — pick another'); if (player.sel) placeAt(player.sel.x, player.sel.z); }
     else closePlace();
     return;
   }
@@ -678,62 +722,36 @@ function showQuiz(m) {
   player.answered = !!m.done;
   $('#pq-q').textContent = '❓ Wave ' + m.wave + ': ' + m.q;
   $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}">${esc(o)}</button>`).join('');
-  const next = LEVEL_NAME[Math.min(2, player.streak)];
-  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = place a ' + next + ' gun · ❌ Wrong = no gun, streak lost';
+  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = place a ' + LEVEL_LABEL[Math.min(2, player.streak)] + ' · ❌ Wrong = no gun, streak lost';
   $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { player.answered = true; b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.link.send({ t: 'ans', i: +b.dataset.i }); }; });
-  const u = $('#pq-urgent'); u.className = 'urgent' + (m.done ? ' calm' : ''); u.textContent = player.streak > 0 ? '🔥 Streak ' + player.streak + ' — answer right for a ' + next + ' gun!' : '⚠️ Answer right to place a gun. Keep the streak for a bigger gun!';
+  const u = $('#pq-urgent'); u.className = 'urgent' + (m.done ? ' calm' : ''); u.textContent = player.streak > 0 ? '🔥 Streak ' + player.streak + ' — answer right for a ' + LEVEL_LABEL[Math.min(2, player.streak)] + '!' : '⚠️ Gremlins are already marching! Answer right to place a gun';
   $('#pq-time').style.width = (100 * (m.left || player.quizTime) / player.quizTime) + '%';
   $('#p-quiz').classList.add('on');
 }
 /* --- placement: a top-down map of the board on the phone --- */
 function openPlace(level, streak) {
   player.pending = { level }; player.sel = null; $('#b-place').disabled = true;
-  $('#pl-h').textContent = '🔫 Place your ' + LEVEL_NAME[level] + ' gun' + (streak > 1 ? ' (streak ' + streak + ')' : '');
-  $('#pl-hint').textContent = 'Tap a free green tile next to the road';
-  $('#p-place').classList.add('on'); pickType(player.type); drawMap();
+  $('#pl-h').textContent = 'Place your ' + LEVEL_LABEL[level] + (streak > 1 ? ' (streak ' + streak + ')' : '');
+  $('#pl-hint').textContent = '👆 Drag the gun onto a free tile on the board';
+  $('#p-place').classList.add('on'); player.type = TR.LEVEL_GUN[level]; player.view.setGhostGun(player.type, level);
+  const v = player.view; v.onPick = pickAt;
+  // Start the preview on a sensible free tile so there is something to drag right away.
+  const start = [[4, 1], [2, 2], [4, 5], [7, 3], [8, 4], [5, 5], [10, 3], [2, 0]].find(([x, z]) => TR.freeTile({ guns: player.guns }, x, z));
+  if (start) placeAt(start[0], start[1]);
 }
-function closePlace() { player.pending = null; player.sel = null; $('#p-place').classList.remove('on'); player.view.setGhost(null); }
-function pickType(t) { player.type = t; $('#p-place .types').querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.t === t)); if (player.sel) player.view.setGhost(player.sel.x, player.sel.z, gunRange()); drawMap(); }
-function gunRange() { return TR.GUNS[player.type].levels[player.pending ? player.pending.level : 0].range; }
-$('#p-place .types').querySelectorAll('button').forEach(b => b.onclick = () => pickType(b.dataset.t));
-$('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#b-place').disabled = true; $('#pl-hint').textContent = 'Placing…'; player.link.send({ t: 'place', x: player.sel.x, z: player.sel.z, type: player.type }); };
-const mapCv = $('#p-map');
-function mapCell() { const w = mapCv.clientWidth || 300; return w / TR.COLS; }
-function drawMap() {
-  if (!$('#p-place').classList.contains('on')) return;
-  const cell = mapCell(); const dpr = Math.min(2, devicePixelRatio || 1);
-  const W = Math.round(cell * TR.COLS), H = Math.round(cell * TR.ROWS);
-  if (mapCv.width !== Math.round(W * dpr)) { mapCv.width = Math.round(W * dpr); mapCv.height = Math.round(H * dpr); mapCv.style.height = H + 'px'; }
-  const cx = mapCv.getContext('2d'); cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, W, H);
-  const occupied = new Map(); for (const g of player.guns) occupied.set(g.x + ',' + g.z, g);
-  for (let x = 0; x < TR.COLS; x++) for (let z = 0; z < TR.ROWS; z++) {
-    const key = x + ',' + z; const d = TR.DECOR.get(key); const road = TR.PATH_SET.has(key); const blocked = d && d.kind; const g = occupied.get(key);
-    cx.fillStyle = road ? '#d9b382' : blocked ? '#5aa465' : '#a9e39c'; cx.fillRect(x * cell + 0.5, z * cell + 0.5, cell - 1, cell - 1);
-    if (blocked) { cx.font = Math.round(cell * 0.6) + 'px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(d.kind === 'rock' ? '🪨' : '🌲', x * cell + cell / 2, z * cell + cell / 2 + 1); }
-    if (g) {
-      const mine = g.owner === player.id; cx.beginPath(); cx.arc(x * cell + cell / 2, z * cell + cell / 2, cell * 0.36, 0, Math.PI * 2); cx.fillStyle = hex(COLORS[g.skin % COLORS.length]); cx.fill();
-      if (mine) { cx.lineWidth = 3; cx.strokeStyle = '#e5533d'; cx.stroke(); }
-      cx.fillStyle = '#fff'; cx.font = '700 ' + Math.round(cell * 0.42) + 'px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText((mine ? '★' : g.name.slice(0, 1).toUpperCase()), x * cell + cell / 2, z * cell + cell / 2 + 1);
-    }
-  }
-  const em = (x, z, t) => { cx.font = Math.round(cell * 0.7) + 'px sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(t, x * cell + cell / 2, z * cell + cell / 2 + 1); };
-  em(TR.PATH[0][0], TR.PATH[0][1], '👹'); em(TR.END[0], TR.END[1], '🏰');
-  if (player.snap) for (const e of player.snap.e) if (e[6] === 'run') { cx.beginPath(); cx.arc((e[3] + 0.5) * cell, (e[4] + 0.5) * cell, cell * 0.16, 0, Math.PI * 2); cx.fillStyle = '#c0392b'; cx.fill(); }
-  if (player.sel) {
-    const r = gunRange() * cell; cx.beginPath(); cx.arc((player.sel.x + 0.5) * cell, (player.sel.z + 0.5) * cell, r, 0, Math.PI * 2); cx.fillStyle = 'rgba(243,181,62,.28)'; cx.fill(); cx.lineWidth = 2; cx.strokeStyle = '#f3b53e'; cx.stroke();
-    cx.lineWidth = 3; cx.strokeStyle = '#e5533d'; cx.strokeRect(player.sel.x * cell + 1.5, player.sel.z * cell + 1.5, cell - 3, cell - 3);
-  }
-}
-mapCv.addEventListener('pointerdown', e => {
+function closePlace() { player.pending = null; player.sel = null; $('#p-place').classList.remove('on'); const v = player.view; v.onPick = null; v.setGhost(null); }
+function pickAt(cx, cy) { const t = player.view.pickTile(cx, cy); if (t) placeAt(t.x, t.z); }
+function placeAt(x, z) {
   if (!player.pending) return;
-  const r = mapCv.getBoundingClientRect(); const cell = mapCell();
-  const x = Math.floor((e.clientX - r.left) / cell), z = Math.floor((e.clientY - r.top) / cell);
-  const key = x + ',' + z;
-  if (!TR.freeTile({ guns: player.guns }, x, z)) { toast(TR.PATH_SET.has(key) ? 'Not on the road' : player.guns.some(g => g.x === x && g.z === z) ? 'That spot has a gun already' : 'Blocked — pick a green tile'); return; }
-  player.sel = { x, z }; $('#b-place').disabled = false; $('#pl-hint').textContent = TYPE_NAME[player.type] + ' at ' + String.fromCharCode(65 + x) + (z + 1) + ' — covers ' + TR.coverage(x, z, gunRange()) + ' road points';
-  player.view.setGhost(x, z, gunRange()); drawMap();
-  if (navigator.vibrate) navigator.vibrate(10);
-});
+  const ok = TR.freeTile({ guns: player.guns }, x, z); const key = x + ',' + z;
+  player.view.setGhost(x, z, gunRange(), ok);
+  player.sel = ok ? { x, z } : null; $('#b-place').disabled = !ok;
+  $('#pl-hint').textContent = ok ? 'This spot covers ' + TR.coverage(x, z, gunRange()) + ' road points — tap Place' : TR.PATH_SET.has(key) ? '🚫 Not on the road — drag onto grass' : player.guns.some(g => g.x === x && g.z === z) ? '🚫 That spot has a gun already' : '🚫 Blocked — drag onto a free tile';
+  if (ok && (!player.lastSel || player.lastSel !== key)) { player.lastSel = key; if (navigator.vibrate) navigator.vibrate(8); }
+}
+function gunRange() { return TR.GUNS[player.type].levels[player.pending ? player.pending.level : 0].range; }
+$('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#b-place').disabled = true; $('#pl-hint').textContent = 'Placing…'; player.link.send({ t: 'place', x: player.sel.x, z: player.sel.z }); };
+$('#p-recenter').onclick = () => { const v = player.view; if (!v) return; v.cam.theta = v.cam.portrait ? Math.PI / 2 - 0.35 : -0.55; v.cam.phi = 0.95; v.cam.fit = 0; v.fitBoard(); };
 function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
 function redFlash() { const r = $('#p-red'); r.classList.add('on'); setTimeout(() => r.classList.remove('on'), 120); }
 function pMsg(text, ms) { const el = $('#p-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
@@ -744,7 +762,7 @@ function playerTick() {
   const dt = Math.min(0.05, v.clock.getDelta());
   const s = player.snap;
   if (s) {
-    v.applyEnemies(s.e); v.gunYaw = s.gy;
+    v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh);
     const bar = $('#p-thp'); bar.style.width = (100 * s.th / s.tm) + '%'; bar.classList.toggle('low', s.th <= s.tm * 0.3); $('#p-tpct').textContent = s.th + '/' + s.tm;
     $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
     if (s.ph === 'wave') $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';
@@ -754,7 +772,6 @@ function playerTick() {
     else if (s.ph === 'wave' && !player.answered && s.ql > 0) setBtn('hot', '❓ Answer the quiz — ' + s.ql + ' s');
     else if (s.ph === 'wave') setBtn('ok', '🌊 Wave ' + s.w + ' · 👹 ' + s.left + ' left');
     else setBtn('', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…');
-    if ($('#p-place').classList.contains('on') && Math.floor(performance.now() / 250) !== player.mapT) { player.mapT = Math.floor(performance.now() / 250); drawMap(); }
   }
   v.frame(dt);
 }

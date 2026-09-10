@@ -37,7 +37,7 @@
     if (!Number.isInteger(x) || !Number.isInteger(z) || x < 0 || z < 0 || x >= COLS || z >= ROWS) return false;
     if (PATH_SET.has(x + ',' + z)) return false;
     const d = DECOR.get(x + ',' + z); if (d && d.kind) return false;
-    return !S.guns.some(g => g.x === x && g.z === z);
+    return !S.guns.some(g => !g.dead && g.x === x && g.z === z);
   }
   // Road points a gun at (x,z) with `range` can hit — the score bots use to pick a spot.
   const ROAD_PTS = []; for (let d = 0; d <= PATH_LEN; d += 0.5) ROAD_PTS.push(posAt(d, 0));
@@ -48,13 +48,14 @@
     maxWaves: 10,          // hold all of these and the room wins outright
     quizTime: 15,          // seconds from the wave start to answer the quiz
     towerHp: 10,           // attention points; every gremlin that gets through bites some off
-    spawnGap: 1.0,         // seconds between gremlins leaving the spawn
-    countBase: 3, countPerWave: 2, countPerPlayer: 1.1,   // gremlins per wave
-    hpGrow: 0.7,           // enemy HP compounds by this share each wave
-    hpPerPlayer: 0.03,     // …and grows by this share for every player beyond six, since bigger rooms place more guns
+    spawnGap: 1.0,         // seconds between gremlins leaving the spawn…
+    spawnRoom: 9,          // …shrinking for rooms bigger than this, so a big room gets a denser wave rather than a longer one
+    countBase: 2, countPerWave: 2.5, countPerPlayer: 0.8,   // gremlins per wave
+    hpGrow: 0.55,          // enemy HP compounds by this share each wave
+    hpPerPlayer: 0,        // …and grows by this share for every player beyond six (off: the gremlin count already scales with the room)
     botRight: 0.5,         // how often a bot answers right (the tuning target: half the room)
     botAnsMin: 3, botAnsMax: 10, botPlace: 2.5,
-    between: 6,            // seconds between waves
+    between: 3,            // seconds between waves (just the countdown)
     maxStreakLevel: 2,     // gun level = min(this, streak - 1)
   };
   const ENEMY = {
@@ -63,12 +64,14 @@
     brute: { hp: 420, speed: 0.72, bite: 3 },
     ufo: { hp: 180, speed: 1.45, bite: 2, fly: true },
   };
+  // Every gun carries a fixed load of ammo and is removed when it runs dry, so the defence never piles up for good.
   const GUNS = {
-    ballista: { ammoSpeed: 9, splash: 0, levels: [{ dmg: 15, range: 2.4, reload: 1.0 }, { dmg: 24, range: 2.7, reload: 0.9 }, { dmg: 38, range: 3.0, reload: 0.8 }] },
-    cannon: { ammoSpeed: 6, splash: 0.9, levels: [{ dmg: 22, range: 2.2, reload: 2.0 }, { dmg: 34, range: 2.4, reload: 1.8 }, { dmg: 52, range: 2.6, reload: 1.5 }] },
-    turret: { ammoSpeed: 14, splash: 0, levels: [{ dmg: 4, range: 2.2, reload: 0.22 }, { dmg: 6.5, range: 2.4, reload: 0.2 }, { dmg: 10, range: 2.6, reload: 0.18 }] },
+    ballista: { ammoSpeed: 9, splash: 0, levels: [{ dmg: 15, range: 2.4, reload: 1.0, ammo: 30 }, { dmg: 24, range: 2.7, reload: 0.9, ammo: 36 }, { dmg: 38, range: 3.0, reload: 0.8, ammo: 42 }] },
+    cannon: { ammoSpeed: 6, splash: 0.9, levels: [{ dmg: 22, range: 2.2, reload: 2.0, ammo: 16 }, { dmg: 34, range: 2.4, reload: 1.8, ammo: 20 }, { dmg: 52, range: 2.6, reload: 1.5, ammo: 24 }] },
+    turret: { ammoSpeed: 14, splash: 0, levels: [{ dmg: 4, range: 2.2, reload: 0.22, ammo: 120 }, { dmg: 6.5, range: 2.4, reload: 0.2, ammo: 150 }, { dmg: 10, range: 2.6, reload: 0.18, ammo: 180 }] },
   };
   const GUN_TYPES = Object.keys(GUNS);
+  const LEVEL_GUN = ['ballista', 'cannon', 'turret'];   // the gun a streak earns: small, medium, big
   // What marches in each wave: a list of kinds, in spawn order.
   function waveList(wave, players, R) {
     R = R || RULES;
@@ -112,7 +115,7 @@
   }
   function addPlayer(S, id, name, bot) {
     if (S.players.has(id)) { const p = S.players.get(id); p.name = name || p.name; p.gone = false; return p; }
-    const p = { id, name: name || 'Defender', bot: !!bot, skin: S.order.length % 12, correct: 0, wrong: 0, streak: 0, best: 0, kills: 0, dmg: 0, answered: false, pending: null, guns: 0, gone: false, bot_ans: 0, bot_place: 0 };
+    const p = { id, name: name || 'Defender', bot: !!bot, skin: S.order.length % 12, correct: 0, wrong: 0, streak: 0, best: 0, kills: 0, dmg: 0, answered: false, pending: null, guns: 0, lost: 0, gone: false, bot_ans: 0, bot_place: 0 };
     S.players.set(id, p); S.order.push(id);
     return p;
   }
@@ -135,7 +138,7 @@
   // ------------------------------------------------------------ waves
   function startWave(S) {
     if (S.phase === 'over' || S.wave >= S.rules.maxWaves) return false;
-    S.wave++; S.phase = 'wave'; S.quizLeft = S.rules.quizTime; S.shots = []; S.enemies = []; S.spawnT = 0.5;
+    S.wave++; S.phase = 'wave'; S.quizLeft = S.rules.quizTime; S.shots = []; S.enemies = []; S.spawnT = 0;              // the first gremlin leaves the spawn on the very first step
     const active = [...S.players.values()].filter(p => !p.gone).length;
     S.queue = waveList(S.wave, active, S.rules);
     let qi; do { qi = Math.floor(S.rand() * QUIZ.length); } while (qi === S.lastQuiz);
@@ -172,16 +175,17 @@
     S.events.push({ e: 'wrong', id });
     return 'wrong';
   }
-  function place(S, id, x, z, type) {
+  function place(S, id, x, z) {
     const p = S.players.get(id); if (!p || !p.pending || S.phase === 'over') return 'none';
-    if (!GUNS[type]) type = 'ballista';
+    const type = LEVEL_GUN[p.pending.level];
     if (!freeTile(S, x, z)) return 'taken';
-    const g = { i: S.guns.length, owner: id, type, level: p.pending.level, x, z, cool: 0.2, yaw: 0, target: null, kills: 0 };
+    const ammo = GUNS[type].levels[p.pending.level].ammo;
+    const g = { i: S.guns.length, owner: id, type, level: p.pending.level, x, z, cool: 0.2, yaw: 0, target: null, kills: 0, ammo, max: ammo, dead: false };
     S.guns.push(g); p.pending = null; p.guns++;
     S.events.push({ e: 'placed', id, gun: gunInfo(S, g) });
     return 'ok';
   }
-  function gunInfo(S, g) { const p = S.players.get(g.owner); return { i: g.i, owner: g.owner, name: p ? p.name : '', skin: p ? p.skin : 0, bot: p ? p.bot : false, type: g.type, level: g.level, x: g.x, z: g.z }; }
+  function gunInfo(S, g) { const p = S.players.get(g.owner); return { i: g.i, owner: g.owner, name: p ? p.name : '', skin: p ? p.skin : 0, bot: p ? p.bot : false, type: g.type, level: g.level, x: g.x, z: g.z, ammo: g.ammo, max: g.max, dead: g.dead }; }
   // Bots pick a spot that covers a lot of road, with some randomness so they do not all pile onto one tile.
   function botSpot(S, level, type) {
     const range = GUNS[type].levels[level].range; const cands = [];
@@ -211,10 +215,10 @@
     for (const p of S.players.values()) {
       if (!p.bot) continue;
       if (!p.answered && S.quizLeft > 0) { p.bot_ans -= dt; if (p.bot_ans <= 0) { const pick = S.rand() < R.botRight ? S.quiz.answer : (S.quiz.answer + 1 + Math.floor(S.rand() * 3)) % 4; answer(S, p.id, pick); S.events.push({ e: 'answer', id: p.id, i: pick }); p.bot_place = R.botPlace * (0.6 + 0.8 * S.rand()); } }
-      else if (p.pending) { p.bot_place -= dt; if (p.bot_place <= 0) { const type = GUN_TYPES[Math.floor(S.rand() * GUN_TYPES.length)]; const s = botSpot(S, p.pending.level, type); if (s) place(S, p.id, s.x, s.z, type); else p.pending = null; } }
+      else if (p.pending) { p.bot_place -= dt; if (p.bot_place <= 0) { const s = botSpot(S, p.pending.level, LEVEL_GUN[p.pending.level]); if (s) place(S, p.id, s.x, s.z); else p.pending = null; } }
     }
     // Gremlins leave the spawn one at a time and march.
-    if (S.queue.length) { S.spawnT -= dt; if (S.spawnT <= 0) { S.spawnT = R.spawnGap * Math.min(1, 8 / Math.max(1, S.players.size)); spawn(S, S.queue.shift()); } }
+    if (S.queue.length) { S.spawnT -= dt; if (S.spawnT <= 0) { S.spawnT = R.spawnGap * Math.min(1, R.spawnRoom / Math.max(1, S.players.size)); spawn(S, S.queue.shift()); } }
     for (const e of S.enemies) {
       if (e.state === 'run') {
         e.d += e.speed * dt;
@@ -224,6 +228,7 @@
     S.enemies = S.enemies.filter(e => e.state === 'run' || e.t < 1.2);
     // Guns pick the enemy furthest along the road in range and shoot.
     for (const g of S.guns) {
+      if (g.dead) continue;
       const def = GUNS[g.type], st = def.levels[g.level];
       g.cool -= dt;
       let best = null, bestD = -1;
@@ -237,7 +242,8 @@
         const p = posAt(best.d, best.side);
         g.yaw = Math.atan2(p.x - g.x, p.z - g.z);
         if (g.cool <= 0) {
-          g.cool = st.reload;
+          g.cool = st.reload; g.ammo--;
+          if (g.ammo <= 0) { g.dead = true; const o = S.players.get(g.owner); if (o) o.lost++; S.events.push({ e: 'gunDown', gun: g.i, owner: g.owner, x: g.x, z: g.z }); }
           const dist = Math.hypot(p.x - g.x, p.z - g.z); const dur = Math.max(0.08, dist / def.ammoSpeed);
           S.shots.push({ gun: g, target: best.id, dmg: st.dmg, splash: def.splash, t: 0, dur, ax: p.x, az: p.z });
           S.events.push({ e: 'shot', gun: g.i, target: best.id, dur, splash: def.splash });
@@ -261,13 +267,13 @@
   // ------------------------------------------------------------ output
   function snapshot(S) {
     const e = S.enemies.map(e => { const p = posAt(e.d, e.side); return [e.id, e.kind, +(e.hp / e.max).toFixed(2), +p.x.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(2), e.state]; });
-    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)) };
+    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)) };
   }
   function roster(S) {
-    return [...S.order].map(id => { const p = S.players.get(id); return { id, name: p.name, bot: p.bot, skin: p.skin, kills: p.kills, dmg: Math.round(p.dmg), correct: p.correct, wrong: p.wrong, streak: p.streak, best: p.best, guns: p.guns, gone: p.gone }; });
+    return [...S.order].map(id => { const p = S.players.get(id); return { id, name: p.name, bot: p.bot, skin: p.skin, kills: p.kills, dmg: Math.round(p.dmg), correct: p.correct, wrong: p.wrong, streak: p.streak, best: p.best, guns: p.guns, alive: S.guns.filter(g => !g.dead && g.owner === id).length, lost: p.lost, gone: p.gone }; });
   }
   function gunList(S) { return S.guns.map(g => gunInfo(S, g)); }
   function takeEvents(S) { const ev = S.events; S.events = []; return ev; }
 
-  return { COLS, ROWS, PATH, PATH_LEN, PATH_SET, DECOR, END, posAt, freeTile, coverage, RULES, ENEMY, GUNS, GUN_TYPES, QUIZ, waveList, create, addPlayer, removePlayer, setBots, startWave, endWave, answer, place, step, snapshot, roster, gunList, takeEvents };
+  return { COLS, ROWS, PATH, PATH_LEN, PATH_SET, DECOR, END, posAt, freeTile, coverage, RULES, ENEMY, GUNS, GUN_TYPES, LEVEL_GUN, QUIZ, waveList, create, addPlayer, removePlayer, setBots, startWave, endWave, answer, place, step, snapshot, roster, gunList, takeEvents };
 });
