@@ -81,6 +81,8 @@ export default {
     if (bq) return Response.redirect(url.origin + '/brawl-quiz?join=' + bq[1].toUpperCase(), 302);
     const mm = url.pathname.match(/^\/mm\/([A-Za-z0-9]{4,8})$/);
     if (mm) return Response.redirect(url.origin + '/marshmallow?join=' + mm[1].toUpperCase(), 302);
+    const ml = url.pathname.match(/^\/ml\/([A-Za-z0-9]{4,8})$/);
+    if (ml) return Response.redirect(url.origin + '/marshmallow-live?join=' + ml[1].toUpperCase(), 302);
     return new Response('Not found', { status: 404 });
   }
 };
