@@ -1,0 +1,19 @@
+{
+  "name": "tiny-kingdom",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d": "0.20.0"
+  },
+  "devDependencies": {
+    "@dimforge/rapier3d-compat": "0.20.0",
+    "esbuild": "^0.25.0",
+    "wrangler": "^4.130.0"
+  }
+}

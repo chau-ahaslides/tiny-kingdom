@@ -1,4 +1,6 @@
-/* tiny-kingdom worker: static assets + multiplayer relay (host-authoritative) for Survival Quiz, Survival Brawl, Brawl Quiz and the Marshmallow Challenge */
+/* tiny-kingdom worker: static assets + the multiplayer relay (host-authoritative) for Survival Quiz, Survival Brawl and Brawl Quiz,
+   plus the Marshmallow Challenge room, which runs its own physics in a Durable Object (see marsh-room.js) */
+export { MarshRoom } from './marsh-room.js';
 
 export class Room {
   constructor(state, env) {
@@ -69,6 +71,8 @@ export default {
     }
     const ws = url.pathname.match(/^\/ws\/([A-Za-z0-9]{4,8})$/);
     if (ws) return env.ROOM.get(env.ROOM.idFromName(ws[1].toUpperCase())).fetch(req);
+    const mws = url.pathname.match(/^\/mws\/([A-Za-z0-9]{4,8})$/);
+    if (mws) return env.MARSH.get(env.MARSH.idFromName(mws[1].toUpperCase())).fetch(req);
     const join = url.pathname.match(/^\/sq\/([A-Za-z0-9]{4,8})$/);
     if (join) return Response.redirect(url.origin + '/survival-quiz?join=' + join[1].toUpperCase(), 302);
     const brawl = url.pathname.match(/^\/sb\/([A-Za-z0-9]{4,8})$/);
