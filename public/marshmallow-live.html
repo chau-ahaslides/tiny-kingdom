@@ -335,6 +335,7 @@ function link(url, onMsg, onState) {
   };
   connect();
   document.addEventListener('visibilitychange', () => { if (!document.hidden && ws && ws.readyState > 1 && !closed) connect(); });
+  setInterval(() => { if (ws && ws.readyState === 1) { try { ws.send('{"t":"ping"}'); } catch (e) {} } }, 20000);   // keeps idle proxies from dropping the socket
   return { send: (m) => { if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(m)); } catch (e) {} } }, close: () => { closed = true; try { ws.close(); } catch (e) {} } };
 }
 async function openRoom() { const res = await fetch('/api/room', { method: 'POST' }); return (await res.json()).code; }

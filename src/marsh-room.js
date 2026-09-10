@@ -9,7 +9,7 @@ const TICK = 1 / 60;
 
 export class MarshRoom {
   constructor(state, env) {
-    this.host = null;
+    this.hosts = new Set();            // big screens are viewers; any number may watch, any of them can press start
     this.players = new Map();          // id -> { ws, name, color } (kept on disconnect: a reload gets the same builder back)
     this.mins = 18;
     this.newGame();
@@ -31,15 +31,14 @@ export class MarshRoom {
     return new Response(null, { status: 101, webSocket: client });
   }
   send(ws, o) { if (!ws) return; try { ws.send(typeof o === 'string' ? o : JSON.stringify(o)); } catch (e) {} }
-  broadcast(o) { const raw = JSON.stringify(o); this.send(this.host, raw); for (const p of this.players.values()) this.send(p.ws, raw); }
+  broadcast(o) { const raw = JSON.stringify(o); for (const h of this.hosts) this.send(h, raw); for (const p of this.players.values()) this.send(p.ws, raw); }
   setupHost(ws) {
-    if (this.host) { try { this.host.close(); } catch (e) {} }
-    this.host = ws;
+    this.hosts.add(ws);
     this.send(ws, this.meta());
     if (this.phase !== 'lobby') this.send(ws, { t: 'p', ...snapshot(this.sim) });
-    ws.addEventListener('message', ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } this.onHost(m); });
-    ws.addEventListener('close', () => { if (this.host === ws) this.host = null; });
-    ws.addEventListener('error', () => { if (this.host === ws) this.host = null; });
+    ws.addEventListener('message', ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.t !== 'ping') this.onHost(m); });
+    ws.addEventListener('close', () => this.hosts.delete(ws));
+    ws.addEventListener('error', () => this.hosts.delete(ws));
   }
   setupPlayer(ws, name, token) {
     const id = 'p' + (token ? token.replace(/[^a-z0-9]/gi, '').slice(0, 12) : Math.random().toString(36).slice(2, 10));
@@ -52,7 +51,7 @@ export class MarshRoom {
     this.send(ws, { t: 'welcome', id, name: rec.name, color: rec.color, rejoined: had ? 1 : 0 });
     this.syncMeta();
     if (this.phase !== 'lobby') this.send(ws, { t: 'p', ...snapshot(this.sim) });
-    ws.addEventListener('message', ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } this.onPlayer(id, m); });
+    ws.addEventListener('message', ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (m.t !== 'ping') this.onPlayer(id, m); });
     const gone = () => {
       if (rec.ws !== ws) return;                                  // an old socket dying after a rejoin
       rec.ws = null;
