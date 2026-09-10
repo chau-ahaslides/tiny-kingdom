@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Tiny Towers</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#20303f; --paper:#fff; --gold:#f3b53e; --red:#e5533d; --green:#4fbb6c; --blue:#4a8fe7; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#cfe8ff; font-family:Fredoka,system-ui,sans-serif; color:var(--ink); touch-action:none; }
+  canvas { display:block; }
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  .pill { position:absolute; background:rgba(255,255,255,.92); border-radius:14px; padding:6px 12px; font-weight:600; font-size:15px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:flex; gap:12px; align-items:center; }
+  #stats { top:10px; left:10px; }
+  #stats span b { font-size:17px; }
+  #wavebox { top:10px; right:10px; pointer-events:auto; }
+  button { font-family:inherit; font-weight:600; font-size:15px; border:0; border-radius:12px; padding:8px 14px; cursor:pointer; background:var(--blue); color:#fff; box-shadow:0 2px 0 rgba(0,0,0,.18); }
+  button:active { transform:translateY(1px); box-shadow:none; }
+  button:disabled { opacity:.45; cursor:default; }
+  button.ghost { background:#e9eef4; color:var(--ink); }
+  button.danger { background:var(--red); }
+  #menu { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); background:rgba(255,255,255,.95); border-radius:18px; padding:10px 12px; box-shadow:0 4px 18px rgba(0,0,0,.18); display:none; gap:8px; pointer-events:auto; max-width:calc(100vw - 20px); flex-wrap:wrap; justify-content:center; }
+  #menu.open { display:flex; }
+  #menu .opt { display:flex; flex-direction:column; align-items:center; gap:2px; background:#f2f5f9; border-radius:14px; padding:8px 10px; min-width:78px; color:var(--ink); box-shadow:none; }
+  #menu .opt small { font-weight:500; font-size:12px; opacity:.75; }
+  #menu .opt .cost { color:#b07a12; font-weight:700; }
+  #menu .opt:disabled { opacity:.4; }
+  #menu .title { width:100%; text-align:center; font-size:13px; font-weight:600; opacity:.7; margin-bottom:-2px; }
+  #toast { position:absolute; left:50%; top:60px; transform:translateX(-50%); background:rgba(32,48,63,.9); color:#fff; padding:8px 16px; border-radius:14px; font-weight:600; opacity:0; transition:opacity .25s; white-space:nowrap; }
+  #toast.show { opacity:1; }
+  #overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(207,232,255,.75); pointer-events:auto; }
+  #overlay .card { background:#fff; border-radius:24px; padding:26px 30px; text-align:center; box-shadow:0 10px 40px rgba(0,0,0,.18); max-width:340px; }
+  #overlay h1 { margin:0 0 6px; font-size:30px; }
+  #overlay p { margin:6px 0 16px; font-size:15px; line-height:1.4; opacity:.85; }
+  #overlay.hidden { display:none; }
+  #help { bottom:10px; left:10px; font-size:12px; font-weight:500; opacity:.8; }
+  #bar { position:absolute; left:0; top:0; height:3px; background:var(--gold); width:0; transition:width .2s; }
+  .credit { font-size:11px; opacity:.6; margin-top:10px; }
+  @media (max-width:600px){ .pill{font-size:13px;padding:5px 9px} #stats span b{font-size:15px} button{font-size:14px;padding:7px 11px} #help{display:none} #wavebox{top:auto;bottom:12px;right:10px} #menu{bottom:64px} }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="bar"></div>
+  <div id="stats" class="pill">
+    <span>💰 <b id="gold">0</b></span>
+    <span>❤️ <b id="lives">0</b></span>
+    <span>🌊 <b id="wave">0</b>/<span id="waves">0</span></span>
+  </div>
+  <div id="wavebox" class="pill">
+    <span id="enemies" style="font-size:13px;opacity:.75"></span>
+    <button id="b-speed" class="ghost">1×</button>
+    <button id="b-wave">▶ Start wave</button>
+  </div>
+  <div id="menu"></div>
+  <div id="toast"></div>
+  <div id="help" class="pill">Tap a grass tile to build · tap a tower to upgrade · drag to orbit · pinch or wheel to zoom</div>
+  <div id="overlay">
+    <div class="card">
+      <h1>🏰 Tiny Towers</h1>
+      <p id="ov-text">Orcs, raiders and UFOs are marching on the crystal. Build towers on the grass beside the road and hold out for <b id="ov-waves">10</b> waves.</p>
+      <button id="b-play">Play</button>
+      <div class="credit">Models by Kenney (CC0): Tower Defense Kit, Mini Characters, Mini Dungeon</div>
+    </div>
+  </div>
+</div>
+
+<script src="/vendor/three.min.js"></script>
+<script src="/vendor/GLTFLoader.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const ASSETS = '/assets/td/';
+
+// ---------------------------------------------------------------- map
+// Grid in tile units. Path is a list of grid cells from spawn to the crystal.
+const COLS = 12, ROWS = 8;
+const PATH = [[0,1],[1,1],[2,1],[3,1],[3,2],[3,3],[3,4],[2,4],[1,4],[1,5],[1,6],[2,6],[3,6],[4,6],[5,6],[6,6],[6,5],[6,4],[6,3],[6,2],[7,2],[8,2],[9,2],[9,3],[9,4],[9,5],[10,5],[11,5]];
+const WAVE_COUNT = 10;
+const START_GOLD = 120, START_LIVES = 15;
+
+// Tower catalogue. Each level: damage, range (tiles), reload (s), plus visual parts.
+const TOWERS = {
+  ballista: { name:'Ballista', icon:'🏹', weapon:'weapon-ballista', ammo:'weapon-ammo-arrow', ammoSpeed:9, splash:0,
+    levels:[ {cost:50, dmg:14, range:2.6, reload:0.9}, {cost:60, dmg:24, range:2.9, reload:0.8}, {cost:90, dmg:42, range:3.2, reload:0.7} ] },
+  cannon:   { name:'Cannon', icon:'💣', weapon:'weapon-cannon', ammo:'weapon-ammo-cannonball', ammoSpeed:6, splash:0.9,
+    levels:[ {cost:80, dmg:26, range:2.3, reload:1.8}, {cost:90, dmg:44, range:2.5, reload:1.6}, {cost:130, dmg:70, range:2.8, reload:1.4} ] },
+  turret:   { name:'Turret', icon:'🔫', weapon:'weapon-turret', ammo:'weapon-ammo-bullet', ammoSpeed:14, splash:0,
+    levels:[ {cost:65, dmg:5, range:2.2, reload:0.18}, {cost:75, dmg:8, range:2.4, reload:0.15}, {cost:110, dmg:12, range:2.6, reload:0.12} ] },
+};
+const TOWER_PARTS = { 0:['tower-round-bottom-a'], 1:['tower-round-bottom-b','tower-round-middle-a'], 2:['tower-round-bottom-c','tower-round-middle-b','tower-round-top-a'] };
+
+// Enemy catalogue. model: which glb, anim clip names, scale, hp, speed (tiles/s), reward, fly height.
+const ENEMIES = {
+  orc:    { model:'dungeon/character-orc', walk:'walk', die:'die', hp:60,  speed:0.9, reward:8,  fly:0 },
+  raider: { model:'mini/character-male-c', walk:'sprint', die:'die', hp:40, speed:1.5, reward:7,  fly:0 },
+  brute:  { model:'mini/character-male-e', walk:'walk', die:'die', hp:180, speed:0.7, reward:18, fly:0, scale:1.25 },
+  ufo:    { model:'kit/enemy-ufo-b', hp:90, speed:1.1, reward:12, fly:0.9 },
+  boss:   { model:'kit/enemy-ufo-d', hp:600, speed:0.6, reward:60, fly:1.0, scale:1.4 },
+};
+// Waves: list of [type, count, gap seconds]. Groups spawn one after another.
+const WAVES = [
+  [['orc',6,1.1]],
+  [['orc',8,0.9],['raider',3,0.7]],
+  [['raider',10,0.6]],
+  [['orc',8,0.8],['ufo',3,1.2]],
+  [['brute',4,1.6],['orc',8,0.7]],
+  [['ufo',8,0.8]],
+  [['raider',14,0.45],['brute',4,1.2]],
+  [['orc',12,0.6],['ufo',8,0.7]],
+  [['brute',8,1.0],['raider',12,0.4]],
+  [['boss',1,0],['ufo',10,0.6],['brute',6,0.9]],
+];
+
+// ---------------------------------------------------------------- loader
+const loader = new THREE.GLTFLoader();
+const cache = new Map();
+function loadGLB(name) {
+  if (!cache.has(name)) cache.set(name, new Promise((res, rej) => loader.load(ASSETS + name + '.glb', res, undefined, rej)));
+  return cache.get(name);
+}
+// Static models are cloned from the loaded scene. Skinned ones need their skeleton re-bound to the cloned bones (what SkeletonUtils.clone does).
+function cloneSkinned(source) {
+  const clone = source.clone(true);
+  const skinned = [], bones = new Map();
+  source.traverse(n => { if (n.isBone) bones.set(n.name, n); });
+  const cloneBones = new Map();
+  clone.traverse(n => { if (n.isBone) cloneBones.set(n.name, n); if (n.isSkinnedMesh) skinned.push(n); });
+  for (const mesh of skinned) {
+    const srcSkel = mesh.skeleton;
+    const newBones = srcSkel.bones.map(b => cloneBones.get(b.name) || b);
+    mesh.bind(new THREE.Skeleton(newBones, srcSkel.boneInverses), mesh.bindMatrix);
+  }
+  return clone;
+}
+const fixMaterials = root => root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material && o.material.map) o.material.map.encoding = THREE.sRGBEncoding; } });
+
+// ---------------------------------------------------------------- scene
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xcfe8ff);
+scene.fog = new THREE.Fog(0xcfe8ff, 18, 40);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+const CENTER = new THREE.Vector3(COLS / 2 - 0.5, 0, ROWS / 2 - 0.5);
+const cam = { theta: -0.55, phi: 0.95, dist: 13, fit: 13 };
+function placeCamera() {
+  camera.position.set(CENTER.x + cam.dist * Math.cos(cam.phi) * Math.sin(cam.theta), CENTER.y + cam.dist * Math.sin(cam.phi), CENTER.z + cam.dist * Math.cos(cam.phi) * Math.cos(cam.theta));
+  camera.lookAt(CENTER.x, 0.2, CENTER.z);
+  scene.fog.near = cam.dist * 1.4; scene.fog.far = cam.dist * 3.2;
+}
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7fa86a, 0.85));
+const sun = new THREE.DirectionalLight(0xffffff, 0.95);
+sun.position.set(6, 12, 4); sun.castShadow = true;
+sun.shadow.mapSize.set(innerWidth < 700 ? 1024 : 2048, innerWidth < 700 ? 1024 : 2048);
+Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 });
+sun.shadow.bias = -0.0005;
+scene.add(sun, sun.target); sun.target.position.copy(CENTER);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({ color: 0x6fcf8a }));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; scene.add(ground);
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  // Portrait phones look along the board's long axis and sit a little further back.
+  const portrait = camera.aspect < 1;
+  const fit = portrait ? 6.8 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.1 : 13 * Math.max(1, 1.7 / camera.aspect);
+  if (portrait !== cam.portrait) { cam.portrait = portrait; cam.theta = portrait ? Math.PI / 2 - 0.35 : -0.55; }
+  cam.dist = cam.dist / cam.fit * fit; cam.fit = fit; placeCamera();
+}
+addEventListener('resize', resize); resize();
+
+// ---------------------------------------------------------------- map build
+const pathSet = new Set(PATH.map(([x, z]) => x + ',' + z));
+const isPath = (x, z) => pathSet.has(x + ',' + z);
+const tiles = new Map(); // "x,z" -> { mesh, tower }
+const rnd = (seed => () => (seed = (seed * 16807) % 2147483647) / 2147483647)(42);
+
+// Road openings of each kit tile at yaw 0 (measured from the models): straight runs along Z,
+// the square corner opens toward +X and +Z, end and spawn tiles open toward +Z.
+const OPENINGS = { 'tile-straight': [[0, 1], [0, -1]], 'tile-corner-square': [[1, 0], [0, 1]], 'tile-end': [[0, 1]], 'tile-spawn-end': [[0, 1]] };
+const rotXZ = ([x, z], yaw) => [Math.round(x * Math.cos(yaw) + z * Math.sin(yaw)), Math.round(-x * Math.sin(yaw) + z * Math.cos(yaw))];
+function yawFor(name, wanted) {
+  const key = v => v.map(d => d.join(',')).sort().join('|');
+  const want = key(wanted);
+  for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) if (key(OPENINGS[name].map(o => rotXZ(o, yaw))) === want) return yaw;
+  return 0;
+}
+function pathTileFor(i) {
+  // Returns [modelName, yaw] for path cell i based on its neighbours.
+  const [x, z] = PATH[i];
+  const prev = PATH[i - 1], next = PATH[i + 1];
+  const dirTo = (a, b) => [b[0] - a[0], b[1] - a[1]];
+  if (!prev) return ['tile-spawn-end', yawFor('tile-spawn-end', [dirTo([x, z], next)])];
+  if (!next) { const a = dirTo(prev, [x, z]); return ['tile-end', yawFor('tile-end', [[-a[0], -a[1]]])]; }
+  const a = dirTo(prev, [x, z]), b = dirTo([x, z], next);
+  const name = (a[0] === b[0] && a[1] === b[1]) ? 'tile-straight' : 'tile-corner-square';
+  return [name, yawFor(name, [[-a[0], -a[1]], b])];
+}
+
+async function buildMap() {
+  const needed = ['tile', 'tile-straight', 'tile-corner-square', 'tile-spawn-end', 'tile-end', 'tile-tree', 'tile-tree-double', 'tile-rock', 'detail-rocks', 'detail-tree', 'tile-crystal', 'tower-round-base'];
+  await Promise.all(needed.map(n => loadGLB('kit/' + n)));
+  const group = new THREE.Group(); scene.add(group);
+  const inst = async (name, x, z, yaw = 0, y = 0) => { const g = await loadGLB('kit/' + name); const o = g.scene.clone(true); fixMaterials(o); o.position.set(x, y, z); o.rotation.y = yaw; group.add(o); return o; };
+  for (let x = 0; x < COLS; x++) for (let z = 0; z < ROWS; z++) {
+    if (isPath(x, z)) continue;
+    const r = rnd();
+    let name = 'tile';
+    if (r < 0.08) name = 'tile-tree'; else if (r < 0.12) name = 'tile-tree-double'; else if (r < 0.16) name = 'tile-rock';
+    const mesh = await inst(name, x, z, Math.floor(rnd() * 4) * Math.PI / 2);
+    tiles.set(x + ',' + z, { x, z, mesh, tower: null, buildable: name === 'tile' });
+    if (name === 'tile' && rnd() < 0.12) await inst('detail-rocks', x + (rnd() - .5) * .4, z + (rnd() - .5) * .4, rnd() * 6, 0.2);
+  }
+  for (let i = 0; i < PATH.length; i++) { const [name, yaw] = pathTileFor(i); await inst(name, PATH[i][0], PATH[i][1], yaw); }
+  // Crystal at the end of the road (the thing to defend).
+  const end = PATH[PATH.length - 1];
+  const crystal = await inst('tile-crystal', end[0], end[1]);
+  crystal.position.y = 0.0; crystal.scale.set(0.8, 0.8, 0.8); crystal.position.set(end[0], 0.2, end[1]);
+  // Border trees around the board.
+  for (let x = -1; x <= COLS; x++) for (const z of [-1, ROWS]) if (rnd() < 0.7) await inst(rnd() < .5 ? 'tile-tree' : 'tile-tree-double', x, z, rnd() * 6);
+  for (let z = 0; z < ROWS; z++) for (const x of [-1, COLS]) if (rnd() < 0.7 && !(x === -1 && z === PATH[0][1])) await inst(rnd() < .5 ? 'tile-tree' : 'tile-tree-double', x, z, rnd() * 6);
+}
+
+// ---------------------------------------------------------------- game state
+const G = { gold: START_GOLD, lives: START_LIVES, wave: 0, running: false, speed: 1, enemies: [], shots: [], fx: [], over: false, spawnQueue: [], spawnTimer: 0, selected: null };
+const clock = new THREE.Clock();
+function hud() {
+  $('#gold').textContent = G.gold; $('#lives').textContent = G.lives; $('#wave').textContent = G.wave; $('#waves').textContent = WAVE_COUNT;
+  $('#enemies').textContent = G.running ? (G.enemies.length + G.spawnQueue.length) + ' left' : (G.wave >= WAVE_COUNT ? '' : 'Wave ' + (G.wave + 1) + ' ready');
+  $('#b-wave').disabled = G.running || G.over || G.wave >= WAVE_COUNT;
+  $('#bar').style.width = (100 * G.wave / WAVE_COUNT) + '%';
+}
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600); }
+
+// Path in world coords with cumulative distance for smooth movement.
+const WP = PATH.map(([x, z]) => new THREE.Vector3(x, 0, z));
+const SEG = []; let total = 0;
+for (let i = 0; i < WP.length - 1; i++) { const l = WP[i].distanceTo(WP[i + 1]); SEG.push({ a: WP[i], b: WP[i + 1], start: total, len: l }); total += l; }
+const PATH_LEN = total;
+function posAt(d, out) {
+  if (d <= 0) return out.copy(WP[0]);
+  if (d >= PATH_LEN) return out.copy(WP[WP.length - 1]);
+  let s = SEG[0]; for (const seg of SEG) if (d >= seg.start && d <= seg.start + seg.len) { s = seg; break; }
+  return out.copy(s.a).lerp(s.b, (d - s.start) / s.len);
+}
+
+// ---------------------------------------------------------------- enemies
+const hpGeo = new THREE.PlaneGeometry(0.5, 0.06);
+const hpMatBg = new THREE.MeshBasicMaterial({ color: 0x20303f, depthTest: false, transparent: true, opacity: 0.8 });
+async function spawnEnemy(type) {
+  const def = ENEMIES[type];
+  const g = await loadGLB(def.model);
+  const animated = g.animations.length > 0;
+  const root = animated ? cloneSkinned(g.scene) : g.scene.clone(true);
+  fixMaterials(root);
+  const s = def.scale || 1; root.scale.setScalar(s);
+  const holder = new THREE.Group(); holder.add(root); scene.add(holder);
+  const e = { type, def, holder, root, d: -0.3, hp: def.hp * (1 + 0.12 * (G.wave - 1)), maxHp: 0, dead: false, mixer: null, t: Math.random() * 6, slow: 0 };
+  e.maxHp = e.hp;
+  if (animated) {
+    e.mixer = new THREE.AnimationMixer(root);
+    const clip = g.animations.find(a => a.name === def.walk) || g.animations[0];
+    const act = e.mixer.clipAction(clip); act.play(); act.time = Math.random() * clip.duration;
+  }
+  // HP bar (billboard).
+  const bar = new THREE.Group();
+  const bg = new THREE.Mesh(hpGeo, hpMatBg); const fg = new THREE.Mesh(hpGeo, new THREE.MeshBasicMaterial({ color: 0x4fbb6c, depthTest: false }));
+  fg.position.z = 0.001; bar.add(bg, fg); bar.position.y = (def.fly ? 0.85 : 0.95) * s; bar.renderOrder = 10; holder.add(bar);
+  e.bar = bar; e.barFg = fg;
+  G.enemies.push(e);
+  return e;
+}
+const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
+function updateEnemy(e, dt) {
+  if (e.dead) {
+    e.deadT += dt;
+    if (e.mixer) e.mixer.update(dt);
+    if (e.def.fly) { e.holder.position.y -= 3 * dt; e.root.rotation.z += 4 * dt; }
+    if (e.deadT > (e.def.fly ? 0.5 : 1.1)) { scene.remove(e.holder); return false; }
+    e.bar.visible = false;
+    return true;
+  }
+  const slowF = e.slow > 0 ? 0.55 : 1; e.slow -= dt;
+  e.d += e.def.speed * slowF * dt;
+  e.t += dt;
+  posAt(e.d, tmpV); posAt(e.d + 0.05, tmpV2);
+  e.holder.position.set(tmpV.x, e.def.fly ? e.def.fly + Math.sin(e.t * 3) * 0.08 : 0, tmpV.z);
+  const dx = tmpV2.x - tmpV.x, dz = tmpV2.z - tmpV.z;
+  if (dx || dz) { const target = Math.atan2(dx, dz); let diff = target - e.root.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); e.root.rotation.y += diff * Math.min(1, 10 * dt); }
+  if (e.def.fly) e.root.rotation.y += 2 * dt;
+  if (e.mixer) e.mixer.update(dt * e.def.speed * 1.4 * slowF);
+  e.bar.quaternion.copy(camera.quaternion);
+  const f = Math.max(0, e.hp / e.maxHp); e.barFg.scale.x = f; e.barFg.position.x = -(1 - f) * 0.25; e.barFg.material.color.set(f > .5 ? 0x4fbb6c : f > .25 ? 0xf3b53e : 0xe5533d);
+  if (e.d >= PATH_LEN) { scene.remove(e.holder); G.lives--; hud(); flashCrystal(); if (G.lives <= 0) gameOver(false); return false; }
+  return true;
+}
+function hurt(e, dmg, byCannon) {
+  if (e.dead) return;
+  e.hp -= dmg;
+  if (e.hp <= 0) {
+    e.dead = true; e.deadT = 0; G.gold += e.def.reward; hud();
+    coinPop(e.holder.position);
+    if (e.mixer) { e.mixer.stopAllAction(); loadGLB(e.def.model).then(g => { const c = g.animations.find(a => a.name === e.def.die); if (c) { const a = e.mixer.clipAction(c); a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; a.play(); } }); }
+  }
+}
+
+// ---------------------------------------------------------------- towers
+async function buildTower(tile, type) {
+  const def = TOWERS[type];
+  const group = new THREE.Group(); group.position.set(tile.x, 0.2, tile.z); scene.add(group);
+  const t = { type, def, level: 0, tile, group, parts: [], weapon: null, cool: 0, yaw: 0, target: null };
+  tile.tower = t;
+  await dressTower(t);
+  return t;
+}
+async function dressTower(t) {
+  for (const p of t.parts) t.group.remove(p); t.parts = [];
+  if (t.weapon) { t.group.remove(t.weapon); t.weapon = null; }
+  let y = 0;
+  const base = (await loadGLB('kit/tower-round-base')).scene.clone(true); fixMaterials(base); base.position.y = -0.2; t.group.add(base); t.parts.push(base);
+  for (const name of TOWER_PARTS[t.level]) {
+    const g = await loadGLB('kit/' + name); const o = g.scene.clone(true); fixMaterials(o);
+    const h = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y;
+    o.position.y = y; t.group.add(o); t.parts.push(o); y += h - 0.02;
+  }
+  const w = (await loadGLB('kit/' + t.def.weapon)).scene.clone(true); fixMaterials(w);
+  w.position.y = y + (t.def.weapon === 'weapon-cannon' ? 0.15 : 0.02); t.group.add(w); t.weapon = w; t.muzzleY = w.position.y + 0.3;
+  t.group.userData.tower = t;
+}
+function towerStats(t) { return t.def.levels[t.level]; }
+function upgradeCost(t) { return t.level < 2 ? t.def.levels[t.level + 1].cost : null; }
+function sellValue(t) { let v = 0; for (let i = 0; i <= t.level; i++) v += t.def.levels[i].cost; return Math.round(v * 0.6); }
+
+function updateTower(t, dt) {
+  const st = towerStats(t);
+  t.cool -= dt;
+  // Pick target: furthest along path within range.
+  let best = null, bestD = -1;
+  for (const e of G.enemies) {
+    if (e.dead) continue;
+    const dx = e.holder.position.x - t.tile.x, dz = e.holder.position.z - t.tile.z;
+    if (dx * dx + dz * dz <= st.range * st.range && e.d > bestD) { best = e; bestD = e.d; }
+  }
+  t.target = best;
+  if (best) {
+    const dx = best.holder.position.x - t.tile.x, dz = best.holder.position.z - t.tile.z;
+    const want = Math.atan2(dx, dz);
+    let diff = want - t.weapon.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    t.weapon.rotation.y += diff * Math.min(1, 12 * dt);
+    if (t.cool <= 0 && Math.abs(diff) < 0.4) { t.cool = st.reload; fire(t, best); }
+  }
+}
+async function fire(t, target) {
+  const st = towerStats(t);
+  const g = await loadGLB('kit/' + t.def.ammo); const m = g.scene.clone(true);
+  m.scale.setScalar(t.def.ammo.includes('bullet') ? 1.6 : 1.1);
+  const from = new THREE.Vector3(t.tile.x, 0.2 + t.muzzleY, t.tile.z);
+  m.position.copy(from); scene.add(m);
+  G.shots.push({ m, target, dmg: st.dmg, splash: t.def.splash, speed: t.def.ammoSpeed, arc: t.def.splash > 0, from, t: 0, aim: target.holder.position.clone().setY(target.def.fly || 0.35) });
+  // Recoil bump
+  t.weapon.position.y -= 0.05; setTimeout(() => t.weapon.position.y += 0.05, 90);
+}
+function updateShot(s, dt) {
+  if (!s.target.dead && !s.arc) s.aim.copy(s.target.holder.position).setY((s.target.def.fly || 0) + 0.35);
+  const total = s.from.distanceTo(s.aim);
+  s.t += dt * s.speed / Math.max(0.01, total);
+  if (s.t >= 1) {
+    scene.remove(s.m);
+    if (s.splash > 0) { boom(s.aim, s.splash); for (const e of G.enemies) if (!e.dead && e.holder.position.distanceTo(s.aim) <= s.splash + 0.3) { hurt(e, s.dmg); e.slow = 0.6; } }
+    else if (!s.target.dead) hurt(s.target, s.dmg);
+    return false;
+  }
+  s.m.position.lerpVectors(s.from, s.aim, s.t);
+  if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * total * 0.35;
+  s.m.lookAt(s.aim);
+  if (s.arc) s.m.rotation.x += dt * 8;
+  return true;
+}
+
+// ---------------------------------------------------------------- effects
+const fxGeo = new THREE.SphereGeometry(1, 12, 8);
+function boom(pos, r) {
+  const m = new THREE.Mesh(fxGeo, new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.8 }));
+  m.position.copy(pos); m.scale.setScalar(0.1); scene.add(m);
+  G.fx.push({ m, t: 0, life: 0.35, r: r + 0.2, kind: 'boom' });
+}
+async function coinPop(pos) {
+  const g = await loadGLB('dungeon/coin'); const m = g.scene.clone(true); m.position.copy(pos).setY(pos.y + 0.6); scene.add(m);
+  G.fx.push({ m, t: 0, life: 0.8, kind: 'coin' });
+}
+let crystalFlash = 0; function flashCrystal() { crystalFlash = 0.4; }
+function updateFx(f, dt) {
+  f.t += dt; const k = f.t / f.life;
+  if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = 0.8 * (1 - k); }
+  if (f.kind === 'coin') { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * 0.6); }
+  if (k >= 1) { scene.remove(f.m); return false; }
+  return true;
+}
+
+// ---------------------------------------------------------------- waves
+function startWave() {
+  if (G.running || G.over || G.wave >= WAVE_COUNT) return;
+  G.wave++; G.running = true; G.spawnQueue = [];
+  for (const [type, n, gap] of WAVES[G.wave - 1]) for (let i = 0; i < n; i++) G.spawnQueue.push({ type, gap });
+  G.spawnTimer = 0.3; toast('Wave ' + G.wave + ' incoming!'); hud();
+  // Preload models used by this wave.
+  for (const q of G.spawnQueue) loadGLB(ENEMIES[q.type].model);
+}
+function endWave() {
+  G.running = false; const bonus = 20 + G.wave * 5; G.gold += bonus; hud();
+  if (G.wave >= WAVE_COUNT) gameOver(true); else toast('Wave cleared! +' + bonus + ' gold');
+}
+function gameOver(won) {
+  G.over = true; G.running = false; hud();
+  $('#overlay').classList.remove('hidden');
+  $('#overlay h1').textContent = won ? '🎉 Crystal saved!' : '💀 Crystal lost';
+  $('#ov-text').innerHTML = won ? 'You held all ' + WAVE_COUNT + ' waves with <b>' + G.lives + '</b> lives to spare.' : 'The horde got through on wave <b>' + G.wave + '</b>.';
+  $('#b-play').textContent = 'Play again';
+}
+
+// ---------------------------------------------------------------- input: orbit, pinch, tap
+const el = renderer.domElement;
+const pointers = new Map(); let dragged = false, lastPinch = 0, downAt = null;
+el.addEventListener('pointerdown', e => { pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); dragged = false; downAt = { x: e.clientX, y: e.clientY }; el.setPointerCapture(e.pointerId); });
+el.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  const p = pointers.get(e.pointerId); const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 1) {
+    if (Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 6) dragged = true;
+    if (dragged) { cam.theta -= dx * 0.006; cam.phi = Math.max(0.35, Math.min(1.35, cam.phi + dy * 0.005)); placeCamera(); }
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (lastPinch) { cam.dist = Math.max(cam.fit * 0.45, Math.min(cam.fit * 1.8, cam.dist * lastPinch / d)); placeCamera(); }
+    lastPinch = d; dragged = true;
+  }
+});
+const endPointer = e => { pointers.delete(e.pointerId); if (pointers.size < 2) lastPinch = 0; if (!dragged && e.type === 'pointerup') tap(e.clientX, e.clientY); };
+el.addEventListener('pointerup', endPointer); el.addEventListener('pointercancel', endPointer);
+el.addEventListener('wheel', e => { cam.dist = Math.max(cam.fit * 0.45, Math.min(cam.fit * 1.8, cam.dist * (1 + Math.sign(e.deltaY) * 0.08))); placeCamera(); }, { passive: true });
+
+const ray = new THREE.Raycaster(); const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.2); const hit = new THREE.Vector3();
+let selectRing = null;
+function tap(cx, cy) {
+  if (G.over) return;
+  ray.setFromCamera({ x: (cx / innerWidth) * 2 - 1, y: -(cy / innerHeight) * 2 + 1 }, camera);
+  if (!ray.ray.intersectPlane(plane, hit)) return closeMenu();
+  const x = Math.round(hit.x), z = Math.round(hit.z);
+  const tile = tiles.get(x + ',' + z);
+  if (!tile || !tile.buildable) return closeMenu();
+  openMenu(tile);
+}
+async function openMenu(tile) {
+  G.selected = tile;
+  if (!selectRing) { selectRing = (await loadGLB('kit/selection-a')).scene.clone(true); selectRing.traverse(o => { if (o.isMesh) o.material = o.material.clone(); }); scene.add(selectRing); }
+  selectRing.visible = true; selectRing.position.set(tile.x, 0.21, tile.z);
+  const menu = $('#menu'); menu.innerHTML = '';
+  if (!tile.tower) {
+    menu.insertAdjacentHTML('beforeend', '<div class="title">Build on this tile</div>');
+    for (const [key, d] of Object.entries(TOWERS)) {
+      const l = d.levels[0];
+      const b = document.createElement('button'); b.className = 'opt'; b.disabled = G.gold < l.cost;
+      b.innerHTML = `<span>${d.icon} ${d.name}</span><small>dmg ${l.dmg} · rng ${l.range}${d.splash ? ' · splash' : ''}</small><span class="cost">${l.cost} 💰</span>`;
+      b.onclick = async () => { if (G.gold < l.cost) return toast('Not enough gold'); G.gold -= l.cost; hud(); closeMenu(); await buildTower(tile, key); };
+      menu.appendChild(b);
+    }
+  } else {
+    const t = tile.tower, st = towerStats(t), up = upgradeCost(t);
+    menu.insertAdjacentHTML('beforeend', `<div class="title">${t.def.icon} ${t.def.name} · level ${t.level + 1} · dmg ${st.dmg} · rng ${st.range}</div>`);
+    if (up !== null) {
+      const n = t.def.levels[t.level + 1];
+      const b = document.createElement('button'); b.className = 'opt'; b.disabled = G.gold < up;
+      b.innerHTML = `<span>⬆️ Upgrade</span><small>dmg ${n.dmg} · rng ${n.range}</small><span class="cost">${up} 💰</span>`;
+      b.onclick = async () => { if (G.gold < up) return toast('Not enough gold'); G.gold -= up; t.level++; hud(); closeMenu(); await dressTower(t); toast(t.def.name + ' → level ' + (t.level + 1)); };
+      menu.appendChild(b);
+    } else menu.insertAdjacentHTML('beforeend', '<button class="opt" disabled><span>⭐ Max level</span></button>');
+    const s = document.createElement('button'); s.className = 'opt';
+    s.innerHTML = `<span>🗑 Sell</span><small>refund</small><span class="cost">+${sellValue(t)} 💰</span>`;
+    s.onclick = () => { G.gold += sellValue(t); scene.remove(t.group); tile.tower = null; hud(); closeMenu(); };
+    menu.appendChild(s);
+  }
+  const c = document.createElement('button'); c.className = 'opt'; c.innerHTML = '<span>✕</span><small>close</small>'; c.onclick = closeMenu; menu.appendChild(c);
+  menu.classList.add('open');
+  showRange(tile);
+}
+let rangeRing = null;
+function showRange(tile) {
+  if (!rangeRing) { rangeRing = new THREE.Mesh(new THREE.RingGeometry(0.97, 1, 48), new THREE.MeshBasicMaterial({ color: 0x4a8fe7, transparent: true, opacity: 0.55, side: THREE.DoubleSide })); rangeRing.rotation.x = -Math.PI / 2; scene.add(rangeRing); }
+  const r = tile.tower ? towerStats(tile.tower).range : 0;
+  rangeRing.visible = r > 0; rangeRing.position.set(tile.x, 0.23, tile.z); rangeRing.scale.setScalar(r || 1);
+}
+function closeMenu() { $('#menu').classList.remove('open'); if (selectRing) selectRing.visible = false; if (rangeRing) rangeRing.visible = false; G.selected = null; }
+
+$('#b-wave').onclick = startWave;
+$('#b-speed').onclick = () => { G.speed = G.speed === 1 ? 2 : G.speed === 2 ? 3 : 1; $('#b-speed').textContent = G.speed + '×'; };
+$('#b-play').onclick = () => { if (G.over) location.reload(); else { $('#overlay').classList.add('hidden'); } };
+
+// ---------------------------------------------------------------- loop
+function tick() {
+  requestAnimationFrame(tick);
+  const raw = Math.min(0.05, clock.getDelta());
+  const dt = raw * (G.over ? 0 : G.speed);
+  if (G.running) {
+    G.spawnTimer -= dt;
+    if (G.spawnQueue.length && G.spawnTimer <= 0) { const q = G.spawnQueue.shift(); G.spawnTimer = q.gap || 0.4; spawnEnemy(q.type); hud(); }
+    if (!G.spawnQueue.length && !G.enemies.length) endWave();
+  }
+  G.enemies = G.enemies.filter(e => updateEnemy(e, dt));
+  for (const tile of tiles.values()) if (tile.tower) updateTower(tile.tower, dt);
+  G.shots = G.shots.filter(s => updateShot(s, dt));
+  G.fx = G.fx.filter(f => updateFx(f, dt));
+  if (selectRing && selectRing.visible) selectRing.rotation.y += raw * 1.5;
+  renderer.render(scene, camera);
+}
+
+(async () => {
+  placeCamera(); hud();
+  $('#b-play').disabled = true; $('#b-play').textContent = 'Loading…';
+  await buildMap();
+  // Warm the caches so the first wave and the first tower do not hitch.
+  await Promise.all([...Object.values(TOWERS).flatMap(t => ['kit/' + t.weapon, 'kit/' + t.ammo]), 'kit/tower-round-bottom-a', 'kit/selection-a', 'dungeon/coin', ENEMIES.orc.model, ENEMIES.raider.model].map(loadGLB));
+  $('#b-play').disabled = false; $('#b-play').textContent = 'Play';
+  tick();
+})();
+</script>
+</body>
+</html>
