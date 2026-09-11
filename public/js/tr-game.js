@@ -48,7 +48,7 @@ function hostReceive(m) {
   if (m.t === 'ans') {
     const res = TR.answer(S, m.id, m.i); const p = S.players.get(m.id);
     host.link.send({ to: m.id, t: 'ans', res, correct: S.quiz ? S.quiz.answer : -1, level: p && p.pending ? p.pending.level : 0, streak: p ? p.streak : 0 });
-    if (res === 'right' || res === 'wrong' || res === 'god') { host.answers.set(m.id, m.i); renderQuiz(); SFX.play('answer', { pitch: 1.2 }); emit('answer', { id: m.id, name: p ? p.name : '', option: m.i, result: res, streak: p ? p.streak : 0, wave: S.wave }); }
+    if (res === 'right' || res === 'wrong' || res === 'god') { host.answers.set(m.id, m.i); renderQuiz(); SFX.play('answer', { pitch: 1.2 }); emit('answer', { id: m.id, name: p ? p.name : '', option: m.i, result: res, streak: p ? p.streak : 0, wave: S.wave }); noteAnswer(p, res); }
     return;
   }
   if (m.t === 'place') {
@@ -58,6 +58,9 @@ function hostReceive(m) {
   }
 }
 function sendRoster() { if (host.link) host.link.send({ t: 'roster', list: TR.roster(host.S) }); }
+// A one-line note of what someone just did, for the phones' activity feed. `who` is left out for room-wide news.
+function activity(text, who) { if (host.link) host.link.send({ t: 'act', m: text, who: who || null }); }
+function answerTally() { const S = host.S; const total = [...S.players.values()].filter(r => !r.gone).length; const right = [...host.answers.values()].filter(i => i === S.quiz.answer).length; return { n: host.answers.size, total, right }; }
 function renderRoster() {
   const list = TR.roster(host.S);
   $('#count').textContent = '(' + list.length + ')';
@@ -73,6 +76,10 @@ $('#b-start').onclick = async () => {
   try { await preload(); } catch (e) {}
   show('s-hostgame'); host.running = true; SFX.startMusic(); emit('start', { players: TR.roster(S) });
   beginWave();
+}
+function noteAnswer(p, res) {
+  if (!p) return; const t = answerTally();
+  activity((res === 'god' ? '⚡ ' : res === 'right' ? '✅ ' : '❌ ') + p.name + (res === 'god' ? ' — GOD MODE, streak ' + p.streak : res === 'right' ? ' got it' + (p.streak > 1 ? ' 🔥' + p.streak : '') : ' missed') + ' · ' + t.n + '/' + t.total + ' answered', p.id);
 }
 // The first wave is started by hand; every later one starts on the clock inside the rules and arrives as a 'wave' event.
 function beginWave() { TR.startWave(host.S); onWave(); }
@@ -125,15 +132,16 @@ function hostSim() {
       if (ev.e === 'shot') { view.shot(ev.gun, ev.target, ev.dur, ev.splash); host.fx.s.push([ev.gun, ev.target, +ev.dur.toFixed(2), ev.splash]); const g = S.guns[ev.gun]; if (g) SFX.play(g.type === 'ballista' ? 'arrow' : g.type === 'turret' || g.type === 'crystal' ? 'turret' : 'cannon', { pitch: 0.85 + Math.random() * 0.3 }); }
       else if (ev.e === 'boom') { view.boom(ev.x, ev.z, ev.r); host.fx.b.push([+ev.x.toFixed(2), +ev.z.toFixed(2), ev.r]); SFX.play('boom', { pitch: 0.9 + Math.random() * 0.2, vol: Math.min(1.3, ev.r) }); }
       else if (ev.e === 'die') { SFX.play('kill', { pitch: 0.9 + Math.random() * 0.2 }); const p = S.players.get(ev.owner); if (p && !p.bot) host.link.send({ to: ev.owner, t: 'kill', n: ev.kills }); }
-      else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); SFX.play('bite'); SFX.play('alarm'); emit('bite', { hp: Math.max(0, S.tower.hp), max: S.tower.max, kind: ev.kind }); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
+      else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); activity('👹 A ' + T.enemy + ' got through — tower ' + Math.max(0, S.tower.hp) + '/' + S.tower.max); SFX.play('bite'); SFX.play('alarm'); emit('bite', { hp: Math.max(0, S.tower.hp), max: S.tower.max, kind: ev.kind }); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
       else if (ev.e === 'placed') { view.addGun(ev.gun); host.link.send({ t: 'gun', g: ev.gun }); SFX.play('place'); emit('placed', ev.gun); }
       else if (ev.e === 'placeEnd') { host.link.send({ t: 'placeEnd' }); }
       else if (ev.e === 'god') { const p = S.players.get(ev.id); godFeast(p ? p.name : '?', ev.streak, ev.refilled, ev.guns); host.link.send({ t: 'god', id: ev.id, name: p ? p.name : '?', streak: ev.streak, n: ev.refilled, guns: ev.guns }); emit('god', { id: ev.id, name: p ? p.name : '', streak: ev.streak, refilled: ev.refilled }); }
-      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); emit('gunDown', { gun: ev.gun, owner: ev.owner }); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) toast('🪫 ' + p.name + "'s gun is out of ammo"); }
-      else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); SFX.play('answer', { pitch: 0.8 + Math.random() * 0.5 }); }
-      else if (ev.e === 'quizEnd') { renderQuiz(); SFX.play('tick'); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); }
+      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); emit('gunDown', { gun: ev.gun, owner: ev.owner }); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) { toast('🪫 ' + p.name + "'s gun is out of ammo"); activity('🪫 ' + p.name + "'s gun ran dry", ev.owner); } }
+      else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); SFX.play('answer', { pitch: 0.8 + Math.random() * 0.5 }); const p = S.players.get(ev.id); noteAnswer(p, ev.i === S.quiz.answer ? (p.streak >= S.rules.godStreak ? 'god' : 'right') : 'wrong'); }
+      else if (ev.e === 'quizEnd') { renderQuiz(); SFX.play('tick'); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); const t = answerTally(); activity('⏰ Quiz over — ' + t.right + ' of ' + t.total + ' got a gun'); }
       else if (ev.e === 'waveEnd') { SFX.play('clear'); emit('waveEnd', { wave: ev.wave, hp: Math.max(0, S.tower.hp), max: S.tower.max, board: TR.roster(S) }); if (S.phase === 'final') { $('#h-quiz').classList.remove('on'); bigMsg('Last wave held — clear the road!', 2500); sendRoster(); } }
       else if (ev.e === 'wave') onWave();
+      else if (ev.e === 'die' && ev.owner) { const p = S.players.get(ev.owner); if (p && p.kills % 5 === 0) activity('🎯 ' + p.name + ' has shot ' + p.kills + ' ' + T.enemies, ev.owner); }
       else if (ev.e === 'over') finish(ev.won);
     }
     const snap = TR.snapshot(S); host.snap = snap;
@@ -220,7 +228,8 @@ function playerReceive(m) {
   if (m.t === 'roster') { player.roster = m.list; const me = m.list.find(r => r.id === player.id); if (me) { player.streak = me.streak; player.kills = me.kills; player.gunsN = me.alive; updateMe(); } return; }
   if (m.t === 'guns') { player.guns = m.list; v.setGuns(m.list); return; }
   if (m.t === 'gunDown') { const g = player.guns.find(g => g.i === m.i); if (g) g.dead = true; v.removeGun(m.i); if (m.owner === player.id) { player.gunsN = Math.max(0, player.gunsN - 1); updateMe(); SFX.play('empty'); if (navigator.vibrate) navigator.vibrate(40); } return; }
-  if (m.t === 'gun') { player.guns.push(m.g); v.addGun(m.g); if (m.g.owner === player.id) { player.gunsN++; updateMe(); } if (player.sel && player.sel.x === m.g.x && player.sel.z === m.g.z) placeAt(m.g.x, m.g.z); return; }
+  if (m.t === 'act') { feed(m.m, m.who); return; }
+  if (m.t === 'gun') { player.guns.push(m.g); v.addGun(m.g); if (m.g.owner !== player.id) feed('🔫 ' + m.g.name + ' placed ' + LEVEL_LABEL[m.g.level].replace(/^\S+ /, 'a '), m.g.owner); if (m.g.owner === player.id) { player.gunsN++; updateMe(); } if (player.sel && player.sel.x === m.g.x && player.sel.z === m.g.z) placeAt(m.g.x, m.g.z); return; }
   if (m.t === 'quiz') { showQuiz(m); SFX.play('quiz'); emit('quiz', { wave: m.wave, q: m.q, opts: m.opts }); return; }
   if (m.t === 'placeEnd') { if (player.pending) { closePlace(); pMsg('⏰ Too slow — the gun is lost', 1600); SFX.play('wrong'); } return; }
   if (m.t === 'ans') {
@@ -280,6 +289,13 @@ function playerReceive(m) {
     setBtn(m.won ? 'ok' : 'hot', m.won ? '🏆 Every wave held!' : '💥 The tower fell after ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's'));
     setTimeout(() => pMsg((m.won ? '🏆 LEGENDARY!\nThe tower held every wave.\n' : '💥 THE TOWER HAS FALLEN\nHeld for ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's') + '.\n') + (me ? 'You shot ' + me.kills + ' gremlins (#' + rank + ')' : ''), 60000), fallen ? 3500 : 0);
   }
+}
+// Activity feed: the last few things other people did, small and short-lived, so waiting is not a black hole.
+function feed(text, who) {
+  if (who && who === player.id) return;                       // your own doings are already on your screen
+  const el = $('#p-feed'); const f = document.createElement('div'); f.className = 'f'; f.textContent = text;
+  el.appendChild(f); while (el.children.length > 3) el.removeChild(el.firstChild);
+  setTimeout(() => f.classList.add('fade'), 5000); setTimeout(() => { if (f.parentNode) f.parentNode.removeChild(f); }, 5700);
 }
 function updateMe() { $('#p-streak').textContent = player.streak; $('#p-kills').textContent = player.kills; $('#p-guns').textContent = player.gunsN; }
 function showQuiz(m) {
