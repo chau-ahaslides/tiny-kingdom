@@ -236,7 +236,8 @@ import { AhaRoom } from '/js/aha-room.js';
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PAPER = '#F2EFE7';
 
-  let W, H, dpr, short;
+  let W, H, dpr, short;              // the sheet, in CSS px
+  let VW = 0, VH = 0;                // the screen; equal to the sheet on the big screen, a window onto it on phones
   let queue = [], userQueue = [], active = [], palette = null;
   let marks = [];                    // brushes that keep drawing themselves: salt, drips
   const wet = document.createElement('canvas');
@@ -1617,8 +1618,8 @@ import { AhaRoom } from '/js/aha-room.js';
   const zoomBtn = document.getElementById('zoom');
   function clampView() {
     zoom.z = clamp(zoom.z, 1, 8);
-    zoom.x = clamp(zoom.x, 0, W - W / zoom.z);
-    zoom.y = clamp(zoom.y, 0, H - H / zoom.z);
+    zoom.x = clamp(zoom.x, 0, Math.max(0, W - VW / zoom.z));   // the screen never leaves the sheet
+    zoom.y = clamp(zoom.y, 0, Math.max(0, H - VH / zoom.z));
     if (zoomBtn) { zoomBtn.hidden = zoom.z < 1.02; zoomBtn.textContent = zoom.z.toFixed(1) + '×'; }
   }
   function zoomAt(cx, cy, factor) {                     // the sheet point under the cursor stays put
@@ -1628,7 +1629,7 @@ import { AhaRoom } from '/js/aha-room.js';
     zoom.y = s.y - (cy - vrect.top) / zoom.z;
     clampView();
   }
-  if (zoomBtn) zoomBtn.onclick = () => { zoom.z = 1; zoom.x = 0; zoom.y = 0; clampView(); };
+  if (zoomBtn) zoomBtn.onclick = () => { zoom.z = 1; zoom.x = (W - VW) / 2; zoom.y = (H - VH) / 2; clampView(); };
   view.addEventListener('wheel', e => {                 // a phone-mode page on a laptop, for trying it out
     if (!isClient) return;
     e.preventDefault();
@@ -1776,7 +1777,9 @@ import { AhaRoom } from '/js/aha-room.js';
     room.on('leave', ({ id }) => { const p = painters.get(id); if (p) up(p); });                         // the painter stays: they may come back
     room.on('msg', hostMsg);
     // the sheet as a picture: only when it changed, at a rate that stretches with the room
-    frames = room.frame(paint, { long: 640, quality: 0.55, format: 'webp', every: 700, perPlayer: 30, max: 2500 });
+    // phones look at a slice of the sheet at 1× and closer when zoomed, so the picture is sent at 1280 px
+    frames = room.frame(paint, { long: 1280, quality: 0.6, format: 'webp', every: 700, perPlayer: 30, max: 2500 });
+    window.__cs = { room, frames };                    // for poking at it from the console
     sendMeta();
   }
 
@@ -1809,6 +1812,7 @@ import { AhaRoom } from '/js/aha-room.js';
       jname.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     });
     setTag('joining…');
+    document.getElementById('say').textContent = 'Paint here: it lands on the big screen. Pinch to zoom, two fingers to move around the sheet.';
     me = AhaRoom.join({ askName });
     pts = me.input('s', { every: 50, quantise: 10000 });
     // while your own stroke is in flight the sheet is left alone: the host's
@@ -1824,6 +1828,7 @@ import { AhaRoom } from '/js/aha-room.js';
     });
     me.on('state', onState);
     me.on('frame', applyFrame);
+    window.__cs = { me, zoom, sheet: () => ({ W, H, VW, VH }) };   // for poking at it from the console
   }
 
   /* ---------- a whole composition, on demand ---------- */
@@ -1988,7 +1993,7 @@ import { AhaRoom } from '/js/aha-room.js';
 
     // the view may be zoomed into a part of the sheet (phones); everything below draws in sheet coordinates
     vctx.setTransform(dpr * zoom.z, 0, 0, dpr * zoom.z, -zoom.x * dpr * zoom.z, -zoom.y * dpr * zoom.z);
-    vctx.clearRect(zoom.x, zoom.y, W / zoom.z, H / zoom.z);
+    vctx.clearRect(zoom.x, zoom.y, VW / zoom.z, VH / zoom.z);
     vctx.drawImage(paint, 0, 0, W, H);
     if (wetDirty) { wetAny = drawWet(); wetDirty = false; }   // the strokes still under fingers
     if (wetAny && sized(wet)) vctx.drawImage(wet, 0, 0, W, H);
@@ -2092,32 +2097,22 @@ import { AhaRoom } from '/js/aha-room.js';
     touch();
   }
 
-  // a phone shows the big screen's sheet, letterboxed to its own shape, above the dock
-  function sheetRect() {
-    const ar = hostAR || (innerWidth / Math.max(1, innerHeight));
-    const pad = 8, top = 40, bottom = 92;
-    const aw = Math.max(1, innerWidth - pad * 2), ah = Math.max(1, innerHeight - top - bottom);
-    let w = aw, h = w / ar;
-    if (h > ah) { h = ah; w = h * ar; }
-    return { w: Math.max(1, w | 0), h: Math.max(1, h | 0), x: ((innerWidth - w) / 2) | 0, y: (top + (ah - h) / 2) | 0 };
-  }
-
+  /* A phone's whole screen is painting area. The sheet (the big screen's shape) is sized so that at 1×
+     it covers the screen: a portrait phone sees a tall slice of the landscape sheet, never a strip,
+     and two fingers move the slice around. The view canvas is the screen; paint and wet are the sheet. */
   let started = false;
   function resize() {
-    const r = isClient ? sheetRect() : { w: innerWidth | 0, h: innerHeight | 0, x: 0, y: 0 };
-    const w = Math.max(1, r.w), h = Math.max(1, r.h);
-    const d = Math.min(devicePixelRatio || 1, 2);
+    const vw = Math.max(1, innerWidth | 0), vh = Math.max(1, innerHeight | 0);
+    let w = vw, h = vh;
     if (isClient) {
-      view.style.inset = 'auto';
-      view.style.left = r.x + 'px'; view.style.top = r.y + 'px';
-      view.style.width = w + 'px'; view.style.height = h + 'px';
-      view.style.boxShadow = '0 1px 14px rgba(51,50,45,.14), 0 0 0 1px rgba(51,50,45,.1)';
-      const sideways = hostAR > 1.15 && innerHeight > innerWidth * 1.1;
-      document.getElementById('say').textContent = sideways
-        ? 'Turn your phone sideways for a bigger sheet.'
-        : 'Paint on the sheet. It lands on the big screen.';
+      const ar = hostAR || vw / vh;
+      w = Math.max(vw, Math.round(vh * ar));
+      h = Math.max(vh, Math.round(w / ar));
     }
-    if (w === W && h === H && d === dpr) return;
+    const d = Math.min(devicePixelRatio || 1, 2);
+    if (w === W && h === H && vw === VW && vh === VH && d === dpr) return;
+    // where the phone was looking, as a fraction of the sheet, so the view stays put when the sheet or screen changes shape
+    const look = (isClient && W && VW) ? { fx: (zoom.x + VW / (2 * zoom.z)) / W, fy: (zoom.y + VH / (2 * zoom.z)) / H } : { fx: 0.5, fy: 0.5 };
 
     let keep = null;
     if (sized(paint)) {
@@ -2126,8 +2121,9 @@ import { AhaRoom } from '/js/aha-room.js';
       keep.getContext('2d').drawImage(paint, 0, 0);
     }
 
-    W = w; H = h; dpr = d; short = Math.min(W, H);
-    for (const c of [view, paint, wet]) { c.width = Math.max(1, W * dpr | 0); c.height = Math.max(1, H * dpr | 0); }
+    W = w; H = h; VW = vw; VH = vh; dpr = d; short = Math.min(W, H);
+    view.width = Math.max(1, VW * dpr | 0); view.height = Math.max(1, VH * dpr | 0);
+    for (const c of [paint, wet]) { c.width = Math.max(1, W * dpr | 0); c.height = Math.max(1, H * dpr | 0); }
     vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     wctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2140,7 +2136,11 @@ import { AhaRoom } from '/js/aha-room.js';
       pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     sendMeta();                 // the sheet's shape changed: phones re-fit
-    if (isClient) clampView();  // and a zoomed view stays inside the new sheet
+    if (isClient) {             // keep looking at the same part of the sheet (the middle, to begin with)
+      zoom.x = look.fx * W - VW / (2 * zoom.z);
+      zoom.y = look.fy * H - VH / (2 * zoom.z);
+      clampView();
+    }
   }
   let rt;
   const later = () => { clearTimeout(rt); rt = setTimeout(resize, 250); };

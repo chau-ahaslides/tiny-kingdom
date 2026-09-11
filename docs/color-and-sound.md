@@ -33,18 +33,24 @@ Host → phones, through the SDK:
 
 - the document: `{ ar, pal, sc, cfg }` (sheet aspect, palette, scale, tuning), plus the SDK's
   `_players` presence slice;
-- frames: 640 px on the long side, WebP quality 0.55, only when the sheet changed, every 0.7 s
+- frames: 1280 px on the long side, WebP quality 0.6, only when the sheet changed, every 0.7 s
   plus 30 ms per phone, capped at 2.5 s; `frames.now()` after Undo and Clear.
 
-## Zoom on the phone
+## The phone's view: a window onto the sheet
 
-Pinch to zoom (1× to 8×) and move two fingers to pan; a `1.0×`-style button in the dock returns
-to the whole sheet. The brush keeps its size on the screen, so zooming in paints finer: the
-stroke's `d` message carries `k = 1/zoom` and the host multiplies its brush radius by it. A lone
-finger waits 120 ms before it starts a stroke, in case a second finger is on its way; a second
-finger during a stroke lifts it and starts the gesture. The big screen never zooms. The host's
-frame is 640 px wide, so a zoomed phone shows the others' paint softly; the phone's own stroke
-is rendered locally at its own resolution.
+The phone's whole screen is painting area. The sheet keeps the big screen's shape and is sized so
+that at 1× it covers the screen: a portrait phone sees a tall slice of the landscape sheet, centred
+to start, never a letterboxed strip. Pinch to zoom (1× to 8×) and move two fingers to pan; the
+screen never leaves the sheet. A `3.0×`-style button in the dock returns to 1×, centred.
+
+The brush keeps its size on the screen, so zooming in paints finer: the stroke's `d` message
+carries `k = 1/zoom` and the host multiplies its brush radius by it. A lone finger waits 120 ms
+before it starts a stroke, in case a second finger is on its way; a second finger during a stroke
+lifts it and starts the gesture. The big screen never zooms.
+
+Because phones now look at a slice, the host sends its picture at 1280 px on the long side (WebP,
+quality 0.6, about 25 KB) instead of 640 px; the phone's own stroke is rendered locally at the
+sheet's full resolution either way.
 
 ## Why an image rather than a stroke log
 
