@@ -4,12 +4,13 @@
    pick your next opponent, or dodge the swing coming at you. When the window closes the pull wins again.
    Tap to move: the tap is where you WANT to be; the pull decides when you may go there.
    Modes: solo (default) · host (?host=1 — desktop runs the sim, phones scan to join) · client (?join=CODE).
-   Multiplayer is host-authoritative: phones send tap targets, the host streams snapshots. */
+   Multiplayer is host-authoritative: phones send tap targets, the host streams snapshots.
+   The room itself (code, QR, sockets, reconnects, who I am) is the aha-room SDK (/sdk): this file talks to `room` and `me` only. */
+import { AhaRoom } from './aha-room.js';
 (async () => {
 const rnd = (a, b) => a + Math.random() * (b - a);
 const qs = new URLSearchParams(location.search);
 const MODE = qs.get('join') ? 'client' : (qs.has('host') ? 'host' : 'solo');
-const JOIN_CODE = (qs.get('join') || '').toUpperCase();
 const P = Math.max(4, Math.min(20, parseInt(qs.get('players'), 10) || 12));
 document.querySelectorAll('#controls a').forEach(a => { if (a.search === '?players=' + P) a.classList.add('on'); });
 
@@ -91,11 +92,11 @@ let human = null;                 // solo: You · client: own fighter · host: n
 const byId = {};
 
 // ---------- networking (host & client) ----------
-let sock = null, started = MODE === 'solo';
-const lobby = new Map();
-let myId = null, spectate = false, joinName = '', lastMsgAt = 0, clientReconnect = null;
-function mpAll(o) { if (sock && sock.readyState === 1) { try { sock.send(JSON.stringify(o)); } catch (e) {} } }
-function mpTo(id, o) { o.to = id; mpAll(o); }
+let room = null, me = null;                                        // the aha-room session: big screen, or phone
+let started = MODE === 'solo';
+let myId = null, spectate = false;
+function mpAll(o) { if (room) room.send(o); else if (me) me.send(o); }   // solo: nobody to tell
+function mpTo(id, o) { if (room) room.sendTo(id, o); }
 
 // ---------- PIXI stage: fixed world, fit or follow ----------
 PIXI.BaseTexture.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
@@ -730,7 +731,7 @@ function hostReset() {
   clearField();
   phase = 'lobby'; started = false; snapAcc = 0;
   mpAll({ t: 'reset' });
-  for (const [id, name] of lobby) { const k = nextKit(); addFighter(fighterProps({ id, name, c: k.c, t: k.t, remote: true })); }
+  for (const pl of room.players.values()) if (pl.online) { const k = nextKit(); addFighter(fighterProps({ id: pl.id, name: pl.name, c: k.c, t: k.t, remote: true })); }
   syncBots(); sendRoster();
   document.getElementById('lobby').style.display = 'flex';
   document.getElementById('hostreset').style.display = 'none';
@@ -768,62 +769,59 @@ async function initHost() {
   lobbyEl.classList.add('side');                                  // the island stays visible: knights warm up behind the QR
   lobbyEl.style.display = 'flex';
   syncBots(); lobbyBanner();
-  const res = await fetch('/api/room', { method: 'POST' });
-  const { code } = await res.json();
-  const joinUrl = location.origin + '/sb/' + code;
-  document.getElementById('roomcode').textContent = code;
-  const qr = window.qrcode(0, 'M');
-  qr.addData(joinUrl); qr.make();
-  document.getElementById('qrbox').innerHTML = qr.createImgTag(4, 6);
-  document.getElementById('joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
   const namesEl = document.getElementById('lobbynames');
-  const renderNames = () => {
-    namesEl.innerHTML = lobby.size
-      ? [...lobby.values()].map(n => '<span class="lname">⚔ ' + n.replace(/[<>&]/g, '') + '</span>').join('')
-      : '<i>nobody yet — scan the code!</i>';
+  namesEl.innerHTML = '<i>opening a room…</i>';
+  try { room = await AhaRoom.host(); }
+  catch (e) { namesEl.innerHTML = '<i>' + (e instanceof AhaRoom.RoomConflict ? 'that room code belongs to ' + e.heldBy : 'could not open a room — reload') + '</i>'; return; }
+  document.getElementById('roomcode').textContent = room.code;
+  document.getElementById('joinurl').textContent = (room.joinUrl || '').replace(/^https?:\/\//, '');
+  room.qr().then(d => { if (d) { const img = new Image(); img.alt = 'QR code to join'; img.src = d; document.getElementById('qrbox').replaceChildren(img); } });
+  const renderNames = () => {                                     // names arrive clean from the SDK
+    const names = [...room.players.values()].filter(pl => pl.online).map(pl => pl.name);
+    namesEl.innerHTML = names.length ? names.map(n => '<span class="lname">⚔ ' + n + '</span>').join('') : '<i>nobody yet — scan the code!</i>';
   };
   renderNames();
-  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-  const hostMsg = ev => {
-    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-    if (m.t === 'join') {
-      lobby.set(m.id, m.name); renderNames();
-      const back = byId[m.id];
-      if (back) { back.remote = true; back.speed = HUMAN_SPD; setBars(back); }   // their knight is theirs again
-      else if (phase === 'lobby') {                               // a knight appears the moment they join
-        const k = nextKit();
-        addFighter(fighterProps({ id: m.id, name: m.name, c: k.c, t: k.t, remote: true }));
-        syncBots();
-      }
-      if (phase === 'battle') mpTo(m.id, { t: 'start', roster: rosterMsg(), late: back ? 0 : 1 });
-      else sendRoster();
-    } else if (m.t === 'leave') {
-      lobby.delete(m.id); renderNames();
-      const p = byId[m.id];
-      if (!p) return;
-      if (phase === 'lobby') { removeFighter(p); syncBots(); sendRoster(); }
-      else if (!p.dead) { p.remote = false; p.tx = p.ty = null; p.speed = rnd(CFG.spdMin, CFG.spdMax); setBars(p); }   // fights on as a bot
-    } else if (m.t === 'input') {
-      const p = byId[m.id];
-      if (p && p.remote && !p.dead) {
-        const b = BOUNDS();
-        p.tx = Math.max(b.x0, Math.min(b.x1, +m.x || 0));
-        p.ty = Math.max(b.y0, Math.min(b.y1, +m.y || 0));
-      }
+  // a phone that is here owns a knight: theirs again if it already exists, a new one while the lobby is open.
+  // Returns true when the field changed.
+  const seat = (id, name) => {
+    const back = byId[id];
+    if (back) { if (back.remote) return false; back.remote = true; back.speed = HUMAN_SPD; setBars(back); return true; }   // their knight is theirs again
+    if (phase !== 'lobby') return false;
+    const k = nextKit();                                          // a knight appears the moment they join
+    addFighter(fighterProps({ id, name, c: k.c, t: k.t, remote: true }));
+    syncBots();
+    return true;
+  };
+  const unseat = id => {                                          // the phone is gone: out of the lobby, or fights on as a bot
+    const p = byId[id];
+    if (!p || !p.remote) return false;
+    if (phase === 'lobby') { removeFighter(p); syncBots(); }
+    else if (!p.dead) { p.remote = false; p.tx = p.ty = null; p.speed = rnd(CFG.spdMin, CFG.spdMax); setBars(p); }
+    return true;
+  };
+  room.on('join', ({ id, name }) => {
+    const back = !!byId[id];
+    seat(id, name);
+    if (phase === 'battle') mpTo(id, { t: 'start', roster: rosterMsg(), late: back ? 0 : 1 });
+    else sendRoster();
+  });
+  room.on('leave', ({ id }) => { if (unseat(id) && phase === 'lobby') sendRoster(); });
+  room.on('players', list => {                                    // the roster as the SDK holds it: a big screen that reconnected meets the room again here, with no join events
+    let changed = false;
+    for (const pl of list) changed = (pl.online ? seat(pl.id, pl.name) : unseat(pl.id)) || changed;
+    renderNames();
+    if (changed && phase === 'lobby') sendRoster();
+  });
+  room.on('msg', m => {
+    if (m.t !== 'input') return;
+    const p = byId[m.id];
+    if (p && p.remote && !p.dead) {
+      const b = BOUNDS();
+      p.tx = Math.max(b.x0, Math.min(b.x1, +m.x || 0));
+      p.ty = Math.max(b.y0, Math.min(b.y1, +m.y || 0));
     }
-  };
-  const connectHost = () => {
-    const ws = new WebSocket(proto + location.host + '/ws/' + code + '?role=host');
-    sock = ws;
-    ws.onmessage = hostMsg;
-    ws.onopen = () => { if (started) banner.textContent = ''; };
-    ws.onclose = () => {
-      if (ws !== sock) return;
-      if (started) banner.textContent = '⚠ room link lost — reconnecting…';
-      setTimeout(() => { if (ws === sock) connectHost(); }, 1200);   // players re-register via their own reconnects
-    };
-  };
-  connectHost();
+  });
+  room.on('status', s => { if (started) banner.textContent = s === 'reconnecting' ? '⚠ room link lost — reconnecting…' : ''; });   // phones re-register on their own
   const resetLink = document.getElementById('hostreset');
   resetLink.addEventListener('click', e => { e.preventDefault(); if (started) hostReset(); });
   document.getElementById('startbtn').addEventListener('click', () => {
@@ -854,51 +852,32 @@ function hostNet(dt) {
 
 // ---------- CLIENT mode ----------
 let snapA = null, snapB = null;
+const jb = document.getElementById('joinbox'), jstatus = document.getElementById('jstatus');
 function initClient() {
-  const jb = document.getElementById('joinbox');
   jb.style.display = 'flex';
   banner.textContent = '';
-  const jstatus = document.getElementById('jstatus');
-  const tokKey = 'tk-sb-tok-' + JOIN_CODE, nameKey = 'tk-sb-name-' + JOIN_CODE;
-  let token = '';
-  try {
-    token = localStorage.getItem(tokKey) || '';
-    if (!token) { token = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(tokKey, token); }
-  } catch (e) {}
-  let retries = 0;
-  const doJoin = name => {
-    joinName = name;
-    try { localStorage.setItem(nameKey, name); } catch (e) {}
-    document.getElementById('jname').style.display = 'none';
-    document.getElementById('jbtn').style.display = 'none';
-    jstatus.textContent = retries ? 'reconnecting…' : 'joining…';
-    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const ws = new WebSocket(proto + location.host + '/ws/' + JOIN_CODE + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token));
-    sock = ws;
-    ws.onopen = () => { retries = 0; };
-    ws.onmessage = ev => {
-      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-      lastMsgAt = performance.now();
-      onClientMsg(m, jb, jstatus);
-    };
-    ws.onclose = () => {
-      if (ws !== sock) return;                                    // superseded socket
-      if (!started) jstatus.textContent = '⚠ reconnecting…';
-      else if (!over) banner.textContent = '⚠ reconnecting…';
-      retries++;
-      setTimeout(() => { if (ws === sock) doJoin(joinName); }, Math.min(5000, 800 * retries));   // even after a finale — the host may restart
-    };
-  };
-  clientReconnect = () => { if (joinName && sock && sock.readyState > 1) doJoin(joinName); };
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) clientReconnect(); });
-  document.getElementById('jbtn').addEventListener('click', () => {
-    doJoin((document.getElementById('jname').value || '').trim() || 'Knight ' + Math.floor(rnd(2, 99)));
+  const jname = document.getElementById('jname'), jbtn = document.getElementById('jbtn');
+  const showForm = on => { jname.style.display = jbtn.style.display = on ? '' : 'none'; };
+  showForm(false);
+  jstatus.textContent = 'joining…';
+  // the SDK asks for a name only when it has none saved for this room: a reload rejoins silently
+  const askName = () => new Promise(res => {
+    showForm(true); jstatus.textContent = '';
+    try { jname.value = ''; } catch (e) {}
+    const go = () => { showForm(false); jstatus.textContent = 'joining…'; res((jname.value || '').trim() || 'Knight ' + Math.floor(rnd(2, 99))); };
+    jbtn.addEventListener('click', go);
+    jname.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
   });
-  document.getElementById('jname').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('jbtn').click(); });
-  let savedName = '';
-  try { savedName = localStorage.getItem(nameKey) || ''; } catch (e) {}
-  if (savedName) { jstatus.textContent = 'reconnecting…'; doJoin(savedName); }   // reload = seamless rejoin
-  else { try { document.getElementById('jname').value = ''; } catch (e) {} }
+  // connection state goes where the eye is: the join box while it shows, the banner once it is gone
+  const note = s => { if (jb.style.display !== 'none') jstatus.textContent = s; else if (!over) banner.textContent = s; };
+  me = AhaRoom.join({ askName });
+  me.on('welcome', w => { myId = w.id; jstatus.innerHTML = '✅ joined as <b>' + w.name + '</b><br>loading the island…'; });
+  me.on('status', s => {
+    if (s === 'reconnecting') note('⚠ reconnecting…');           // even after a finale — the host may restart
+    else if (s === 'waiting-for-host') note('waiting for the big screen…');
+    else if (s === 'host-left') banner.textContent = '⚠ the host has left the island';
+  });
+  me.on('msg', onClientMsg);
 }
 function syncRoster(roster) {                                      // add newcomers, drop leavers, keep everyone else
   const ids = new Set(roster.map(r => r[0]));
@@ -909,11 +888,8 @@ function syncRoster(roster) {                                      // add newcom
   if (human && human.px === undefined) { human.px = human.x; human.py = human.y; setBars(human); }
   buildBoard();
 }
-function onClientMsg(m, jb, jstatus) {
-  if (m.t === 'welcome') {
-    myId = m.id;
-    jstatus.innerHTML = '✅ joined as <b>' + m.name.replace(/[<>&]/g, '') + '</b><br>loading the island…';
-  } else if (m.t === 'roster') {                                 // the warm-up field, live
+function onClientMsg(m) {
+  if (m.t === 'roster') {                                        // the warm-up field, live
     phase = m.ph || 'lobby';
     syncRoster(m.roster);
     if (phase === 'lobby') {
@@ -954,8 +930,6 @@ function onClientMsg(m, jb, jstatus) {
     started = false; spectate = false; snapA = snapB = null; phase = 'lobby';
     banner.textContent = '';
     hint('\u{1F504} new round — warm up until the host starts', 6000);
-  } else if (m.t === 'hostgone') {
-    banner.textContent = '⚠ the host has left the island';
   }
 }
 function clientRender(dt) {
@@ -1044,7 +1018,7 @@ app.ticker.add(() => {
 });
 // debug handles (used by the harness probes)
 window.OBST = OBST; window.inObst = inObst; window.__world = world; window.__isFollow = () => followMode;
-window.__byId = byId; window.__mode = MODE; window.__sock = () => sock;
+window.__byId = byId; window.__mode = MODE; window.__room = () => room; window.__me = () => me;
 window.CFG = CFG;
 Object.defineProperty(window, 'players', { get: () => players });
 Object.defineProperty(window, 'human', { get: () => human });
