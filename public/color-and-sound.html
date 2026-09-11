@@ -102,9 +102,9 @@
   .card.big img { width: 300px; height: 300px; }
   .card b { display: block; font-weight: 500; font-size: 17px; letter-spacing: .14em; }
   .card.big b { font-size: 26px; }
-  .card .url { opacity: .6; font-size: 11.5px; }
-  .card .who { opacity: .6; font-size: 11.5px; margin-top: 5px; max-width: 200px; line-height: 1.35; }
-  .card.big .who { max-width: 300px; }
+  .card .aha-url { opacity: .6; font-size: 11.5px; }
+  .card .aha-who { opacity: .6; font-size: 11.5px; margin-top: 5px; max-width: 200px; line-height: 1.35; }
+  .card.big .aha-who { max-width: 300px; }
   .join {
     position: fixed; z-index: 5; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 12px; padding: 20px;
@@ -146,12 +146,7 @@
 <p class="say" id="say">Paint on it. Every mark keeps blooming after you lift your finger.</p>
 <p class="tag" id="tag" hidden></p>
 
-<div class="card" id="card" hidden title="Click to enlarge">
-  <img id="qrimg" alt="QR code to join">
-  <b id="code"></b>
-  <div class="url" id="joinurl"></div>
-  <div class="who" id="who"></div>
-</div>
+<div class="card" id="card" hidden title="Click to enlarge"></div>
 <div class="join" id="join" hidden>
   <h2>🎨 Join the painting</h2>
   <input id="jname" maxlength="16" placeholder="Your name" autocomplete="off">
@@ -230,8 +225,8 @@
   </div>
 </div>
 
-<script src="/vendor/qr.js"></script>
-<script>
+<script type="module">
+import { AhaRoom } from '/js/aha-room.js';
 (() => {
   const view = document.getElementById('c');
   const vctx = view.getContext('2d');
@@ -248,19 +243,17 @@
   let hover = null, undoStack = [], lastSnapT = 0, wetDirty = false;
 
   /* ---------- room mode ----------
-     ?host=1 opens a room on the big screen; /cs/CODE (= ?join=CODE) is a phone.
+     ?host=1 opens a room on the big screen; the QR opens ?join=CODE on a phone.
      Phones are controllers: they send raw pointer input, the host paints and
-     plays every note, and the host sends back a small JPEG of the sheet. The
-     picture is the shared state, so joining late costs one image, not a
-     replay of every stroke ever made. ---------------------------------- */
+     plays every note, and the host sends back a small picture of the sheet.
+     The picture is the shared state, so joining late costs one image, not a
+     replay of every stroke ever made. All of the session plumbing is the
+     aha-room SDK (/sdk); this page never touches a socket or a code. ---- */
   const qs = new URLSearchParams(location.search);
-  const JOIN_CODE = (qs.get('join') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-  const isClient = !!JOIN_CODE, isHost = !isClient && qs.get('host') === '1';
+  const isClient = !!qs.get('join'), isHost = !isClient && qs.get('host') === '1';
   let hostAR = 0;                                    // client: the big screen's aspect ratio, sets the sheet
-  const net = { sock: null, myId: '', lastFrame: '', lastFrameAt: 0, paintedAt: 0, roster: new Map() };
-  function mpAll(o) { const s = net.sock; if (s && s.readyState === 1) { try { s.send(JSON.stringify(o)); } catch (e) {} } }
-  function mpTo(id, o) { mpAll(Object.assign({ to: id }, o)); }
-  const touch = () => { net.paintedAt = performance.now(); };   // the sheet changed: phones need a new frame
+  let room = null, me = null, frames = null;         // the aha-room session: big screen, phone, and the sheet-as-picture sender
+  const touch = () => { if (frames) frames.touch(); };   // the sheet changed: phones need a new frame
 
   // one painter per hand on the sheet: the local pointer, each phone, the bots
   function makePainter(id, name, remote) {
@@ -1615,7 +1608,7 @@
   // the sheet may be letterboxed (phones), so pointer positions are sheet-relative
   let vrect = { left: 0, top: 0 };
   view.addEventListener('pointerdown', e => {
-    if (isClient && !net.myId) return;                 // not in the room yet
+    if (isClient && !(me && me.id)) return;            // not in the room yet
     vrect = view.getBoundingClientRect();
     try { view.setPointerCapture(e.pointerId); } catch (err) {}
     const x = e.clientX - vrect.left, y = e.clientY - vrect.top;
@@ -1631,7 +1624,7 @@
     for (const ev of (batch && batch.length ? batch : [e])) {
       const ex = ev.clientX - vrect.left, ey = ev.clientY - vrect.top;
       move(local, ex, ey, prOf(ev), realPr(ev));
-      netMove(ex, ey, prOf(ev), realPr(ev));
+      netMove(ex, ey, prOf(ev));
     }
   });
   view.addEventListener('pointerup', e => { if (hover && hover.touch) hover = null; up(local); netUp(); });
@@ -1639,69 +1632,33 @@
   view.addEventListener('pointerleave', () => { hover = null; });
 
   /* ---------- phone → host: the stroke as it happens ----------
-     Points are quantised to 1/10000 of the sheet, with pressure and a
-     millisecond offset, and batched every 50 ms: ~15 messages a second per
-     painter however fast the finger moves, ~15 bytes a point. ---------- */
-  let outBuf = [], outTimer = 0, strokeSeq = 0, curStroke = 0, strokeT0 = 0, lastSent = null, outReal = 0;
+     The SDK's input helper batches points every 50 ms, quantised to 1/10000
+     of the sheet with a millisecond offset each, so the host can replay the
+     stroke's timing. The brush goes once, at the first touch. ---------- */
+  let strokeSeq = 0, curStroke = 0, lastSent = null, lastUpAt = 0, pts = null;
   const q4 = v => Math.round(clamp(v, 0, 1) * 10000);
-  const encPt = (x, y, pr) => [q4(x / W), q4(y / H), Math.round(clamp(pr, 0, 1) * 100), Math.round(performance.now() - strokeT0)];
-  function flushOut() {
-    if (!outBuf.length || !curStroke) return;
-    mpAll({ t: 's', s: curStroke, p: outBuf, r: outReal });
-    outBuf = [];
-  }
   function netDown(x, y, pr, real) {
-    if (!isClient) return;
-    curStroke = ++strokeSeq; strokeT0 = performance.now(); outBuf = []; outReal = real ? 1 : 0;
-    lastSent = [x, y];
-    mpAll({ t: 'd', s: curStroke, b: brush.type, z: brush.size, c: brush.color === null ? -1 : brush.color, r: outReal, p: encPt(x, y, pr) });
-    if (!outTimer) outTimer = setInterval(flushOut, 50);
+    if (!me || !pts) return;
+    curStroke = ++strokeSeq; lastSent = [x, y];
+    me.send({ t: 'd', s: curStroke, b: brush.type, z: brush.size, c: brush.color === null ? -1 : brush.color, r: real ? 1 : 0, p: [q4(x / W), q4(y / H), q4(pr)] });
+    pts.start({ s: curStroke });
   }
-  function netMove(x, y, pr, real) {
-    if (!isClient || !curStroke) return;
+  function netMove(x, y, pr) {
+    if (!me || !curStroke) return;
     if (lastSent && Math.hypot(x - lastSent[0], y - lastSent[1]) < 1) return;   // sub-pixel jitter: not worth a byte
     lastSent = [x, y];
-    if (real) outReal = 1;
-    outBuf.push(encPt(x, y, pr));
+    pts.push([clamp(x / W, 0, 1), clamp(y / H, 0, 1), clamp(pr, 0, 1)]);
   }
-  let lastUpAt = 0;
   function netUp() {
-    if (!isClient || !curStroke) return;
-    flushOut();
-    mpAll({ t: 'u', s: curStroke });
+    if (!me || !curStroke) return;
+    pts.stop();
+    me.send({ t: 'u', s: curStroke });
     curStroke = 0; lastUpAt = performance.now();
   }
 
   /* ---------- host: phones' input becomes strokes on this sheet ---------- */
-  const dqx = u => clamp(+u || 0, 0, 10000) / 10000 * W;
-  const dqy = v => clamp(+v || 0, 0, 10000) / 10000 * H;
-  const dqp = v => clamp((+v || 50) / 100, 0.02, 1);
-  function renderRoster() {
-    const who = document.getElementById('who');
-    const names = [...net.roster.values()].map(n => String(n).replace(/[<>&]/g, ''));
-    who.textContent = names.length
-      ? names.length + (names.length === 1 ? ' painter: ' : ' painters: ') + names.slice(0, 10).join(', ') + (names.length > 10 ? '…' : '')
-      : 'nobody yet — scan to paint';
-  }
-  function metaMsg() { return { t: 'm', ar: +(W / H).toFixed(4), pal: palette, sc: scaleIx, cfg: CFG }; }
-  function sendMeta() { if (isHost) mpAll(metaMsg()); }
+  const dq = (v, q) => clamp(+v || 0, 0, q) / q;
   function hostMsg(m) {
-    if (m.t === 'join') {
-      net.roster.set(m.id, m.name);
-      const p = painters.get(m.id);
-      if (p) p.name = m.name; else painters.set(m.id, makePainter(m.id, m.name, true));
-      renderRoster();
-      mpTo(m.id, metaMsg());
-      if (net.lastFrame) mpTo(m.id, { t: 'f', d: net.lastFrame });   // the whole painting so far, in one image
-      return;
-    }
-    if (m.t === 'leave') {
-      const p = painters.get(m.id);
-      if (p) { up(p); painters.delete(m.id); }
-      net.roster.delete(m.id);
-      renderRoster();
-      return;
-    }
     const p = painters.get(m.id);
     if (!p) return;
     if (m.t === 'd') {
@@ -1710,138 +1667,81 @@
       p.brush.type = BRUSHES[m.b] ? m.b : 'wash';
       p.brush.size = SIZES[m.z] ? m.z : 'M';
       p.brush.color = (Number.isInteger(m.c) && m.c >= 0 && m.c < 5) ? m.c : null;
-      p.sid = m.s; p.t0 = performance.now() - (pt[3] | 0);
-      down(p, dqx(pt[0]), dqy(pt[1]), dqp(pt[2]), !!m.r);
+      p.sid = m.s; p.t0 = performance.now(); p.real = !!m.r;
+      down(p, dq(pt[0], 1e4) * W, dq(pt[1], 1e4) * H, clamp(dq(pt[2], 1e4), 0.02, 1), p.real);
     } else if (m.t === 's') {
-      if (!p.stroke || p.sid !== m.s || !Array.isArray(m.p)) return;
-      for (const pt of m.p.slice(0, 200)) if (Array.isArray(pt)) move(p, dqx(pt[0]), dqy(pt[1]), dqp(pt[2]), !!m.r, p.t0 + (pt[3] | 0));
+      if (!p.stroke || p.sid !== m.s || !Array.isArray(m.pts)) return;
+      const q = +m.q || 1e4;
+      for (const pt of m.pts.slice(0, 200)) if (Array.isArray(pt)) move(p, dq(pt[0], q) * W, dq(pt[1], q) * H, clamp(dq(pt[2], q), 0.02, 1), p.real, p.t0 + (pt[3] | 0));
     } else if (m.t === 'u') {
       if (p.stroke && p.sid === m.s) up(p);
     }
   }
+  // palette, scale, tuning and the sheet's shape are the room's document: every phone renders from it
+  function sendMeta() { if (room) room.state.set({ ar: +(W / H).toFixed(4), pal: palette, sc: scaleIx, cfg: Object.assign({}, CFG) }); }
 
-  /* ---------- host → phones: the sheet as a picture ----------
-     One JPEG, 640 px on the long side, only when something changed, at most
-     every 0.7–2.5 s depending on how many phones must receive it. Nothing is
-     replayed: a new phone gets the latest frame and is up to date. ------ */
-  const fcan = document.createElement('canvas');
-  const frameInterval = () => Math.min(2500, 700 + 30 * net.roster.size);
-  function sendFrame() {
-    if (!sized(paint)) return;
-    const long = 640;
-    const fw = W >= H ? long : Math.max(1, Math.round(long * W / H));
-    const fh = W >= H ? Math.max(1, Math.round(long * H / W)) : long;
-    if (fcan.width !== fw || fcan.height !== fh) { fcan.width = fw; fcan.height = fh; }
-    fcan.getContext('2d').drawImage(paint, 0, 0, fw, fh);
-    let d;
-    try { d = fcan.toDataURL('image/jpeg', 0.55); } catch (e) { return; }
-    net.lastFrame = d; net.lastFrameAt = performance.now();
-    if (net.roster.size) mpAll({ t: 'f', d });
-  }
   async function initHost() {
     const card = document.getElementById('card');
     card.hidden = false;
-    document.getElementById('who').textContent = 'opening a room…';
-    let code = '';
-    try { code = (await (await fetch('/api/room', { method: 'POST' })).json()).code; }
-    catch (e) { document.getElementById('who').textContent = 'could not open a room — reload'; return; }
-    const joinUrl = location.origin + '/cs/' + code;
-    const qr = window.qrcode(0, 'M');
-    qr.addData(joinUrl); qr.make();
-    document.getElementById('qrimg').src = qr.createDataURL(4, 2);
-    document.getElementById('code').textContent = code;
-    document.getElementById('joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
-    renderRoster();
+    card.innerHTML = '<div class="aha-who">opening a room…</div>';
+    try { room = await AhaRoom.host(); }
+    catch (e) { card.innerHTML = '<div class="aha-who">' + (e instanceof AhaRoom.RoomConflict ? 'that room code belongs to ' + e.heldBy : 'could not open a room — reload') + '</div>'; return; }
+    room.mountLobby(card);
     card.onclick = () => card.classList.toggle('big');
-    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const connect = () => {
-      const ws = new WebSocket(proto + location.host + '/ws/' + code + '?role=host');
-      net.sock = ws;
-      ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } hostMsg(m); };
-      ws.onclose = () => { if (ws !== net.sock) return; setTimeout(() => { if (ws === net.sock) connect(); }, 1200); };   // phones re-register on their own
-    };
-    connect();
+    const painterFor = (id, name) => { const p = painters.get(id); if (p) { if (name) p.name = name; return p; } const n = makePainter(id, name, true); painters.set(id, n); return n; };
+    room.on('join', ({ id, name }) => painterFor(id, name));
+    room.on('players', list => { for (const pl of list) if (pl.online) painterFor(pl.id, pl.name); });   // a reloaded big screen meets the room again
+    room.on('leave', ({ id }) => { const p = painters.get(id); if (p) up(p); });                         // the painter stays: they may come back
+    room.on('msg', hostMsg);
+    // the sheet as a picture: only when it changed, at a rate that stretches with the room
+    frames = room.frame(paint, { long: 640, quality: 0.55, format: 'webp', every: 700, perPlayer: 30, max: 2500 });
+    sendMeta();
   }
 
   /* ---------- phone side ---------- */
   const tagEl = document.getElementById('tag');
   function setTag(s) { tagEl.textContent = s; tagEl.hidden = !s; }
-  let frameNext = '', frameBusy = false;
-  function queueFrame(d) { frameNext = d; if (!frameBusy) decodeFrame(); }
-  function decodeFrame() {
-    // while your own stroke is in flight the sheet is left alone: the host's
-    // picture would be a beat behind your finger and wipe its tail
-    if (!frameNext || local.stroke || performance.now() - lastUpAt < 300) { frameBusy = false; return; }
-    frameBusy = true;
-    const d = frameNext; frameNext = '';
-    const img = new Image();
-    img.onload = () => {
-      if (sized(paint)) {
-        pctx.save();
-        pctx.setTransform(1, 0, 0, 1, 0, 0);
-        pctx.globalCompositeOperation = 'source-over';
-        pctx.globalAlpha = 1;
-        pctx.drawImage(img, 0, 0, paint.width, paint.height);
-        pctx.restore();
-        queue = []; userQueue = []; active = []; marks = [];   // the host already bloomed these
-      }
-      decodeFrame();
-    };
-    img.onerror = decodeFrame;
-    img.src = d;
+  function applyFrame(img) {
+    if (!sized(paint)) return;
+    pctx.save();
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    pctx.globalCompositeOperation = 'source-over';
+    pctx.globalAlpha = 1;
+    pctx.drawImage(img, 0, 0, paint.width, paint.height);
+    pctx.restore();
+    queue = []; userQueue = []; active = []; marks = [];   // the host already bloomed these
   }
-  function clientMsg(m, st) {
-    if (m.t === 'welcome') {
-      net.myId = m.id;
-      document.getElementById('join').hidden = true;
-      setTag('🎨 ' + String(m.name).replace(/[<>&]/g, '') + ' — painting on the big screen');
-    } else if (m.t === 'nohost') {
-      setTag('waiting for the big screen…');
-    } else if (m.t === 'hostgone') {
-      setTag('the big screen closed — waiting…');
-    } else if (m.t === 'm') {
-      if (+m.ar > 0.2 && +m.ar < 5 && +m.ar !== hostAR) { hostAR = +m.ar; resize(); }
-      if (Array.isArray(m.pal) && m.pal.length === 5) applyPalette(m.pal);
-      if (Number.isInteger(m.sc)) { scaleIx = clamp(m.sc, 0, SCALES.length - 1); scaleBtn.textContent = SCALES[scaleIx].name; }
-      if (m.cfg && typeof m.cfg === 'object') for (const k of CFG_KEYS) if (typeof m.cfg[k] === 'number') CFG[k] = m.cfg[k];
-    } else if (m.t === 'f' && typeof m.d === 'string' && m.d.slice(0, 11) === 'data:image/') {
-      queueFrame(m.d);
-    }
+  function onState(doc) {
+    if (+doc.ar > 0.2 && +doc.ar < 5 && +doc.ar !== hostAR) { hostAR = +doc.ar; resize(); }
+    if (Array.isArray(doc.pal) && doc.pal.length === 5) applyPalette(doc.pal);
+    if (Number.isInteger(doc.sc)) { scaleIx = clamp(doc.sc, 0, SCALES.length - 1); scaleBtn.textContent = SCALES[scaleIx].name; }
+    if (doc.cfg && typeof doc.cfg === 'object') for (const k of CFG_KEYS) if (typeof doc.cfg[k] === 'number') CFG[k] = doc.cfg[k];
   }
   function initClient() {
-    const jb = document.getElementById('join');
-    jb.hidden = false;
-    const st = document.getElementById('jst');
-    const tokKey = 'cs-tok-' + JOIN_CODE, nameKey = 'cs-name-' + JOIN_CODE;
-    let token = '';
-    try {
-      token = localStorage.getItem(tokKey) || '';
-      if (!token) { token = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(tokKey, token); }
-    } catch (e) {}
-    let name = '', retries = 0;
-    const doJoin = n => {
-      name = n;
-      try { localStorage.setItem(nameKey, n); } catch (e) {}
-      st.textContent = retries ? 'reconnecting…' : 'joining…';
-      const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-      const ws = new WebSocket(proto + location.host + '/ws/' + JOIN_CODE + '?role=player&name=' + encodeURIComponent(n) + '&token=' + encodeURIComponent(token));
-      net.sock = ws;
-      ws.onopen = () => { retries = 0; };
-      ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } clientMsg(m, st); };
-      ws.onclose = () => {
-        if (ws !== net.sock) return;
-        retries++;
-        if (net.myId) setTag('⚠ reconnecting…'); else st.textContent = '⚠ reconnecting…';
-        setTimeout(() => { if (ws === net.sock) doJoin(name); }, Math.min(5000, 800 * retries));
-      };
-    };
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && name && net.sock && net.sock.readyState > 1) doJoin(name); });
-    const jname = document.getElementById('jname');
-    document.getElementById('jbtn').onclick = () => doJoin((jname.value || '').trim().slice(0, 16) || 'Painter ' + (2 + Math.random() * 97 | 0));
-    jname.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('jbtn').click(); });
-    let saved = '';
-    try { saved = localStorage.getItem(nameKey) || ''; } catch (e) {}
-    if (saved) doJoin(saved);                         // reload = seamless rejoin
+    const jb = document.getElementById('join'), st = document.getElementById('jst'), jname = document.getElementById('jname');
+    // the SDK asks for a name only when it has none saved for this room; a reload rejoins silently
+    const askName = () => new Promise(res => {
+      jb.hidden = false;
+      const go = () => { st.textContent = 'joining…'; res((jname.value || '').trim()); };
+      document.getElementById('jbtn').onclick = go;
+      jname.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    });
+    setTag('joining…');
+    me = AhaRoom.join({ askName });
+    pts = me.input('s', { every: 50, quantise: 10000 });
+    // while your own stroke is in flight the sheet is left alone: the host's
+    // picture would be a beat behind your finger and wipe its tail
+    me.frames({ hold: () => !!local.stroke || performance.now() - lastUpAt < 300 });
+    const painting = () => setTag('🎨 ' + me.name + ' — painting on the big screen');
+    me.on('welcome', () => { jb.hidden = true; painting(); });
+    me.on('status', s => {
+      if (s === 'waiting-for-host') setTag('waiting for the big screen…');
+      else if (s === 'host-left') setTag('the big screen closed — waiting…');
+      else if (s === 'reconnecting') setTag('⚠ reconnecting…');
+      else if (s === 'ok' && me.name) painting();
+    });
+    me.on('state', onState);
+    me.on('frame', applyFrame);
   }
 
   /* ---------- a whole composition, on demand ---------- */
@@ -1966,9 +1866,7 @@
     if (isHost) {
       // a phone that vanished mid-stroke (lost signal, pocketed) never sends its lift
       for (const p of painters.values()) if (p.remote && p.stroke && now - p.lastAt > 3000) up(p);
-      if (net.sock && net.paintedAt > net.lastFrameAt && now - net.lastFrameAt >= frameInterval()) sendFrame();
     }
-    if (isClient && frameNext && !frameBusy) decodeFrame();   // a frame held back while you were painting
     fill();
     const per = reduced ? 60 : Math.min(14, 3 + Math.ceil((queue.length + userQueue.length) / 8));
 
@@ -2274,8 +2172,8 @@
     if (soundOn) auditionScale();
     sendMeta();
   };
-  document.getElementById('undo').onclick = undo;
-  document.getElementById('clear').onclick = () => { stopPlay(); snapshot(); wipe(); };
+  document.getElementById('undo').onclick = () => { undo(); if (frames) frames.now(); };
+  document.getElementById('clear').onclick = () => { stopPlay(); snapshot(); wipe(); if (frames) frames.now(); };
   document.getElementById('save').onclick = () => {
     const a = document.createElement('a');
     a.download = 'painting.png';

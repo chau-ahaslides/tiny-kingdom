@@ -89,6 +89,7 @@
   <div class="brand">aha-room SDK</div>
   <a href="#why">Why</a>
   <a href="#model">The model</a>
+  <a href="#getting">Getting it</a>
   <a href="#quick">Quick start</a>
   <a href="#examples">Examples</a>
   <a class="sub" href="#ex-poll">Poll</a>
@@ -117,7 +118,7 @@
 
 <h1>aha-room SDK</h1>
 <p class="lede">One small library for scan-to-play rooms: a host-authoritative session, a replicated state document, and a transport you can swap, from today's relay to a plugin inside the presenter and audience apps.</p>
-<p class="meta"><b>Design draft v0.4</b> · 11 September 2026 · tiny-kingdom · status: proposal, nothing built yet · v0.2: games no longer name themselves or touch codes; a rooms directory owns codes and reports conflicts · v0.3: worked examples for six game shapes · v0.4: presence built in, roster from the parent when embedded</p>
+<p class="meta"><b>v0.5</b> · 11 September 2026 · tiny-kingdom · status: <b>phase 1 built</b> — <code>/js/aha-room.js</code>, the rooms directory, and Color &amp; Sound running on it · v0.2: games no longer name themselves or touch codes · v0.3: worked examples · v0.4: presence built in · v0.5: implemented; frame rate controls; <code>stream</code> renamed <code>tick</code>; measured budget</p>
 
 <h2 id="why">Why</h2>
 <p>Seven pages on this site run the same session: a big screen opens a room and shows a QR code, phones scan it, type a name, and start sending input; the big screen owns the game and tells the phones what to show. Each page carries its own copy of that plumbing. The copies have drifted: two of them do not handle a phone that scans before the big screen is up, one never backs off when reconnecting, and every one sanitises names its own way.</p>
@@ -157,6 +158,23 @@
 </svg>
 </div>
 
+<h2 id="getting">Getting it</h2>
+<p>One ES module on this site, no build step. Load it from a module script and use the named export; it also puts <code>window.AhaRoom</code> up for pages that prefer a global.</p>
+<pre><code>&lt;script type="module"&gt;
+  <span class="k">import</span> { AhaRoom } <span class="k">from</span> <span class="s">'/js/aha-room.js'</span>;
+  …
+&lt;/script&gt;</code></pre>
+<div class="tbl"><table>
+  <tr><th>Part</th><th>Where</th><th>State</th></tr>
+  <tr><td>SDK: session, presence, state document, time, <code>tick</code>, <code>frame</code>, <code>input</code>, lobby card, <code>report</code> stub</td><td><code>public/js/aha-room.js</code></td><td><span class="pill">built</span></td></tr>
+  <tr><td>Transports: <code>relay</code>, <code>memory</code>, <code>embed</code></td><td>same file</td><td><span class="pill">built</span> — embed is untested against a real parent app</td></tr>
+  <tr><td>Rooms directory, <code>/j/CODE</code>, relay roster replay with online flags</td><td><code>src/worker.js</code></td><td><span class="pill">built</span></td></tr>
+  <tr><td>Tests on the memory transport</td><td><code>test/aha-room.test.js</code></td><td><span class="pill">built</span> — 12 cases: snapshot, coalescing, private slices, resync after loss, presence, host-after-players, input batching, ticks, clock</td></tr>
+  <tr><td>Reference migration</td><td><code>public/color-and-sound.html</code></td><td><span class="pill">built</span> — the page no longer touches a socket, a code, a QR or localStorage</td></tr>
+  <tr><td>Other pages moved over</td><td>—</td><td><span class="pill later">next</span></td></tr>
+  <tr><td>Bridge transport, report shapes agreed with the presenter app, bots on the memory transport</td><td>—</td><td><span class="pill later">later</span></td></tr>
+</table></div>
+
 <h2 id="quick">Quick start</h2>
 <p>A game page loads one script and calls one of two entry points. Everything below the line is the SDK's business: the room code, the join URL, the QR, sockets, tokens, reconnects, parsing. The game does not say which game it is; the SDK knows from the page it is running on.</p>
 <h4>Big screen</h4>
@@ -189,8 +207,8 @@ me.on(<span class="s">'welcome'</span>, ({ id, name, rejoined }) =&gt; showSheet
 me.on(<span class="s">'state'</span>,   (doc, mine) =&gt; render(doc.phase, doc.palette, mine.streak));
 me.on(<span class="s">'status'</span>,  (s) =&gt; setTag(s));   <span class="c">// 'waiting-for-host' | 'reconnecting' | 'host-left' | 'ok'</span>
 
-me.input(<span class="s">'stroke'</span>, { every: 50 })   <span class="c">// batches points into one message per 50 ms</span>
-  .push([u, v, pressure, dt]);</code></pre>
+<span class="k">const</span> pts = me.input(<span class="s">'stroke'</span>, { every: 50, quantise: 10000 });   <span class="c">// one message per 50 ms, whatever the finger does</span>
+pts.start({ s: strokeId });  pts.push([u, v, pressure]);  pts.stop();</code></pre>
 
 <h2 id="examples">Examples</h2>
 <p>Six shapes of game, from a poll with no loop at all to a painting that streams pictures. Each shows the whole of what the game writes; the SDK does the rest. The point of reading them together is to see that the surface never changes: a document the host writes, intent the phones send, and a fast lane only when the document is not enough.</p>
@@ -199,7 +217,7 @@ me.input(<span class="s">'stroke'</span>, { every: 50 })   <span class="c">// ba
   <tr><td>changes state a few times a minute, everyone sees the same thing</td><td>the document</td><td>Poll</td></tr>
   <tr><td>has a per-player secret or result</td><td>document + private slice</td><td>Quiz</td></tr>
   <tr><td>has phases on a clock</td><td><code>endsAt</code> in the document</td><td>Quiz, Gremlin Siege</td></tr>
-  <tr><td>moves things every frame on the big screen and phones must see them move</td><td><code>stream</code></td><td>Survival Quiz, Gremlin Siege</td></tr>
+  <tr><td>moves things every frame on the big screen and phones must see them move</td><td><code>tick</code></td><td>Survival Quiz, Gremlin Siege</td></tr>
   <tr><td>takes continuous input from phones</td><td><code>input</code></td><td>Color &amp; Sound, Survival Quiz</td></tr>
   <tr><td>renders something no phone could reproduce</td><td><code>frame</code></td><td>Color &amp; Sound</td></tr>
 </table></div>
@@ -264,7 +282,7 @@ optionEl.onclick = i =&gt; me.send({ t: <span class="s">'answer'</span>, n: me.s
 <p>Because the correct option is written to the document only at reveal time, a broadcast transport with no unicast still keeps the secret: the private slice carries a verdict, not the answer key.</p>
 
 <h3 id="ex-siege">Gremlin Siege: phases, private offers, a board that moves</h3>
-<p>Three things at different speeds. Phases and the board's guns change a few times a wave: the document. Each phone's quiz offer is its own: a private slice. Enemies march every frame: a stream at 10 Hz, interpolated on the phone.</p>
+<p>Three things at different speeds. Phases and the board's guns change a few times a wave: the document. Each phone's quiz offer is its own: a private slice. Enemies march every frame: a tick at 10 Hz, interpolated on the phone. This is what the page already sends today, under the names <code>s</code> and <code>fx</code>.</p>
 <pre><code><span class="c">// big screen</span>
 <span class="k">function</span> startWave(w) {
   room.state.set({ phase: <span class="s">'quiz'</span>, wave: w, endsAt: room.now() + 15000, guns, towerHp });
@@ -283,7 +301,7 @@ room.on(<span class="s">'msg'</span>, m =&gt; {
     <span class="k">if</span> (mine.canPlace &amp;&amp; freeTile(m.x | 0, m.y | 0)) { guns.push({ by: m.id, kind: mine.canPlace, x: m.x | 0, y: m.y | 0 }); room.state.set({ guns }); room.state.setFor(m.id, { canPlace: <span class="k">null</span> }); }
   }
 });
-room.stream(<span class="s">'enemies'</span>, 10, () =&gt; enemies.map(e =&gt; [e.id, e.x | 0, e.y | 0, e.hp]));   <span class="c">// phones interpolate between these</span>
+room.tick(<span class="s">'enemies'</span>, 10, () =&gt; enemies.map(e =&gt; [e.id, e.x | 0, e.y | 0, e.hp]));   <span class="c">// latest wins; phones interpolate between these</span>
 
 <span class="c">// phone</span>
 me.on(<span class="s">'state'</span>, (doc, mine) =&gt; {
@@ -292,13 +310,13 @@ me.on(<span class="s">'state'</span>, (doc, mine) =&gt; {
   <span class="k">if</span> (mine.offer) showQuiz(mine.offer); <span class="k">else</span> hideQuiz();
   <span class="k">if</span> (mine.canPlace) showPlacement(mine.canPlace);
 });
-me.stream(<span class="s">'enemies'</span>, { interpolate: [1, 2] })            <span class="c">// fields 1 and 2 are x, y</span>
+me.tick(<span class="s">'enemies'</span>, { interpolate: [1, 2] })              <span class="c">// fields 1 and 2 are x, y</span>
   .on(<span class="s">'frame'</span>, list =&gt; drawEnemies(list));
 placeBtn.onclick = () =&gt; me.send({ t: <span class="s">'place'</span>, x: tile.x, y: tile.y });</code></pre>
 <p>Today this game hand-writes the phase strip countdowns as ticks; with <code>endsAt</code> the strip is right on every phone whatever the latency, and a phone that was asleep snaps to the correct phase on its next message.</p>
 
 <h3 id="ex-arena">Survival Quiz: positions at 10 Hz, taps as intent</h3>
-<p>The arena moves every frame on the big screen. Phones do not simulate; they show a stream and send where they want their fighter to go.</p>
+<p>The arena moves every frame on the big screen. Phones do not simulate; they show the latest tick and send where they want their fighter to go. Sending coordinates is enough, and it is what the page does now; the two delivery guarantees are the point: the document must never be missed, a tick may always be dropped for a newer one.</p>
 <pre><code><span class="c">// big screen</span>
 room.on(<span class="s">'join'</span>, ({ id, name, rejoin }) =&gt; { <span class="k">if</span> (!rejoin) spawnFighter(id, name); <span class="k">else</span> fighters.get(id).remote = <span class="k">true</span>; });
 room.on(<span class="s">'leave'</span>, ({ id }) =&gt; { <span class="k">const</span> f = fighters.get(id); <span class="k">if</span> (f) f.remote = <span class="k">false</span>; });   <span class="c">// fights on as a bot</span>
@@ -306,7 +324,7 @@ room.on(<span class="s">'msg'</span>, m =&gt; {
   <span class="k">if</span> (m.t === <span class="s">'go'</span>) { <span class="k">const</span> f = fighters.get(m.id); <span class="k">if</span> (f &amp;&amp; f.remote &amp;&amp; !f.dead) f.target = clampToArena(m.x, m.y); }
 });
 room.state.set({ phase: <span class="s">'fight'</span>, endsAt: room.now() + 60000, roster: [...fighters.values()].map(f =&gt; [f.id, f.name, f.kit]) });
-room.stream(<span class="s">'arena'</span>, 10, () =&gt; ({
+room.tick(<span class="s">'arena'</span>, 10, () =&gt; ({
   ps:  [...fighters.values()].map(f =&gt; [f.id, f.x | 0, f.y | 0, f.hp | 0, f.face, f.anim, f.dead ? 1 : 0]),
   qs:  quizzes.map(q =&gt; [q.x | 0, q.y | 0]),
 }));
@@ -315,7 +333,7 @@ room.stream(<span class="s">'arena'</span>, 10, () =&gt; ({
 
 <span class="c">// phone</span>
 me.on(<span class="s">'state'</span>, doc =&gt; buildArena(doc.roster));
-me.stream(<span class="s">'arena'</span>, { interpolate: { ps: [1, 2] } }).on(<span class="s">'frame'</span>, s =&gt; drawArena(s.ps, s.qs));
+me.tick(<span class="s">'arena'</span>, { interpolate: { ps: [1, 2] } }).on(<span class="s">'frame'</span>, s =&gt; drawArena(s.ps, s.qs));
 me.on(<span class="s">'msg'</span>, m =&gt; { <span class="k">if</span> (m.t === <span class="s">'hit'</span>) popDamage(m.id, m.n, m.crit); });
 arena.onpointerdown = e =&gt; me.send({ t: <span class="s">'go'</span>, x: e.x | 0, y: e.y | 0 });</code></pre>
 <p>This is exactly the message shape the page uses today; the SDK adds the interpolation, the drop-when-behind, and the seat that survives a reload.</p>
@@ -330,16 +348,19 @@ room.on(<span class="s">'msg'</span>, m =&gt; {
   <span class="k">if</span> (m.t === <span class="s">'stroke'</span>) <span class="k">for</span> (<span class="k">const</span> [u, v, pr, dt] <span class="k">of</span> m.pts) move(p, u * W, v * H, pr, p.t0 + dt);   <span class="c">// batch carries its own clock</span>
   <span class="k">if</span> (m.t === <span class="s">'up'</span>)    up(p);
 });
-room.frame(paintCanvas, { long: 640, quality: 0.55, dirty: () =&gt; paintedAt &gt; lastFrameAt });
+<span class="k">const</span> frames = room.frame(paintCanvas, { long: 640, format: <span class="s">'webp'</span>, quality: 0.55, every: 700, perPlayer: 30, max: 2500 });
+<span class="k">function</span> layer() { …paint…; frames.touch(); }            <span class="c">// "the sheet changed"; the rate decides when it goes</span>
+undoBtn.onclick = () =&gt; { undo(); frames.now(); };          <span class="c">// this one, phones want at once</span>
 
 <span class="c">// phone</span>
 me.on(<span class="s">'state'</span>, doc =&gt; { setSwatches(doc.palette); fitSheet(doc.ar); });
-me.on(<span class="s">'frame'</span>, img =&gt; { <span class="k">if</span> (!myStrokeInFlight) drawSheet(img); });   <span class="c">// hold it while my own stroke is live</span>
+me.frames({ hold: () =&gt; myStrokeInFlight });               <span class="c">// the SDK keeps the latest frame back until the hand lifts</span>
+me.on(<span class="s">'frame'</span>, img =&gt; drawSheet(img));
 <span class="k">const</span> pts = me.input(<span class="s">'stroke'</span>, { every: 50, quantise: 1e4 });
-sheet.onpointerdown = e =&gt; { me.send({ t: <span class="s">'down'</span>, b: brush.type, z: brush.size, c: brush.color, x: u(e), y: v(e), pr: e.pressure }); pts.start(); };
-sheet.onpointermove = e =&gt; pts.push([u(e), v(e), e.pressure]);      <span class="c">// helper adds dt and batches</span>
-sheet.onpointerup   = () =&gt; { pts.flush(); me.send({ t: <span class="s">'up'</span> }); };</code></pre>
-<p>A phone that joins an hour into the session receives one frame and is current. Undo and Clear on the big screen need no messages: the next frame shows the result.</p>
+sheet.onpointerdown = e =&gt; { me.send({ t: <span class="s">'down'</span>, s: ++n, b: brush.type, z: brush.size, c: brush.color, p: [u(e), v(e), e.pressure] }); pts.start({ s: n }); };
+sheet.onpointermove = e =&gt; pts.push([u(e), v(e), e.pressure]);      <span class="c">// helper quantises, adds dt, batches</span>
+sheet.onpointerup   = () =&gt; { pts.stop(); me.send({ t: <span class="s">'up'</span>, s: n }); };</code></pre>
+<p>A phone that joins an hour into the session receives one frame and is current. Undo and Clear on the big screen need no messages: the next frame shows the result. This is the code the page runs now; see <code>public/color-and-sound.html</code>.</p>
 
 <h3 id="ex-solo">Solo mode and tests: the memory transport</h3>
 <p>Every page also works alone. With the memory transport, host and player live in one page and the game runs the same code path it runs in a room. Tests drive both ends without a network.</p>
@@ -357,7 +378,7 @@ a.send({ t: <span class="s">'answer'</span>, n: 0, i: 1 });
 assert.equal(room.state.getFor(a.id).answered, 1);
 room.transport.drop(a); <span class="k">await</span> room.transport.settle();  <span class="c">// simulate a phone losing signal</span>
 assert.equal(room.players.get(a.id).online, <span class="k">false</span>);</code></pre>
-<p>The memory transport also answers the question of what a bot is: a player whose brain is a function, joined through the same door as a phone. Survival Quiz's bots and Color &amp; Sound's extra painters become that.</p>
+<p>The memory transport also answers the question of what a bot is: a player whose brain is a function, joined through the same door as a phone. Survival Quiz's bots and Color &amp; Sound's extra painters become that. (The <code>bot</code> option is not built yet; <code>settle</code>, <code>drop</code>, <code>rejoin</code>, <code>lose</code> and <code>latency</code> are.)</p>
 
 <h2 id="api">API</h2>
 
@@ -436,13 +457,35 @@ me.on(<span class="s">'state'</span>, doc =&gt; {                               
 <p><code>me.now()</code> is corrected on every snapshot and refined by the round-trip of a ping every few seconds. Accuracy of a few tens of milliseconds is enough for a bar; a phone that was asleep snaps back on its next message. <code>me.every(ms, fn)</code> and <code>room.every(ms, fn)</code> are timers that pause while the page is hidden or the slide is inactive, so a bar never runs while nobody can see it.</p>
 
 <h3 id="api-fast">Fast lanes <span class="pill">opt-in</span></h3>
-<p>Three helpers, each a copy of a pattern that already works on this site. None of them is loaded unless the game asks.</p>
+<p>Three helpers, each a copy of a pattern that already works on this site. They exist because their delivery guarantee is the opposite of the document's: the document must never be missed, a tick or a frame may always be dropped for a newer one. Both Survival Quiz and Gremlin Siege already send a 10 Hz snapshot of coordinates next to their phase messages; the helper only names the two paths so a phase change never rides the droppable one.</p>
 <div class="tbl"><table>
-  <tr><th>Helper</th><th>Pattern it packages</th><th>From</th></tr>
-  <tr><td><code>room.stream(name, hz, fn)</code> · <code>me.stream(name, { interpolate }).on('frame', fn)</code></td><td>The host calls <code>fn</code> at <code>hz</code> and sends what it returns: arrays of numbers, or an object of such arrays. <code>interpolate</code> names the indices that are positions; the phone keeps the last two samples and blends them, so 10 Hz looks like 60. Rounds numbers, drops samples when the socket is behind. Off on transports without fast lanes.</td><td>Survival Quiz, Gremlin Siege</td></tr>
-  <tr><td><code>room.frame(canvas, { long, quality, dirty })</code> · <code>me.on('frame', img)</code></td><td>A JPEG of a canvas, <code>long</code> pixels on the long side, only while <code>dirty()</code> is true, throttled by player count. The latest frame is cached and sent to whoever joins, so nothing is ever replayed. <code>img</code> is a decoded image, ready to draw.</td><td>Color &amp; Sound</td></tr>
-  <tr><td><code>me.input(name, { every, quantise })</code> → <code>{ start, push, flush }</code></td><td>Quantises and batches high-rate input (touch points, taps) into one message per <code>every</code> ms, with a millisecond offset per sample since <code>start()</code> so the host can recover timing. Arrives on the host as <code>{ t: name, pts }</code>.</td><td>Color &amp; Sound</td></tr>
+  <tr><th>Helper</th><th>What it does</th><th>From</th></tr>
+  <tr><td><code>room.tick(name, hz, fn)</code> → <code>{ stop }</code> · <code>me.tick(name, { interpolate }).on('frame', fn)</code></td><td>The host calls <code>fn</code> at <code>hz</code> and sends what it returns: rows of numbers with an id first, or an object of such arrays. Latest wins. <code>interpolate</code> names the indices that are positions; the phone plays one interval behind and blends the last two samples, so 10 Hz looks like 60. Skipped when the socket is behind. <code>.on('sample')</code> gives the raw samples.</td><td>Survival Quiz, Gremlin Siege</td></tr>
+  <tr><td><code>room.frame(canvas, opts)</code> → <code>frames</code> · <code>me.frames({ hold })</code> · <code>me.on('frame', img)</code></td><td>A picture of a canvas, sent only when the game says it changed and at a rate the host controls (below). The latest frame is cached and sent to whoever joins, so nothing is ever replayed. On the phone, <code>hold</code> keeps the newest frame back while it returns true and delivers it the moment it does not; <code>img</code> is decoded and ready to draw.</td><td>Color &amp; Sound</td></tr>
+  <tr><td><code>me.input(name, { every, quantise })</code> → <code>{ start, push, flush, stop }</code></td><td>Batches high-rate input into one message per <code>every</code> ms. <code>start(meta)</code> opens a gesture and stamps <code>meta</code> on every message; <code>push(sample)</code> multiplies numbers by <code>quantise</code>, rounds, and appends milliseconds since <code>start</code>. Arrives on the host as <code>{ t: name, …meta, pts, q }</code>.</td><td>Color &amp; Sound</td></tr>
 </table></div>
+<h4>Frame rate is the host's to set</h4>
+<pre><code><span class="k">const</span> frames = room.frame(canvas, {
+  long: 640, format: <span class="s">'webp'</span>, quality: 0.55,   <span class="c">// webp with jpeg fallback</span>
+  every: 700,        <span class="c">// never more often than this, ms</span>
+  perPlayer: 30,     <span class="c">// stretch the interval by this much per phone online</span>
+  max: 2500,         <span class="c">// never less often than this while the sheet keeps changing</span>
+});
+frames.touch();                 <span class="c">// the sheet changed</span>
+frames.now();                   <span class="c">// one frame immediately, throttle ignored: after Clear, Undo</span>
+frames.rate({ every: 1500 });   <span class="c">// change at runtime: host on battery, big room</span>
+frames.pause(); frames.resume(); frames.stop();
+frames.stats;                   <span class="c">// { lastSentMsAgo, bytes, framesPerMinute, phones, interval }</span></code></pre>
+<h4>Budget, measured</h4>
+<p>A busy 1775×902 Color &amp; Sound sheet, encoded as the helper does:</p>
+<div class="tbl"><table>
+  <tr><th>Long side</th><th>Format</th><th>Quality</th><th>On the wire (base64)</th></tr>
+  <tr><td>640</td><td>WebP</td><td>0.55</td><td>7.8 KB (the default)</td></tr>
+  <tr><td>640</td><td>JPEG</td><td>0.55</td><td>12.9 KB (the fallback)</td></tr>
+  <tr><td>480</td><td>JPEG</td><td>0.5</td><td>8.2 KB</td></tr>
+  <tr><td>800</td><td>JPEG</td><td>0.6</td><td>19.1 KB</td></tr>
+</table></div>
+<p>So a phone receives under 10 KB per frame, at most every 0.7 s, and only while someone paints: about 100 kbit/s at the busiest, nothing when idle. One relay serving 100 phones sends about 400 KB/s at the 2.5 s cap; 500 phones about 2 MB/s. Outgoing WebSocket messages are not billed and Workers have no egress charge, so this is a throughput question only, and it is far from any limit up to a few hundred phones. Beyond that the helper's second mode is planned: the host uploads each frame once, phones fetch it from the edge cache, and the relay only says "frame 812 is ready". That mode is also the only way frames can work over the bridge transport.</p>
 <p>Simulation inside the Durable Object, as Marshmallow Live does, is not a helper. It is a different backend with its own room class, and it stays that way.</p>
 
 <h3 id="api-report">Reporting <span class="pill">embed</span></h3>
@@ -456,15 +499,17 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <p>Every message is a JSON object with a short <code>t</code>. The SDK reserves types with an underscore; a game's own messages never collide with it.</p>
 <div class="tbl"><table>
   <tr><th>Type</th><th>Direction</th><th>Fields</th><th>Meaning</th></tr>
-  <tr><td><code>_welcome</code></td><td>host → phone</td><td><code>id, name, rejoined, v, doc, mine, now</code></td><td>You are in. Includes the snapshot so a phone renders after one message.</td></tr>
+  <tr><td><code>welcome</code></td><td>relay → phone</td><td><code>id, name, rejoined</code></td><td>You are in. The relay sends it; the host's <code>_snap</code> follows within a round trip, so a phone renders after two messages.</td></tr>
   <tr><td><code>_join</code> · <code>_leave</code></td><td>relay → host</td><td><code>id, name, rejoin</code></td><td>Roster changes. Produced by the transport, not the game.</td></tr>
   <tr><td><code>_snap</code></td><td>host → phone</td><td><code>v, doc, mine, now</code></td><td>Full document. Sent on join, on resync, and after any gap.</td></tr>
-  <tr><td><code>_patch</code></td><td>host → phones</td><td><code>v, p</code> (and <code>to</code> for a private slice)</td><td>Shallow merge into the document at version <code>v</code>. Presence travels as an ordinary patch to the reserved <code>_players</code> key, coalesced with whatever else changed that frame.</td></tr>
-  <tr><td><code>_resync</code></td><td>phone → host</td><td><code>v</code></td><td>I hold version <code>v</code> and saw a gap; send a snapshot.</td></tr>
+  <tr><td><code>_patch</code></td><td>host → phones</td><td><code>v, p</code></td><td>Shallow merge into the document at version <code>v</code>; a <code>null</code> value deletes the key. Presence travels as an ordinary patch to the reserved <code>_players</code> key, coalesced with whatever else changed that turn.</td></tr>
+  <tr><td><code>_mine</code></td><td>host → one phone</td><td><code>mv, p</code></td><td>The private slice, with its own version per player.</td></tr>
+  <tr><td><code>_resync</code></td><td>phone → host</td><td><code>v</code></td><td>I hold version <code>v</code> and saw a gap; send a snapshot. Rate-limited to one a second.</td></tr>
   <tr><td><code>_ping</code> · <code>_pong</code></td><td>both</td><td><code>t0, now</code></td><td>Clock offset and liveness.</td></tr>
   <tr><td><code>_nohost</code> · <code>_hostgone</code></td><td>relay → phone</td><td>—</td><td>The big screen is not here yet, or left.</td></tr>
-  <tr><td><code>_frame</code> · <code>_stream</code> · <code>_input</code></td><td>varies</td><td>helper-specific</td><td>Fast lanes.</td></tr>
-  <tr><td>anything else</td><td>either</td><td>game-defined</td><td>Delivered as <code>'msg'</code>. Phone messages get <code>id</code> stamped by the transport.</td></tr>
+  <tr><td><code>_frame</code></td><td>host → phones</td><td><code>d</code></td><td>A data URL of the picture. Also sent to a phone right after its snapshot.</td></tr>
+  <tr><td><code>_tick</code></td><td>host → phones</td><td><code>n, d, at</code></td><td>One sample of the named tick.</td></tr>
+  <tr><td>anything else</td><td>either</td><td>game-defined</td><td>Delivered as <code>'msg'</code>. Phone messages get <code>id</code> stamped by the transport; a phone cannot send a reserved type. Input batches are ordinary messages named by the game: <code>{ t: name, …meta, pts, q }</code>.</td></tr>
 </table></div>
 <div class="card"><b>Limits.</b> One message under 64 KB; the document under 16 KB; a phone sends at most 20 messages a second (the input helper enforces this by batching); the host sends the document at most once per animation frame. Frames are the exception and are governed by their own throttle: 0.7 s plus 30 ms per phone, capped at 2.5 s.</div>
 
@@ -478,7 +523,8 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
   <tr><td><code>GET /j/CODE</code></td><td>—</td><td><code>302</code> to the page that opened the room, with <code>?join=CODE</code>; <code>404</code> page saying the room has ended if the code is unknown or expired.</td></tr>
   <tr><td><code>/ws/CODE</code></td><td>—</td><td>Unchanged for phones and hosts; the worker resolves the code through the directory and names the relay <code>page + ':' + code</code>, so a stale code from another game can never reach the wrong room.</td></tr>
 </table></div>
-<p>The directory keeps <code>{ code → page, createdAt, lastSeen, hostLive }</code>, hears a heartbeat from each live host, and expires rooms after a few idle hours, so codes recycle and the four-character space stays roomy. Codes are 4 to 32 characters from a confusable-free alphabet (no <code>0 O 1 I L</code>), so vanity and presentation-derived codes fit the same route. The old per-game prefixes stay as aliases for QR codes already printed.</p>
+<p>The directory keeps <code>{ code → page, createdAt, lastSeen }</code>, touches <code>lastSeen</code> on every socket that connects, and expires rooms after twelve idle hours, so codes recycle and the four-character space stays roomy. Minted codes come from a confusable-free alphabet (no <code>0 O 1 I L</code>); brought codes may be 4 to 32 characters of letters, digits and dashes, so presentation-derived codes fit the same route. The old per-game prefixes stay as aliases for QR codes already printed, and a page that mints without registering (the older games, until they move) keeps working: an unknown code names the relay by the code alone, as before.</p>
+<p><b>As built:</b> a conflict is another page holding the code. The same page re-claiming its own code is always allowed, which covers a big screen that reloads; whether a second live big screen on the same page should be refused is still an open question below.</p>
 <p>What this buys: a game is identified by its page path, a room by a code the directory guarantees unique, the join URL is the only thing a phone needs, and adding a game to the site adds nothing to the worker.</p>
 
 <h2 id="transports">Transports</h2>
@@ -558,15 +604,15 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
   <tr><th>Page</th><th>What moves to the SDK</th><th>What stays</th></tr>
   <tr><td>Color &amp; Sound</td><td>host and join plumbing, palette and scale into the document, strokes through <code>input</code>, sheet through <code>frame</code></td><td>the engine</td></tr>
   <tr><td>Gremlin Siege</td><td>its <code>emit</code> style maps one-to-one onto events; phase strip and countdowns become <code>endsAt</code> in the document; quiz offers become private slices</td><td>simulation, view, audio</td></tr>
-  <tr><td>Survival Quiz, Survival Brawl, Brawl Quiz</td><td>plumbing; 10 Hz snapshots through <code>stream</code>; phase and banner into the document</td><td>fighters, quiz pool</td></tr>
+  <tr><td>Survival Quiz, Survival Brawl, Brawl Quiz</td><td>plumbing; the 10 Hz snapshot through <code>tick</code>; phase and banner into the document</td><td>fighters, quiz pool</td></tr>
   <tr><td>Marshmallow, Marshmallow Live</td><td>plumbing and lobby only</td><td>the physics room, as its own transport-bound feature</td></tr>
 </table></div>
 <p>Each migration deletes roughly 80 lines and one localStorage scheme. The end state is one file that knows about sockets.</p>
 
 <h2 id="roadmap">Roadmap</h2>
 <ol>
-  <li><b>Phase 1 — core.</b> <code>aha-room.js</code>: session, state document, time, reporting stub, default lobby card; <code>relay</code>, <code>memory</code> and <code>embed</code> transports; the rooms directory and <code>/j/CODE</code> in the worker, with the old prefixes kept as aliases. Move Color &amp; Sound and Gremlin Siege. About 250 lines of SDK, 60 in the worker, and one page of docs.</li>
-  <li><b>Phase 2 — fast lanes.</b> <code>stream</code>, <code>frame</code>, <code>input</code>. Move the other four pages and delete the copies.</li>
+  <li><b>Phase 1 — core.</b> <span class="pill">built</span> <code>aha-room.js</code>: session, presence, state document, time, reporting stub, default lobby card, and the three fast lanes; <code>relay</code>, <code>memory</code> and <code>embed</code> transports; the rooms directory and <code>/j/CODE</code> in the worker, with the old prefixes kept as aliases. Color &amp; Sound moved. About 560 lines of SDK, 70 in the worker.</li>
+  <li><b>Phase 2 — the other pages.</b> Gremlin Siege first (its event style maps one to one; phases become <code>endsAt</code>), then Survival Quiz, Brawl, Brawl Quiz, and the Marshmallow lobbies. Delete the six copies of the plumbing.</li>
   <li><b>Phase 3 — bridge.</b> When the presenter app has a plugin host, the bridge transport and the report shapes it expects. No game changes.</li>
 </ol>
 

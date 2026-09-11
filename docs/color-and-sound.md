@@ -1,56 +1,53 @@
 # Color & Sound — room mode
 
 `/color-and-sound` is the solo painting toy. `/color-and-sound?host=1` opens a room on the big
-screen; phones scan the QR (`/cs/CODE`, which redirects to `?join=CODE`) and paint on that screen.
+screen; phones scan the QR, which opens `/j/CODE` and lands on `?join=CODE`.
 
-It reuses the `Room` Durable Object relay in `src/worker.js` unchanged: one host socket
-(`/ws/CODE?role=host`), any number of player sockets (`?role=player&name=&token=`). Players'
-messages go to the host; the host's go to every player, or to one with `to`.
+The page runs on the aha-room SDK (`public/js/aha-room.js`, design note at `/sdk`). It never
+touches a socket, a room code, a QR or localStorage: the SDK mints the room through the rooms
+directory in the worker, draws the lobby card, keeps identity and reconnects, replicates the
+document, and sends the sheet back as a picture.
 
 ## Who does what
 
-- **Phones are brushes.** They send raw pointer input and their brush settings. They do not
-  hold the painting.
+- **Phones are brushes.** They send raw pointer input and their brush settings through the SDK's
+  input helper. They do not hold the painting.
 - **The host paints and plays.** Every stroke, from its own mouse or from a phone, runs through
   the same engine on the big screen, which is also the room's speaker. Phones have their own
   notes off by default (a Sound toggle turns them on).
-- **The picture is the shared state.** The host sends back a JPEG of the sheet. There is no
-  stroke log to keep in sync and nothing to replay: a phone that joins late, reloads, or
-  reconnects gets the latest frame and is current.
+- **The picture is the shared state.** The host's `room.frame(paint, …)` sends a WebP (JPEG
+  fallback) of the sheet. There is no stroke log to keep in sync and nothing to replay: a phone
+  that joins late, reloads, or reconnects gets the latest frame and is current.
 
-## Messages
+## What the page sends
 
-Phone → host (`id` is added by the relay):
+Phone → host, as ordinary game messages (`id` is stamped by the relay):
 
 | t   | fields | when |
 |-----|--------|------|
-| `d` | `s` stroke id, `b` brush (`wash`/`sable`), `z` size (`S`/`M`/`L`), `c` colour index or −1 for Mix, `r` real pressure, `p` first point | finger down |
-| `s` | `s`, `p` array of points, `r` | every 50 ms while moving |
+| `d` | `s` stroke id, `b` brush (`wash`/`sable`), `z` size (`S`/`M`/`L`), `c` colour index or −1 for Mix, `r` real pressure, `p` first point ×10000 | finger down |
+| `s` | `s`, `pts` array of `[u, v, pressure, ms]` ×`q`, `q` = 10000 | every 50 ms while moving (the input helper) |
 | `u` | `s` | finger up |
 
-A point is `[u, v, pressure, ms]`: sheet position quantised to 1/10000, pressure 0–100, and
-milliseconds since the stroke started, so the host can recover stroke speed from a batch.
-Sub-pixel moves are dropped before sending. Roughly 15 messages a second and 15 bytes a point
-per active painter, whatever the phone's frame rate.
+Host → phones, through the SDK:
 
-Host → phones:
-
-| t   | fields | when |
-|-----|--------|------|
-| `m` | `ar` sheet aspect ratio, `pal` palette, `sc` scale index, `cfg` tuning | on join, palette/scale/tuning change, host resize |
-| `f` | `d` JPEG data URL, 640 px on the long side, quality 0.55 | on join (latest cached frame), then whenever the sheet changed, at most every 0.7 s + 30 ms per phone, capped at 2.5 s |
+- the document: `{ ar, pal, sc, cfg }` (sheet aspect, palette, scale, tuning), plus the SDK's
+  `_players` presence slice;
+- frames: 640 px on the long side, WebP quality 0.55, only when the sheet changed, every 0.7 s
+  plus 30 ms per phone, capped at 2.5 s; `frames.now()` after Undo and Clear.
 
 ## Why an image rather than a stroke log
 
 Every mark keeps blooming for seconds after the finger lifts, the rendering is randomised, and
 brush sizes are relative to the screen, so two devices replaying the same strokes would never
 produce the same picture anyway. Replay cost also grows with every stroke ever made, while a
-frame is a fixed ~40–60 KB no matter how long the room has been painting. Undo, Clear and New
-hues on the host need no protocol: the next frame simply shows the result.
+frame is about 8 KB (WebP) or 13 KB (JPEG) no matter how long the room has painted, measured on a
+busy sheet. Undo, Clear and New hues on the host need no protocol: the next frame shows the result.
 
 Phones keep the frame off their sheet while their own stroke is in flight (and for 300 ms after
-the lift), because the host's picture is a beat behind the finger and would wipe the stroke's
-tail. Their local rendering of the stroke stands in until the next frame includes it.
+the lift) via `me.frames({ hold })`, because the host's picture is a beat behind the finger and
+would wipe the stroke's tail. Their local rendering of the stroke stands in until the next frame
+includes it.
 
 ## Host-side bookkeeping
 
