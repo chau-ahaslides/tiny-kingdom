@@ -149,7 +149,7 @@
       <span class="hint">bots fill the empty seats</span>
     </div>
     <div class="row"><button class="big" id="b-start">🏰 Start the siege</button></div>
-    <p class="hint" style="margin-top:12px">The gremlins march the moment a wave starts. Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Every right answer in a row makes the next gun bigger: ballista → cannon → turret → catapult → crystal turret. Six in a row is ⚡ God Mode: every gun on the board is refilled and fires for free until the wave ends. Wrong = no gun and the streak is gone.<br>Every gun carries a limited load of ammo and vanishes when it runs dry — keep placing new ones.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
+    <p class="hint" style="margin-top:12px">The gremlins march the moment a wave starts. Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Every right answer in a row makes the next gun bigger: ballista → cannon → turret → catapult → crystal turret. Six in a row is ⚡ God Mode: it refills the emptiest guns on the board, two at streak 6, three at 7, and so on. Wrong = no gun and the streak is gone.<br>Every gun carries a limited load of ammo and vanishes when it runs dry — keep placing new ones.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
   </div>
 </div></div>
 
@@ -199,7 +199,7 @@
     <ul>
       <li><span class="ic">👹</span><span>Gremlins march down the road to the Attention Tower. Every one that gets through bites it. When it's gone, the game is over.</span></li>
       <li><span class="ic">❓</span><span>Each wave starts with a quiz at the bottom of your screen. <b>Answer right</b> and you get a gun to <b>drag onto the board</b>, with your name on it.</span></li>
-      <li><span class="ic">🔥</span><span>Right again next wave = a <b>bigger gun</b>: ballista → cannon → turret → catapult → 💎 crystal turret. Six in a row = ⚡ <b>God Mode</b>: every gun refilled and firing for free until the wave ends. Wrong or too slow = no gun, streak lost.</span></li>
+      <li><span class="ic">🔥</span><span>Right again next wave = a <b>bigger gun</b>: ballista → cannon → turret → catapult → 💎 crystal turret. Six in a row = ⚡ <b>God Mode</b>: you refill the emptiest guns on the board (2 at streak 6, 3 at 7, and so on). Wrong or too slow = no gun, streak lost.</span></li>
       <li><span class="ic">🪫</span><span>Guns carry limited ammo and vanish when empty, so keep answering and keep placing.</span></li>
       <li><span class="ic">👆</span><span>One finger turns the board, pinch to zoom, ⌖ resets the view.</span></li>
     </ul>
@@ -210,7 +210,7 @@
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/GLTFLoader.js"></script>
 <script src="/vendor/qr.js"></script>
-<script src="/js/tr-sim.js?v=9"></script>
+<script src="/js/tr-sim.js?v=10"></script>
 <script src="/vendor/zzfx.js"></script>
 <script src="/js/tr-audio.js?v=1"></script>
 <script>
@@ -428,21 +428,23 @@ class View {
     cx.fillStyle = god ? 'rgba(120,80,0,.85)' : 'rgba(32,48,63,.85)'; cx.beginPath(); cx.roundRect(4, 14, W - 8, 44, 22); cx.fill();
     cx.fillStyle = col; cx.beginPath(); cx.roundRect(10, 20, Math.max(12, (W - 20) * f), 32, 16); cx.fill();
     cx.font = '700 36px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineWidth = 6; cx.strokeStyle = god ? 'rgba(120,80,0,.9)' : 'rgba(32,48,63,.9)'; cx.fillStyle = '#fff';
-    const text = god ? '⚡ ∞' : (low ? '🪫 ' : '🔫 ') + t.ammo; cx.strokeText(text, W / 2, 37); cx.fillText(text, W / 2, 37);
+    const text = (god ? '⚡ ' : low ? '🪫 ' : '🔫 ') + t.ammo; cx.strokeText(text, W / 2, 37); cx.fillText(text, W / 2, 37);
     t.ammoTex.needsUpdate = true;
   }
   // gh = ammo left per gun as a fraction, ga = shots left
-  applyGuns(gh, ga, god) {
+  applyGuns(gh, ga) {
+    const now = performance.now();
     for (let i = 0; i < gh.length; i++) {
       const t = this.guns[i]; if (!t || !t.pill) continue;
-      const n = ga ? ga[i] : Math.round(gh[i] * (t.max || 1)); const g = !!god;
+      const n = ga ? ga[i] : Math.round(gh[i] * (t.max || 1)); const g = (t.godT || 0) > now;   // freshly refilled: gold for a moment
       if (n !== t.ammo || g !== !!t.god) { t.ammo = n; t.frac = gh[i]; t.god = g; this.drawAmmo(t); }
       t.low = !g && gh[i] <= 0.25 && gh[i] > 0;
     }
   }
   // God Mode: a golden ring bursts from every gun and sparks rise over the whole board.
-  godBurst() {
-    for (const t of this.guns) if (t) { const m = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.5, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide, transparent: true, opacity: .9 })); m.rotation.x = -Math.PI / 2; m.position.set(t.x, 0.25, t.z); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.0, kind: 'ring' }); }
+  godBurst(indices) {
+    const list = indices ? indices.map(i => this.guns[i]).filter(Boolean) : this.guns.filter(Boolean);
+    for (const t of list) { t.godT = performance.now() + 2500; const m = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.5, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide, transparent: true, opacity: .9 })); m.rotation.x = -Math.PI / 2; m.position.set(t.x, 0.25, t.z); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.0, kind: 'ring' }); }
     for (let k = 0; k < 60; k++) { const m = new THREE.Mesh(new THREE.BoxGeometry(.12, .12, .12), new THREE.MeshBasicMaterial({ color: k % 2 ? 0xffd23f : 0xffffff })); m.position.set(Math.random() * TR.COLS, 0.2, Math.random() * TR.ROWS); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.4 + Math.random(), kind: 'spark', vy: 2 + Math.random() * 3, vx: (Math.random() - .5), vz: (Math.random() - .5) }); }
     this.keepFlash = 0.6;
   }
@@ -666,14 +668,14 @@ function renderQuiz() {
   $('#hq-time').style.width = (S.phase === 'wave' ? 100 * Math.max(0, S.quizLeft) / S.rules.quizTime : 0) + '%';
 }
 function bigMsg(text, ms) { const el = $('#h-msg'); el.classList.remove('god'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
-function godFeast(name, streak, refilled) {
-  const el = $('#h-msg'); el.textContent = '⚡ GOD MODE ⚡\n' + name + ' · streak ' + streak + '\nall guns refilled — free fire this wave!'; el.classList.add('on', 'god');
-  clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on', 'god'), 3800);
-  host.view.godBurst(); SFX.play('win'); setTimeout(() => SFX.play('clear'), 250);
+function godFeast(name, streak, refilled, guns) {
+  const el = $('#h-msg'); el.textContent = '⚡ GOD MODE ⚡\n' + name + ' · streak ' + streak + '\n' + (refilled ? refilled + ' gun' + (refilled === 1 ? '' : 's') + ' refilled!' : 'nothing left to refill'); el.classList.add('on', 'god');
+  clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on', 'god'), 3200);
+  host.view.godBurst(guns); SFX.play('win'); setTimeout(() => SFX.play('clear'), 250);
 }
 function renderBoard() {
   const list = TR.roster(host.S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
-  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Gremlins shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''}${r.gods ? ' ⚡' + r.gods : ''} <span class="hint">🔫${r.alive}${r.lost ? ' 🪫' + r.lost : ''}</span></span><span>${r.kills}</span></div>`).join('');
+  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Gremlins shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''}${r.gods ? ' ⚡' + r.refills : ''} <span class="hint">🔫${r.alive}${r.lost ? ' 🪫' + r.lost : ''}</span></span><span>${r.kills}</span></div>`).join('');
 }
 // The rules tick on a timer so a hidden tab keeps the game going in real time; rendering stays on the frame callback.
 function hostSim() {
@@ -688,7 +690,7 @@ function hostSim() {
       else if (ev.e === 'die') { SFX.play('kill', { pitch: 0.9 + Math.random() * 0.2 }); const p = S.players.get(ev.owner); if (p && !p.bot) host.link.send({ to: ev.owner, t: 'kill', n: ev.kills }); }
       else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); SFX.play('bite'); SFX.play('alarm'); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
       else if (ev.e === 'placed') { view.addGun(ev.gun); host.link.send({ t: 'gun', g: ev.gun }); SFX.play('place'); }
-      else if (ev.e === 'god') { const p = S.players.get(ev.id); godFeast(p ? p.name : '?', ev.streak, ev.refilled); host.link.send({ t: 'god', id: ev.id, name: p ? p.name : '?', streak: ev.streak, n: ev.refilled }); }
+      else if (ev.e === 'god') { const p = S.players.get(ev.id); godFeast(p ? p.name : '?', ev.streak, ev.refilled, ev.guns); host.link.send({ t: 'god', id: ev.id, name: p ? p.name : '?', streak: ev.streak, n: ev.refilled, guns: ev.guns }); }
       else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) toast('🪫 ' + p.name + "'s gun is out of ammo"); }
       else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); SFX.play('answer', { pitch: 0.8 + Math.random() * 0.5 }); }
       else if (ev.e === 'quizEnd') { renderQuiz(); SFX.play('tick'); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); }
@@ -709,7 +711,7 @@ function hostTick(ts) {
   const view = host.view; if (!view) return;
   const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (host.frameT || ts || performance.now())) / 1000)); host.frameT = ts || performance.now();
   const S = host.S, snap = host.snap;
-  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh, snap.ga, snap.god); }
+  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh, snap.ga); }
   if (host.running && (S.phase === 'wave' || S.phase === 'between')) {
     $('#h-hp').textContent = Math.max(0, S.tower.hp) + ' / ' + S.tower.max; const bar = $('#h-hpbar'); bar.style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%'; bar.classList.toggle('low', S.tower.hp <= S.tower.max * 0.3);
     $('#h-wave').textContent = S.wave; $('#h-guns').textContent = S.guns.filter(g => !g.dead).length;
@@ -788,7 +790,7 @@ function playerReceive(m) {
     player.streak = m.streak; updateMe();
     const u = $('#pq-urgent');
     if (m.res === 'god') {
-      $('#pq-note').textContent = '⚡ GOD MODE — streak ' + m.streak + '!'; u.className = 'urgent good'; u.textContent = '⚡ GOD MODE ⚡';
+      $('#pq-note').textContent = '⚡ GOD MODE — streak ' + m.streak + ': you refill ' + (m.streak - 4) + ' guns!'; u.className = 'urgent good'; u.textContent = '⚡ GOD MODE ⚡';
       setTimeout(() => $('#p-quiz').classList.remove('on'), 900);
     } else if (m.res === 'right') {
       SFX.play('right');
@@ -813,10 +815,10 @@ function playerReceive(m) {
   }
   if (m.t === 'god') {
     const mine = m.id === player.id; const el = $('#p-msg'); clearTimeout(pMsg.t);
-    el.textContent = (mine ? '⚡ YOU ARE IN GOD MODE ⚡\nstreak ' + m.streak : '⚡ GOD MODE ⚡\n' + m.name + ' · streak ' + m.streak) + '\nall guns refilled — free fire this wave!'; el.classList.add('on', 'god');
+    el.textContent = (mine ? '⚡ YOU ARE IN GOD MODE ⚡\nstreak ' + m.streak : '⚡ GOD MODE ⚡\n' + m.name + ' · streak ' + m.streak) + '\n' + (m.n ? m.n + ' gun' + (m.n === 1 ? '' : 's') + ' refilled!' : 'nothing left to refill'); el.classList.add('on', 'god');
     pMsg.t = setTimeout(() => el.classList.remove('on', 'god'), mine ? 4500 : 3000);
     const g = $('#p-gold'); g.classList.add('on'); setTimeout(() => g.classList.remove('on'), mine ? 900 : 300);
-    v.godBurst(); SFX.play('win'); if (navigator.vibrate) navigator.vibrate(mine ? [60, 40, 60, 40, 120] : [30, 30, 30]);
+    v.godBurst(m.guns); SFX.play('win'); if (navigator.vibrate) navigator.vibrate(mine ? [60, 40, 60, 40, 120] : [30, 30, 30]);
     return;
   }
   if (m.t === 'placed') {
@@ -886,7 +888,7 @@ function playerTick(ts) {
   const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (player.frameT || ts || performance.now())) / 1000)); player.frameT = ts || performance.now();
   const s = player.snap;
   if (s) {
-    v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh, s.ga, s.god);
+    v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh, s.ga);
     for (const g of v.guns) if (g && g.low && g.owner === player.id && !g.warned) { g.warned = true; SFX.play('low'); pMsg('🪫 Your gun is running low!', 1400); }
     const bar = $('#p-thp'); bar.style.width = (100 * s.th / s.tm) + '%'; bar.classList.toggle('low', s.th <= s.tm * 0.3); $('#p-tpct').textContent = s.th + '/' + s.tm;
     $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';

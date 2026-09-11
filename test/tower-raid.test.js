@@ -135,15 +135,14 @@ test('god mode: from streak six a right answer refills every gun instead of addi
   TR.addPlayer(S, 'a', 'Ann');
   for (let w = 1; w <= 5; w++) { TR.startWave(S); TR.answer(S, 'a', S.quiz.answer); const spot = [[2, 2], [4, 4], [7, 3], [8, 4], [10, 3]][w - 1]; assert.equal(TR.place(S, 'a', spot[0], spot[1]), 'ok'); TR.endWave(S); }
   assert.deepEqual(S.guns.map(g => g.type), ['ballista', 'cannon', 'turret', 'catapult', 'crystal']);
-  for (const g of S.guns) g.ammo = 1;
+  S.guns.forEach((g, i) => { g.ammo = [5, 1, 9, 3, 7][i]; });
   TR.startWave(S);
   assert.equal(TR.answer(S, 'a', S.quiz.answer), 'god');
   assert.equal(S.players.get('a').pending, null, 'no gun to place');
-  assert.ok(S.guns.every(g => g.ammo === g.max), 'every gun refilled');
-  const ev = TR.takeEvents(S).find(e => e.e === 'god'); assert.equal(ev.streak, 6); assert.equal(ev.refilled, 5);
-  let t = 0; while (S.phase === 'wave' && t < 120) { TR.step(S, 1 / 30); t += 1 / 30; }
-  assert.equal(S.phase, 'between'); assert.ok(S.guns.every(g => g.ammo === g.max), 'free fire: no ammo spent for the rest of the wave');
+  const ev = TR.takeEvents(S).find(e => e.e === 'god'); assert.equal(ev.streak, 6); assert.equal(ev.refilled, 2);
+  assert.deepEqual(ev.guns.sort(), [1, 4], 'the two emptiest guns, by share of ammo left');
+  assert.equal(S.guns[1].ammo, S.guns[1].max); assert.equal(S.guns[4].ammo, S.guns[4].max); assert.equal(S.guns[0].ammo, 5, 'the others untouched');
   TR.endWave(S); TR.startWave(S);
   assert.equal(TR.answer(S, 'a', S.quiz.answer), 'god', 'and every right answer after that');
-  assert.equal(S.players.get('a').streak, 7);
+  assert.equal(TR.takeEvents(S).find(e => e.e === 'god').refilled, 3, 'streak 7 refills three');
 });
