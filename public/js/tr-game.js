@@ -377,7 +377,6 @@ function playerTick(ts) {
     $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
     if (s.ph === 'wave' || s.ph === 'final') {
       $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';
-      phaseStrip($('#p-phases'), [s.ql, s.pl, s.nl], [player.quizTime, player.placeTime, player.between], s.ph);
       if (player.pending) {   // answered early? the rest of the answer phase plus the whole placement phase is yours to place in
         const leftToPlace = s.ql > 0 ? s.ql + player.placeTime : s.pl; const full = player.quizTime + player.placeTime;
         $('#pl-time').style.width = Math.max(0, 100 * leftToPlace / full) + '%'; $('#pl-clock').textContent = '⏱ ' + Math.max(0, leftToPlace) + ' s to place' + (leftToPlace <= 3 ? ' — hurry!' : '');
@@ -389,8 +388,8 @@ function playerTick(ts) {
     else if (s.ph === 'final') setBtn('ok', '⚔️ Last wave held — clear the road! 👹 ' + s.left);
     else if (player.pending) setBtn('hot', '📍 Place your gun' + (s.pl > 0 ? ' — ' + s.pl + ' s' : '') + '!');
     else if (s.ph === 'wave' && !player.answered && s.ql > 0) setBtn('hot', '❓ Answer the quiz — ' + s.ql + ' s');
-    else if (s.ph === 'wave' && (s.ql > 0 || s.pl > 0)) setBtn('', '⏳ Others answering & placing — ' + (s.ql > 0 ? s.ql + player.placeTime : s.pl) + ' s');
-    else if (s.ph === 'wave') setBtn('ok', '⚔️ Wave ' + s.w + ' · 👹 ' + s.left + ' · next wave in ' + s.nl + ' s');
+    else if (s.ph === 'wave' && (s.ql > 0 || s.pl > 0)) setBtn('', '⏳ Wait for other players… ' + (s.ql > 0 ? s.ql + player.placeTime : s.pl) + ' s');
+    else if (s.ph === 'wave') setBtn('ok', s.nx ? '👹 Next wave: ' + s.nx + ' ' + T.enemies + ' in ' + s.nl + ' s' : '⚔️ Last wave · 👹 ' + s.left + ' left');
     else setBtn('', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…');
   }
   v.frame(player.paused ? 0 : dt);
