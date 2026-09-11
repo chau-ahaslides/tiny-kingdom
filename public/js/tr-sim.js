@@ -57,6 +57,7 @@
     botAnsMin: 3, botAnsMax: 10, botPlace: 2.5,
     between: 3,            // seconds between waves (just the countdown)
     maxStreakLevel: 4,     // gun level = min(this, streak - 1)
+    godStreak: 6,          // from this streak on a right answer is God Mode: every gun is refilled and fires for free until the wave ends
   };
   const ENEMY = {
     gremlin: { hp: 110, speed: 1.15, bite: 1 },
@@ -120,7 +121,7 @@
       phase: 'lobby', wave: 0, time: 0, timeLeft: 0, quizLeft: 0,
       tower: { hp: rules.towerHp, max: rules.towerHp },
       players: new Map(), order: [], guns: [], enemies: [], queue: [], spawnT: 0, shots: [], quiz: null, events: [], seq: 0, eid: 0,
-      won: null, survived: 0, lastQuiz: -1,
+      won: null, survived: 0, lastQuiz: -1, godWave: 0, godBy: null,
     };
   }
   function addPlayer(S, id, name, bot) {
@@ -161,7 +162,7 @@
     return true;
   }
   function endWave(S) {
-    S.survived = S.wave; S.shots = []; S.enemies = []; S.queue = [];
+    S.survived = S.wave; S.shots = []; S.enemies = []; S.queue = []; S.godWave = 0;
     // A quiz nobody answered still counts against the streak; a gun that was never placed is lost.
     for (const p of S.players.values()) { if (!p.answered && !p.gone) { p.streak = 0; } p.pending = null; }
     if (S.wave >= S.rules.maxWaves) { S.phase = 'over'; S.won = true; S.events.push({ e: 'over', won: true, survived: S.survived }); }
@@ -176,6 +177,12 @@
     p.answered = true;
     if (i === S.quiz.answer) {
       p.correct++; p.streak++; p.best = Math.max(p.best, p.streak);
+      if (p.streak >= S.rules.godStreak) {
+        let n = 0; for (const g of S.guns) if (!g.dead) { g.ammo = g.max; n++; }
+        p.gods = (p.gods || 0) + 1; S.godWave = S.wave; S.godBy = id;
+        S.events.push({ e: 'god', id, streak: p.streak, refilled: n });
+        return 'god';
+      }
       const level = Math.min(S.rules.maxStreakLevel, p.streak - 1);
       p.pending = { level, wave: S.wave };
       S.events.push({ e: 'right', id, level, streak: p.streak });
@@ -252,7 +259,7 @@
         const p = posAt(best.d, best.side);
         g.yaw = Math.atan2(p.x - g.x, p.z - g.z);
         if (g.cool <= 0) {
-          g.cool = st.reload; g.ammo--;
+          g.cool = st.reload; if (S.godWave !== S.wave) g.ammo--;
           if (g.ammo <= 0) { g.dead = true; const o = S.players.get(g.owner); if (o) o.lost++; S.events.push({ e: 'gunDown', gun: g.i, owner: g.owner, x: g.x, z: g.z }); }
           const dist = Math.hypot(p.x - g.x, p.z - g.z); const dur = Math.max(0.08, dist / def.ammoSpeed);
           S.shots.push({ gun: g, target: best.id, dmg: st.dmg, splash: def.splash, t: 0, dur, ax: p.x, az: p.z });
@@ -278,10 +285,10 @@
   function snapshot(S) {
     // Road distance + speed rather than a position, so renderers can move enemies smoothly between snapshots.
     const e = S.enemies.map(e => [e.id, e.kind, +(e.hp / e.max).toFixed(2), +e.d.toFixed(3), +e.side.toFixed(2), e.speed, e.state]);
-    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)), ga: S.guns.map(g => g.dead ? 0 : g.ammo) };
+    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)), ga: S.guns.map(g => g.dead ? 0 : g.ammo), god: S.godWave === S.wave ? 1 : 0 };
   }
   function roster(S) {
-    return [...S.order].map(id => { const p = S.players.get(id); return { id, name: p.name, bot: p.bot, skin: p.skin, kills: p.kills, dmg: Math.round(p.dmg), correct: p.correct, wrong: p.wrong, streak: p.streak, best: p.best, guns: p.guns, alive: S.guns.filter(g => !g.dead && g.owner === id).length, lost: p.lost, gone: p.gone }; });
+    return [...S.order].map(id => { const p = S.players.get(id); return { id, name: p.name, bot: p.bot, skin: p.skin, kills: p.kills, dmg: Math.round(p.dmg), correct: p.correct, wrong: p.wrong, streak: p.streak, best: p.best, gods: p.gods || 0, guns: p.guns, alive: S.guns.filter(g => !g.dead && g.owner === id).length, lost: p.lost, gone: p.gone }; });
   }
   function gunList(S) { return S.guns.map(g => gunInfo(S, g)); }
   function takeEvents(S) { const ev = S.events; S.events = []; return ev; }

@@ -63,6 +63,13 @@
   #h-board .r .n { display:flex; align-items:center; gap:6px; }
   #h-msg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:min(9vw,64px); font-weight:700; color:#fff; text-shadow:0 4px 18px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; }
   #h-msg.on { opacity:1; }
+  #h-msg.god { color:#ffd23f; text-shadow:0 0 24px #ff9f1c, 0 4px 18px rgba(0,0,0,.4); font-size:min(5vw,46px); line-height:1.25; width:90vw; animation:godpulse .6s ease-in-out infinite alternate; white-space:pre-line; }
+  #h-msg.god::first-line { font-size:min(9vw,80px); }
+  @keyframes godpulse { from { transform:translate(-50%,-50%) scale(1); } to { transform:translate(-50%,-50%) scale(1.06); } }
+  #p-msg.god { color:#ffd23f; text-shadow:0 0 20px #ff9f1c, 0 3px 14px rgba(0,0,0,.4); font-size:34px; animation:godpulse .6s ease-in-out infinite alternate; }
+  #p-gold { position:absolute; inset:0; background:radial-gradient(circle, rgba(255,210,63,.55), rgba(255,159,28,.15)); opacity:0; transition:opacity .6s; pointer-events:none !important; }
+  #p-gold.on { opacity:1; transition:none; }
+  .sbtn { padding:8px 10px; font-size:18px; }
   #h-ctl { right:14px; bottom:14px; }
   /* phone */
   #p-top { position:absolute; left:10px; right:10px; top:10px; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
@@ -85,6 +92,8 @@
   #p-place { position:absolute; left:8px; right:8px; bottom:14px; background:rgba(255,255,255,.97); border-radius:20px; padding:10px 10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.25); display:none; pointer-events:auto; }
   #p-place.on { display:block; }
   #p-place.on ~ #p-btn, #p-place.on ~ #p-recenter, #p-quiz.on ~ #p-btn, #p-quiz.on ~ #p-recenter { display:none; }
+  #p-sound { position:absolute; left:10px; bottom:92px; width:44px; height:44px; border-radius:22px; padding:0; font-size:20px; background:rgba(255,255,255,.9); }
+  #p-place.on ~ #p-sound, #p-quiz.on ~ #p-sound { display:none; }
   #p-recenter { position:absolute; right:10px; bottom:92px; width:44px; height:44px; border-radius:22px; padding:0; font-size:22px; background:rgba(255,255,255,.9); }
   #p-place .h { font-weight:700; font-size:16px; text-align:center; margin-bottom:6px; }
   #p-place .foot { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:4px; }
@@ -140,7 +149,7 @@
       <span class="hint">bots fill the empty seats</span>
     </div>
     <div class="row"><button class="big" id="b-start">🏰 Start the siege</button></div>
-    <p class="hint" style="margin-top:12px">The gremlins march the moment a wave starts. Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Every right answer in a row makes the next gun bigger: ballista → cannon → turret → catapult → crystal turret. Wrong = no gun and the streak is gone.<br>Every gun carries a limited load of ammo and vanishes when it runs dry — keep placing new ones.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
+    <p class="hint" style="margin-top:12px">The gremlins march the moment a wave starts. Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Every right answer in a row makes the next gun bigger: ballista → cannon → turret → catapult → crystal turret. Six in a row is ⚡ God Mode: every gun on the board is refilled and fires for free until the wave ends. Wrong = no gun and the streak is gone.<br>Every gun carries a limited load of ammo and vanishes when it runs dry — keep placing new ones.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
   </div>
 </div></div>
 
@@ -151,7 +160,7 @@
   <div id="h-quiz"><div class="q" id="hq-q"></div><div class="bar tbar"><i id="hq-time" style="width:100%"></i></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div><div id="hq-who"></div></div>
   <div id="h-board"></div>
   <div id="h-msg"></div>
-  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-pause">⏸ Pause</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
+  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-pause">⏸ Pause</button><button class="ghost sbtn" id="b-music" title="Music">🎵</button><button class="ghost sbtn" id="b-sound" title="Sound effects">🔊</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
 </div></div>
 
 <!-- host results -->
@@ -181,14 +190,16 @@
     <div class="h" id="pl-h">🔫 Place your gun</div>
     <div class="foot"><span class="hint" id="pl-hint">👆 Drag the gun onto a free tile on the board</span><button id="b-place" disabled>Place here</button></div>
   </div>
+  <div id="p-gold"></div>
   <button class="ghost" id="p-recenter" title="Reset the camera">⌖</button>
+  <button class="ghost" id="p-sound" title="Sound">🔊</button>
   <button id="p-btn">Waiting…</button>
   <div id="p-onboard"><div class="card">
     <h2>🏰 How to defend</h2>
     <ul>
       <li><span class="ic">👹</span><span>Gremlins march down the road to the Attention Tower. Every one that gets through bites it. When it's gone, the game is over.</span></li>
       <li><span class="ic">❓</span><span>Each wave starts with a quiz at the bottom of your screen. <b>Answer right</b> and you get a gun to <b>drag onto the board</b>, with your name on it.</span></li>
-      <li><span class="ic">🔥</span><span>Right again next wave = a <b>bigger gun</b>: ballista → cannon → turret → catapult → 💎 crystal turret. Wrong or too slow = no gun, streak lost.</span></li>
+      <li><span class="ic">🔥</span><span>Right again next wave = a <b>bigger gun</b>: ballista → cannon → turret → catapult → 💎 crystal turret. Six in a row = ⚡ <b>God Mode</b>: every gun refilled and firing for free until the wave ends. Wrong or too slow = no gun, streak lost.</span></li>
       <li><span class="ic">🪫</span><span>Guns carry limited ammo and vanish when empty, so keep answering and keep placing.</span></li>
       <li><span class="ic">👆</span><span>One finger turns the board, pinch to zoom, ⌖ resets the view.</span></li>
     </ul>
@@ -199,7 +210,9 @@
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/GLTFLoader.js"></script>
 <script src="/vendor/qr.js"></script>
-<script src="/js/tr-sim.js?v=7"></script>
+<script src="/js/tr-sim.js?v=9"></script>
+<script src="/vendor/zzfx.js"></script>
+<script src="/js/tr-audio.js?v=1"></script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
@@ -411,21 +424,27 @@ class View {
   setGuns(list) { for (const d of list) if (!d.dead) this.addGun(d); }
   drawAmmo(t) {
     const cx = t.ammoCv.getContext('2d'); const W = 256, H = 72; cx.clearRect(0, 0, W, H);
-    const f = Math.max(0, Math.min(1, t.frac)); const low = f <= 0.25; const col = f > .5 ? '#4a8fe7' : f > .25 ? '#f3b53e' : '#e5533d';
-    cx.fillStyle = 'rgba(32,48,63,.85)'; cx.beginPath(); cx.roundRect(4, 14, W - 8, 44, 22); cx.fill();
+    const god = !!t.god; const f = god ? 1 : Math.max(0, Math.min(1, t.frac)); const low = !god && f <= 0.25; const col = god ? '#ffd23f' : f > .5 ? '#4a8fe7' : f > .25 ? '#f3b53e' : '#e5533d';
+    cx.fillStyle = god ? 'rgba(120,80,0,.85)' : 'rgba(32,48,63,.85)'; cx.beginPath(); cx.roundRect(4, 14, W - 8, 44, 22); cx.fill();
     cx.fillStyle = col; cx.beginPath(); cx.roundRect(10, 20, Math.max(12, (W - 20) * f), 32, 16); cx.fill();
-    cx.font = '700 36px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineWidth = 6; cx.strokeStyle = 'rgba(32,48,63,.9)'; cx.fillStyle = '#fff';
-    const text = (low ? '🪫 ' : '🔫 ') + t.ammo; cx.strokeText(text, W / 2, 37); cx.fillText(text, W / 2, 37);
+    cx.font = '700 36px Fredoka, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineWidth = 6; cx.strokeStyle = god ? 'rgba(120,80,0,.9)' : 'rgba(32,48,63,.9)'; cx.fillStyle = '#fff';
+    const text = god ? '⚡ ∞' : (low ? '🪫 ' : '🔫 ') + t.ammo; cx.strokeText(text, W / 2, 37); cx.fillText(text, W / 2, 37);
     t.ammoTex.needsUpdate = true;
   }
   // gh = ammo left per gun as a fraction, ga = shots left
-  applyGuns(gh, ga) {
+  applyGuns(gh, ga, god) {
     for (let i = 0; i < gh.length; i++) {
       const t = this.guns[i]; if (!t || !t.pill) continue;
-      const n = ga ? ga[i] : Math.round(gh[i] * (t.max || 1));
-      if (n !== t.ammo) { t.ammo = n; t.frac = gh[i]; this.drawAmmo(t); }
-      t.low = gh[i] <= 0.25 && gh[i] > 0;
+      const n = ga ? ga[i] : Math.round(gh[i] * (t.max || 1)); const g = !!god;
+      if (n !== t.ammo || g !== !!t.god) { t.ammo = n; t.frac = gh[i]; t.god = g; this.drawAmmo(t); }
+      t.low = !g && gh[i] <= 0.25 && gh[i] > 0;
     }
+  }
+  // God Mode: a golden ring bursts from every gun and sparks rise over the whole board.
+  godBurst() {
+    for (const t of this.guns) if (t) { const m = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.5, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide, transparent: true, opacity: .9 })); m.rotation.x = -Math.PI / 2; m.position.set(t.x, 0.25, t.z); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.0, kind: 'ring' }); }
+    for (let k = 0; k < 60; k++) { const m = new THREE.Mesh(new THREE.BoxGeometry(.12, .12, .12), new THREE.MeshBasicMaterial({ color: k % 2 ? 0xffd23f : 0xffffff })); m.position.set(Math.random() * TR.COLS, 0.2, Math.random() * TR.ROWS); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.4 + Math.random(), kind: 'spark', vy: 2 + Math.random() * 3, vx: (Math.random() - .5), vz: (Math.random() - .5) }); }
+    this.keepFlash = 0.6;
   }
   // Out of ammo: the gun tips over and sinks into the ground under a puff of smoke, then goes away.
   removeGun(i) {
@@ -540,7 +559,7 @@ class View {
       s.t += dt / s.dur; if (s.t >= 1 || !s.tgt.root) { this.scene.remove(s.m); return false; }
       const aim = s.tgt.holder.position.clone().setY(s.tgt.kind === 'ufo' ? 0.9 : 0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
     });
-    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'collapse') { const e = k * k; f.m.rotation.z = Math.cos(f.dir) * 0.9 * e; f.m.rotation.x = Math.sin(f.dir) * 0.9 * e; f.m.position.y = 0.2 - 1.4 * e; f.m.scale.setScalar(1 - 0.5 * e); } else if (f.kind === 'smoke') { f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += dt * 0.9; f.m.scale.setScalar(1 + k * 1.5); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
+    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'ring') { f.m.scale.setScalar(1 + k * 5); f.m.material.opacity = .9 * (1 - k); } else if (f.kind === 'spark') { f.vy -= 4 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += f.vy * dt; f.m.rotation.x += dt * 6; f.m.rotation.y += dt * 4; } else if (f.kind === 'collapse') { const e = k * k; f.m.rotation.z = Math.cos(f.dir) * 0.9 * e; f.m.rotation.x = Math.sin(f.dir) * 0.9 * e; f.m.position.y = 0.2 - 1.4 * e; f.m.scale.setScalar(1 - 0.5 * e); } else if (f.kind === 'smoke') { f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += dt * 0.9; f.m.scale.setScalar(1 + k * 1.5); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
     if (this.crystal) this.crystal.rotation.y += dt * 0.8;
     if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.END[0] + (Math.random() - .5) * .08; } else this.keep.position.x = TR.END[0]; }
     if (this.ghost && this.ghost.visible) this.ghost.children[0].scale.setScalar(1 + 0.08 * Math.sin(performance.now() / 150));
@@ -593,7 +612,7 @@ function hostReceive(m) {
   if (m.t === 'ans') {
     const res = TR.answer(S, m.id, m.i); const p = S.players.get(m.id);
     host.link.send({ to: m.id, t: 'ans', res, correct: S.quiz ? S.quiz.answer : -1, level: p && p.pending ? p.pending.level : 0, streak: p ? p.streak : 0 });
-    if (res === 'right' || res === 'wrong') { host.answers.set(m.id, m.i); renderQuiz(); }
+    if (res === 'right' || res === 'wrong' || res === 'god') { host.answers.set(m.id, m.i); renderQuiz(); SFX.play('answer', { pitch: 1.2 }); }
     return;
   }
   if (m.t === 'place') {
@@ -614,9 +633,9 @@ $('#b-more').onclick = () => { host.total = Math.min(16, host.total + 1); TR.set
 $('#b-start').onclick = async () => {
   const S = host.S; if (!S) return;
   if (![...S.players.values()].some(r => !r.bot) && !confirm('No phones have joined. Start with bots only?')) return;
-  $('#b-start').disabled = true; $('#b-start').textContent = 'Loading…';
+  $('#b-start').disabled = true; $('#b-start').textContent = 'Loading…'; SFX.unlock();
   try { await preload(); } catch (e) {}
-  show('s-hostgame'); host.running = true;
+  show('s-hostgame'); host.running = true; SFX.startMusic();
   beginWave();
 }
 function beginWave() {
@@ -625,7 +644,7 @@ function beginWave() {
   TR.startWave(S);
   host.link.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, left: S.rules.quizTime });
   sendRoster();
-  bigMsg('Wave ' + S.wave + ' — ' + S.queue.length + ' gremlins marching!', 2000);
+  bigMsg('Wave ' + S.wave + ' — ' + S.queue.length + ' gremlins marching!', 2000); SFX.play('wave'); SFX.play('quiz');
   renderQuiz(); $('#h-quiz').classList.add('on'); $('#b-next').style.display = 'none';
 }
 function preload() {
@@ -642,14 +661,19 @@ function renderQuiz() {
   const total = [...S.players.values()].filter(r => !r.gone).length;
   const reveal = S.phase !== 'wave' || S.quizLeft <= 0 || host.answers.size >= total;
   $('#hq-opts').innerHTML = S.quiz.opts.map((o, i) => `<div class="opt ${reveal && i === S.quiz.answer ? 'right' : ''}"><span>${'ABCD'[i]}. ${esc(o)}</span><span>${counts[i] || ''}</span></div>`).join('');
-  $('#hq-who').innerHTML = [...host.answers.entries()].map(([id, i]) => { const p = S.players.get(id); if (!p) return ''; const ok = i === S.quiz.answer; return `<span class="chip ${ok ? 'ok' : 'bad'}">${ok ? '🔫' : '❌'} ${p.bot ? '🤖 ' : ''}${esc(p.name)}${ok && p.streak > 1 ? ' 🔥' + p.streak : ''}</span>`; }).join('');
+  $('#hq-who').innerHTML = [...host.answers.entries()].map(([id, i]) => { const p = S.players.get(id); if (!p) return ''; const ok = i === S.quiz.answer; const god = ok && p.streak >= S.rules.godStreak; return `<span class="chip ${ok ? 'ok' : 'bad'}">${god ? '⚡' : ok ? '🔫' : '❌'} ${p.bot ? '🤖 ' : ''}${esc(p.name)}${ok && p.streak > 1 ? ' 🔥' + p.streak : ''}</span>`; }).join('');
   $('#hq-note').textContent = reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got a gun' : host.answers.size + ' of ' + total + ' answered · right = place a gun · streak = bigger gun';
   $('#hq-time').style.width = (S.phase === 'wave' ? 100 * Math.max(0, S.quizLeft) / S.rules.quizTime : 0) + '%';
 }
-function bigMsg(text, ms) { const el = $('#h-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
+function bigMsg(text, ms) { const el = $('#h-msg'); el.classList.remove('god'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
+function godFeast(name, streak, refilled) {
+  const el = $('#h-msg'); el.textContent = '⚡ GOD MODE ⚡\n' + name + ' · streak ' + streak + '\nall guns refilled — free fire this wave!'; el.classList.add('on', 'god');
+  clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on', 'god'), 3800);
+  host.view.godBurst(); SFX.play('win'); setTimeout(() => SFX.play('clear'), 250);
+}
 function renderBoard() {
   const list = TR.roster(host.S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
-  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Gremlins shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''} <span class="hint">🔫${r.alive}${r.lost ? ' 🪫' + r.lost : ''}</span></span><span>${r.kills}</span></div>`).join('');
+  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">Gremlins shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''}${r.gods ? ' ⚡' + r.gods : ''} <span class="hint">🔫${r.alive}${r.lost ? ' 🪫' + r.lost : ''}</span></span><span>${r.kills}</span></div>`).join('');
 }
 // The rules tick on a timer so a hidden tab keeps the game going in real time; rendering stays on the frame callback.
 function hostSim() {
@@ -659,15 +683,16 @@ function hostSim() {
   if (host.running && S.phase === 'wave') {
     while (elapsed > 0) { const dt = Math.min(1 / 60, elapsed); elapsed -= dt; TR.step(S, dt); if (S.phase !== 'wave') break; }
     for (const ev of TR.takeEvents(S)) {
-      if (ev.e === 'shot') { view.shot(ev.gun, ev.target, ev.dur, ev.splash); host.fx.s.push([ev.gun, ev.target, +ev.dur.toFixed(2), ev.splash]); }
-      else if (ev.e === 'boom') { view.boom(ev.x, ev.z, ev.r); host.fx.b.push([+ev.x.toFixed(2), +ev.z.toFixed(2), ev.r]); }
-      else if (ev.e === 'die') { const p = S.players.get(ev.owner); if (p && !p.bot) host.link.send({ to: ev.owner, t: 'kill', n: ev.kills }); }
-      else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
-      else if (ev.e === 'placed') { view.addGun(ev.gun); host.link.send({ t: 'gun', g: ev.gun }); }
-      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) toast('🪫 ' + p.name + "'s gun is out of ammo"); }
-      else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); }
-      else if (ev.e === 'quizEnd') { renderQuiz(); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); }
-      else if (ev.e === 'waveEnd') { renderQuiz(); host.betweenT = S.rules.between; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' held! Tower at ' + Math.max(0, S.tower.hp) + ' / ' + S.tower.max, 2500); sendRoster(); }
+      if (ev.e === 'shot') { view.shot(ev.gun, ev.target, ev.dur, ev.splash); host.fx.s.push([ev.gun, ev.target, +ev.dur.toFixed(2), ev.splash]); const g = S.guns[ev.gun]; if (g) SFX.play(g.type === 'ballista' ? 'arrow' : g.type === 'turret' || g.type === 'crystal' ? 'turret' : 'cannon', { pitch: 0.85 + Math.random() * 0.3 }); }
+      else if (ev.e === 'boom') { view.boom(ev.x, ev.z, ev.r); host.fx.b.push([+ev.x.toFixed(2), +ev.z.toFixed(2), ev.r]); SFX.play('boom', { pitch: 0.9 + Math.random() * 0.2, vol: Math.min(1.3, ev.r) }); }
+      else if (ev.e === 'die') { SFX.play('kill', { pitch: 0.9 + Math.random() * 0.2 }); const p = S.players.get(ev.owner); if (p && !p.bot) host.link.send({ to: ev.owner, t: 'kill', n: ev.kills }); }
+      else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); SFX.play('bite'); SFX.play('alarm'); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
+      else if (ev.e === 'placed') { view.addGun(ev.gun); host.link.send({ t: 'gun', g: ev.gun }); SFX.play('place'); }
+      else if (ev.e === 'god') { const p = S.players.get(ev.id); godFeast(p ? p.name : '?', ev.streak, ev.refilled); host.link.send({ t: 'god', id: ev.id, name: p ? p.name : '?', streak: ev.streak, n: ev.refilled }); }
+      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) toast('🪫 ' + p.name + "'s gun is out of ammo"); }
+      else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); SFX.play('answer', { pitch: 0.8 + Math.random() * 0.5 }); }
+      else if (ev.e === 'quizEnd') { renderQuiz(); SFX.play('tick'); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); }
+      else if (ev.e === 'waveEnd') { renderQuiz(); SFX.play('clear'); host.betweenT = S.rules.between; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' held! Tower at ' + Math.max(0, S.tower.hp) + ' / ' + S.tower.max, 2500); sendRoster(); }
       else if (ev.e === 'over') finish(ev.won);
     }
     const snap = TR.snapshot(S); host.snap = snap;
@@ -684,7 +709,7 @@ function hostTick(ts) {
   const view = host.view; if (!view) return;
   const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (host.frameT || ts || performance.now())) / 1000)); host.frameT = ts || performance.now();
   const S = host.S, snap = host.snap;
-  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh, snap.ga); }
+  if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh, snap.ga, snap.god); }
   if (host.running && (S.phase === 'wave' || S.phase === 'between')) {
     $('#h-hp').textContent = Math.max(0, S.tower.hp) + ' / ' + S.tower.max; const bar = $('#h-hpbar'); bar.style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%'; bar.classList.toggle('low', S.tower.hp <= S.tower.max * 0.3);
     $('#h-wave').textContent = S.wave; $('#h-guns').textContent = S.guns.filter(g => !g.dead).length;
@@ -695,7 +720,7 @@ function hostTick(ts) {
   else if (host.running && S.phase === 'between') {
     const n = Math.max(0, Math.ceil(host.betweenT));
     $('#h-time').textContent = 'next wave in ' + n; $('#b-next').style.display = '';
-    if (n <= 3 && n > 0 && n !== host.lastCount) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); }
+    if (n <= 3 && n > 0 && n !== host.lastCount) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); SFX.play(n === 1 ? 'go' : 'tick'); }
   }
   view.frame(host.paused ? 0 : dt);
 }
@@ -703,17 +728,23 @@ setInterval(hostSim, 1000 / 60);
 $('#b-next').onclick = () => { host.betweenT = 0; };
 function setPaused(on) {
   if (!host.running || host.paused === on) return;
-  host.paused = on; $('#b-pause').textContent = on ? '▶ Resume' : '⏸ Pause';
+  host.paused = on; $('#b-pause').textContent = on ? '▶ Resume' : '⏸ Pause'; SFX.play('pause', { pitch: on ? 1 : 1.4 });
   const el = $('#h-msg'); clearTimeout(bigMsg.t);
   if (on) { el.textContent = '⏸ Paused'; el.classList.add('on'); } else el.classList.remove('on');
   host.link.send({ t: 'pause', on });
 }
 $('#b-pause').onclick = () => setPaused(!host.paused);
+function soundButtons() { $('#b-sound').textContent = SFX.on ? '🔊' : '🔇'; $('#b-music').style.opacity = SFX.music ? 1 : .45; $('#p-sound').textContent = SFX.on ? '🔊' : '🔇'; }
+$('#b-sound').onclick = () => { SFX.unlock(); SFX.setOn(!SFX.on); soundButtons(); if (SFX.on) SFX.play('tick'); };
+$('#b-music').onclick = () => { SFX.unlock(); SFX.setMusic(!SFX.music); soundButtons(); if (SFX.music && host.running) SFX.startMusic(); };
+$('#p-sound').onclick = () => { SFX.unlock(); SFX.setOn(!SFX.on); soundButtons(); if (SFX.on) SFX.play('tick'); };
+document.addEventListener('pointerdown', () => SFX.unlock(), { capture: true });
+soundButtons();
 document.addEventListener('keydown', e => { if (e.key === ' ' && host.running && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); setPaused(!host.paused); } });
 $('#b-recenter').onclick = () => { const v = host.view; if (!v) return; v.cam.theta = 0.18; v.cam.phi = 0.78; v.cam.fit = 0; v.fitBoard(); };
 $('#b-abort').onclick = () => { if (confirm('End the game for everyone?')) finish(false, true); };
 function finish(won, aborted) {
-  const S = host.S; if (host.paused) setPaused(false); host.running = false; S.phase = 'over';
+  const S = host.S; if (host.paused) setPaused(false); host.running = false; S.phase = 'over'; SFX.stopMusic(); SFX.play(won ? 'win' : 'lose');
   const survived = aborted ? Math.max(0, S.wave - 1) : S.survived;
   const list = TR.roster(S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
   host.link.send({ t: 'over', won, board: list, survived, aborted: !!aborted });
@@ -749,21 +780,25 @@ function playerReceive(m) {
   }
   if (m.t === 'roster') { player.roster = m.list; const me = m.list.find(r => r.id === player.id); if (me) { player.streak = me.streak; player.kills = me.kills; player.gunsN = me.alive; updateMe(); } return; }
   if (m.t === 'guns') { player.guns = m.list; v.setGuns(m.list); return; }
-  if (m.t === 'gunDown') { const g = player.guns.find(g => g.i === m.i); if (g) g.dead = true; v.removeGun(m.i); if (m.owner === player.id) { player.gunsN = Math.max(0, player.gunsN - 1); updateMe(); redFlash(); pMsg('🪫 YOUR GUN IS OUT OF AMMO\nAnswer right to place another', 2200); if (navigator.vibrate) navigator.vibrate(80); } return; }
+  if (m.t === 'gunDown') { const g = player.guns.find(g => g.i === m.i); if (g) g.dead = true; v.removeGun(m.i); if (m.owner === player.id) { player.gunsN = Math.max(0, player.gunsN - 1); updateMe(); redFlash(); SFX.play('empty'); pMsg('🪫 YOUR GUN IS OUT OF AMMO\nAnswer right to place another', 2200); if (navigator.vibrate) navigator.vibrate(80); } return; }
   if (m.t === 'gun') { player.guns.push(m.g); v.addGun(m.g); if (m.g.owner === player.id) { player.gunsN++; updateMe(); } if (player.sel && player.sel.x === m.g.x && player.sel.z === m.g.z) placeAt(m.g.x, m.g.z); return; }
-  if (m.t === 'quiz') { showQuiz(m); return; }
+  if (m.t === 'quiz') { showQuiz(m); SFX.play('quiz'); return; }
   if (m.t === 'ans') {
     const btns = $('#pq-opts').querySelectorAll('button'); btns.forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (b.classList.contains('picked')) b.classList.add('wrong'); });
     player.streak = m.streak; updateMe();
     const u = $('#pq-urgent');
-    if (m.res === 'right') {
+    if (m.res === 'god') {
+      $('#pq-note').textContent = '⚡ GOD MODE — streak ' + m.streak + '!'; u.className = 'urgent good'; u.textContent = '⚡ GOD MODE ⚡';
+      setTimeout(() => $('#p-quiz').classList.remove('on'), 900);
+    } else if (m.res === 'right') {
+      SFX.play('right');
       $('#pq-note').textContent = 'Right! Drag your ' + LEVEL_LABEL[m.level] + ' onto the board.'; u.className = 'urgent good'; u.textContent = m.streak > 1 ? '🔥 ' + m.streak + ' in a row — ' + LEVEL_LABEL[m.level] + (m.level === TOP_LEVEL ? ' (max)' : '') + '!' : '✅ Right — you get a gun!';
       if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
       pMsg(m.streak > 1 ? '🔥 STREAK ' + m.streak + '!\n' + LEVEL_LABEL[m.level] + ' unlocked' : '✅ RIGHT!\nPlace your gun', 1600);
       setTimeout(() => { $('#p-quiz').classList.remove('on'); openPlace(m.level, m.streak); }, 900);
     } else {
       $('#pq-note').textContent = m.res === 'wrong' ? 'Not this time — no gun this wave, streak lost.' : 'Too late for this wave.'; u.className = 'urgent calm'; u.textContent = '💔 No gun this wave';
-      redFlash(); if (navigator.vibrate) navigator.vibrate(120); pMsg('❌ WRONG!\nNo gun this wave — streak lost', 2200);
+      redFlash(); SFX.play('wrong'); if (navigator.vibrate) navigator.vibrate(120); pMsg('❌ WRONG!\nNo gun this wave — streak lost', 2200);
       setTimeout(() => $('#p-quiz').classList.remove('on'), 2200);
     }
     return;
@@ -776,22 +811,31 @@ function playerReceive(m) {
     }
     return;
   }
+  if (m.t === 'god') {
+    const mine = m.id === player.id; const el = $('#p-msg'); clearTimeout(pMsg.t);
+    el.textContent = (mine ? '⚡ YOU ARE IN GOD MODE ⚡\nstreak ' + m.streak : '⚡ GOD MODE ⚡\n' + m.name + ' · streak ' + m.streak) + '\nall guns refilled — free fire this wave!'; el.classList.add('on', 'god');
+    pMsg.t = setTimeout(() => el.classList.remove('on', 'god'), mine ? 4500 : 3000);
+    const g = $('#p-gold'); g.classList.add('on'); setTimeout(() => g.classList.remove('on'), mine ? 900 : 300);
+    v.godBurst(); SFX.play('win'); if (navigator.vibrate) navigator.vibrate(mine ? [60, 40, 60, 40, 120] : [30, 30, 30]);
+    return;
+  }
   if (m.t === 'placed') {
-    if (m.res === 'ok') { closePlace(); pMsg('🔫 GUN PLACED!\nIt is firing for you now', 2000); if (navigator.vibrate) navigator.vibrate(40); }
+    if (m.res === 'ok') { SFX.play('place'); closePlace(); pMsg('🔫 GUN PLACED!\nIt is firing for you now', 2000); if (navigator.vibrate) navigator.vibrate(40); }
     else if (m.res === 'taken') { toast('That spot is taken — pick another'); if (player.sel) placeAt(player.sel.x, player.sel.z); }
     else closePlace();
     return;
   }
-  if (m.t === 'kill') { player.kills = m.n; updateMe(); const now = performance.now(); if (now - (player.killT || 0) > 1500) { player.killT = now; pMsg('🎯 Gremlin shot! (' + m.n + ')', 900); } return; }
-  if (m.t === 'bite') { redFlash(); v.hitKeep(); if (navigator.vibrate) navigator.vibrate(60); pMsg('👹 One got through!\nTower ' + m.hp + ' / ' + m.max, 1200); return; }
+  if (m.t === 'kill') { player.kills = m.n; updateMe(); SFX.play('kill', { vol: 0.6 }); const now = performance.now(); if (now - (player.killT || 0) > 1500) { player.killT = now; pMsg('🎯 Gremlin shot! (' + m.n + ')', 900); } return; }
+  if (m.t === 'bite') { redFlash(); v.hitKeep(); SFX.play('bite', { vol: 0.7 }); if (navigator.vibrate) navigator.vibrate(60); pMsg('👹 One got through!\nTower ' + m.hp + ' / ' + m.max, 1200); return; }
   if (m.t === 'msg') { pMsg(m.m, 1800); return; }
   if (m.t === 'fx') { for (const f of m.s || []) v.shot(f[0], f[1], f[2], f[3]); for (const b of m.b || []) v.boom(b[0], b[1], b[2]); return; }
-  if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950); return; }
+  if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950); SFX.play(m.n === 1 ? 'go' : 'tick'); return; }
   if (m.t === 'pause') { player.paused = m.on; const el = $('#p-msg'); clearTimeout(pMsg.t); if (m.on) { el.textContent = '⏸ Paused by the host'; el.classList.add('on'); } else el.classList.remove('on'); return; }
   if (m.t === 's') { player.snap = m; player.ph = m.ph; return; }
   if (m.t === 'over') {
     player.ph = 'over'; $('#p-quiz').classList.remove('on'); closePlace();
     const me = m.board.find(r => r.id === player.id); const rank = m.board.findIndex(r => r.id === player.id) + 1;
+    SFX.play(m.won ? 'win' : 'lose');
     setBtn(m.won ? 'ok' : 'hot', m.won ? '🏆 Every wave held!' : '💥 The tower fell after ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's'));
     pMsg((m.won ? '🏆 LEGENDARY!\nThe tower held every wave.\n' : '💥 THE TOWER HAS FALLEN\nHeld for ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's') + '.\n') + (me ? 'You shot ' + me.kills + ' gremlins (#' + rank + ')' : ''), 60000);
   }
@@ -830,11 +874,11 @@ function placeAt(x, z) {
 }
 function gunRange() { return TR.LEVELS[player.pending ? player.pending.level : 0].range; }
 $('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#b-place').disabled = true; $('#pl-hint').textContent = 'Placing…'; player.link.send({ t: 'place', x: player.sel.x, z: player.sel.z }); };
-$('#b-onboard').onclick = () => { $('#p-onboard').classList.remove('on'); if ($('#onboard-skip').checked) { try { localStorage.setItem('tk-tr-onboard', '1'); } catch (e) {} } };
+$('#b-onboard').onclick = () => { SFX.unlock(); SFX.play('go'); $('#p-onboard').classList.remove('on'); if ($('#onboard-skip').checked) { try { localStorage.setItem('tk-tr-onboard', '1'); } catch (e) {} } };
 $('#p-recenter').onclick = () => { const v = player.view; if (!v) return; v.cam.theta = v.cam.portrait ? Math.PI / 2 - 0.35 : -0.55; v.cam.phi = 0.95; v.cam.fit = 0; v.fitBoard(); };
 function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
 function redFlash() { const r = $('#p-red'); r.classList.add('on'); setTimeout(() => r.classList.remove('on'), 120); }
-function pMsg(text, ms) { const el = $('#p-msg'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
+function pMsg(text, ms) { const el = $('#p-msg'); el.classList.remove('god'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 
 function playerTick(ts) {
   requestAnimationFrame(playerTick);
@@ -842,7 +886,8 @@ function playerTick(ts) {
   const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (player.frameT || ts || performance.now())) / 1000)); player.frameT = ts || performance.now();
   const s = player.snap;
   if (s) {
-    v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh, s.ga);
+    v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh, s.ga, s.god);
+    for (const g of v.guns) if (g && g.low && g.owner === player.id && !g.warned) { g.warned = true; SFX.play('low'); pMsg('🪫 Your gun is running low!', 1400); }
     const bar = $('#p-thp'); bar.style.width = (100 * s.th / s.tm) + '%'; bar.classList.toggle('low', s.th <= s.tm * 0.3); $('#p-tpct').textContent = s.th + '/' + s.tm;
     $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
     if (s.ph === 'wave') $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';
