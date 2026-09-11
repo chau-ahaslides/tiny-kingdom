@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aha-room SDK — design draft</title>
+<meta name="description" content="A small SDK for scan-to-play rooms: host-authoritative sessions, a replicated state document, and swappable transports, from the standalone relay to a presenter-app plugin.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,500;12..96,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F2EFE7; --ink: #33322D; --muted: #6f6c63; --line: rgba(51,50,45,.16);
+    --accent: #5b6b5e; --accent2: #b0533f; --code: #ebe7dc; --card: rgba(255,255,255,.55);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: "Bricolage Grotesque", "Helvetica Neue", sans-serif; font-weight: 300;
+    font-size: 16.5px; line-height: 1.55;
+  }
+  .paper {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0; mix-blend-mode: multiply; opacity: .45;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4'/></filter><rect width='220' height='220' filter='url(%23f)' opacity='.45'/></svg>");
+  }
+  .wrap { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+  nav.toc { position: sticky; top: 24px; align-self: start; font-size: 13.5px; }
+  nav.toc .brand { font-weight: 500; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; opacity: .5; margin-bottom: 10px; }
+  nav.toc a { display: block; color: inherit; text-decoration: none; padding: 3px 0; opacity: .68; border-left: 2px solid transparent; padding-left: 10px; margin-left: -12px; }
+  nav.toc a:hover { opacity: 1; }
+  nav.toc a.sub { padding-left: 22px; font-size: 12.5px; opacity: .55; }
+  main { min-width: 0; }
+  h1 { font-weight: 500; font-size: 40px; line-height: 1.1; margin: 0 0 8px; letter-spacing: -.01em; }
+  .lede { font-size: 19px; opacity: .78; max-width: 62ch; margin: 0 0 6px; }
+  .meta { font-size: 13px; opacity: .55; margin-bottom: 36px; }
+  .meta b { font-weight: 500; }
+  h2 { font-weight: 500; font-size: 26px; margin: 56px 0 14px; padding-top: 14px; border-top: 1px solid var(--line); letter-spacing: -.005em; }
+  h3 { font-weight: 500; font-size: 18.5px; margin: 30px 0 8px; }
+  h4 { font-weight: 500; font-size: 15px; margin: 22px 0 6px; letter-spacing: .02em; text-transform: uppercase; opacity: .6; }
+  p { max-width: 72ch; margin: 0 0 14px; }
+  ul, ol { max-width: 72ch; padding-left: 22px; margin: 0 0 14px; }
+  li { margin: 4px 0; }
+  li p { margin: 0; }
+  code, pre { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  code { font-size: .86em; background: var(--code); padding: 1px 5px; border-radius: 5px; }
+  pre { background: var(--code); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font-size: 13.2px; line-height: 1.5; margin: 0 0 18px; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  pre .c { color: #8a877c; }
+  pre .k { color: var(--accent2); }
+  pre .s { color: #4a6b7c; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.2px; margin: 0 0 18px; }
+  .tbl { overflow-x: auto; margin: 0 0 18px; }
+  .tbl table { margin: 0; min-width: 560px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 500; font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; opacity: .6; }
+  td code { white-space: nowrap; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin: 0 0 18px; max-width: 76ch; }
+  .card.warn { border-color: rgba(176,83,63,.35); }
+  .card.warn b { color: var(--accent2); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 0 0 18px; }
+  .grid2 .card { margin: 0; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0 0 6px; font-size: 14.5px; }
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; background: rgba(91,107,94,.14); color: var(--accent); margin-left: 6px; vertical-align: middle; }
+  .pill.later { background: rgba(176,83,63,.12); color: var(--accent2); }
+  .diagram { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 0 0 18px; overflow-x: auto; }
+  .diagram svg { display: block; width: 100%; max-width: 760px; height: auto; margin: 0 auto; }
+  .diagram text { font-family: "Bricolage Grotesque", sans-serif; font-size: 13px; fill: var(--ink); }
+  .diagram .small { font-size: 11px; fill: var(--muted); }
+  .diagram .box { fill: #fff; stroke: var(--ink); stroke-opacity: .35; }
+  .diagram .arrow { stroke: var(--ink); stroke-opacity: .6; fill: none; marker-end: url(#ah); }
+  a { color: var(--accent); }
+  .foot { margin-top: 60px; font-size: 13px; opacity: .55; }
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: 1fr; gap: 20px; padding-top: 22px; }
+    nav.toc { position: static; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+    nav.toc .brand { width: 100%; }
+    nav.toc a { border: 0; margin: 0; padding: 2px 0; }
+    nav.toc a.sub { display: none; }
+    h1 { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+<div class="paper"></div>
+<div class="wrap">
+<nav class="toc">
+  <div class="brand">aha-room SDK</div>
+  <a href="#why">Why</a>
+  <a href="#model">The model</a>
+  <a href="#quick">Quick start</a>
+  <a href="#api">API</a>
+  <a class="sub" href="#api-session">Session</a>
+  <a class="sub" href="#api-state">State document</a>
+  <a class="sub" href="#api-time">Time</a>
+  <a class="sub" href="#api-fast">Fast lanes</a>
+  <a class="sub" href="#api-report">Reporting</a>
+  <a href="#wire">Wire protocol</a>
+  <a href="#transports">Transports</a>
+  <a href="#embed">Embedding</a>
+  <a href="#rules">Rules for games</a>
+  <a href="#migration">Migration</a>
+  <a href="#roadmap">Roadmap</a>
+  <a href="#open">Open questions</a>
+</nav>
+<main>
+
+<h1>aha-room SDK</h1>
+<p class="lede">One small library for scan-to-play rooms: a host-authoritative session, a replicated state document, and a transport you can swap, from today's relay to a plugin inside the presenter and audience apps.</p>
+<p class="meta"><b>Design draft v0.1</b> · 11 September 2026 · tiny-kingdom · status: proposal, nothing built yet</p>
+
+<h2 id="why">Why</h2>
+<p>Seven pages on this site run the same session: a big screen opens a room and shows a QR code, phones scan it, type a name, and start sending input; the big screen owns the game and tells the phones what to show. Each page carries its own copy of that plumbing. The copies have drifted: two of them do not handle a phone that scans before the big screen is up, one never backs off when reconnecting, and every one sanitises names its own way.</p>
+<div class="tbl"><table>
+  <tr><th>Page</th><th>Session</th><th>How state reaches phones</th></tr>
+  <tr><td>Survival Quiz, Survival Brawl, Brawl Quiz</td><td>hand-rolled</td><td>10 Hz snapshots, interpolated on the phone</td></tr>
+  <tr><td>Gremlin Siege</td><td>hand-rolled, event style</td><td>phase and board messages, per-player quiz messages</td></tr>
+  <tr><td>Marshmallow, Marshmallow Live</td><td>hand-rolled</td><td>physics simulated in the Durable Object</td></tr>
+  <tr><td>Color &amp; Sound</td><td>hand-rolled</td><td>JPEG of the sheet, ~1 fps while painting</td></tr>
+</table></div>
+<p>The session is identical everywhere. The state sync is not, and mostly should not be. The SDK owns the first, offers helpers for the second, and hides the wire behind a transport so the same game can later run inside an AhaSlides presentation without a rewrite.</p>
+
+<h2 id="model">The model</h2>
+<p>Three things are true of every room, and the SDK is built around them.</p>
+<div class="grid2">
+  <div class="card"><h3>The host is authoritative</h3><p>One big screen owns the game. Phones send intent, never truth. There is no peer-to-peer and no conflict resolution, because there is nothing to resolve.</p></div>
+  <div class="card"><h3>Identity, lobby and transport are separate</h3><p>Who you are, how you get in, and how bytes move are three pieces. Standalone, the SDK does all three. Embedded, the parent app supplies the first two and the third is a bridge.</p></div>
+  <div class="card"><h3>State is a document; input is a stream</h3><p>Phase, question, timer, roster and scores live in a small versioned document the host replicates. Anything fast (positions, strokes, pictures) goes through opt-in helpers that a slide never needs.</p></div>
+</div>
+<div class="diagram">
+<svg viewBox="0 0 760 250" role="img" aria-label="Host and phones exchange messages through a transport; the host holds the state document and the game, phones hold a mirror of the document and their own view">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#33322D" fill-opacity=".6"/></marker></defs>
+  <rect class="box" x="20" y="30" width="230" height="190" rx="14"/>
+  <text x="135" y="56" text-anchor="middle" font-weight="500">Big screen (host)</text>
+  <rect class="box" x="40" y="72" width="190" height="34" rx="8"/><text x="135" y="94" text-anchor="middle">the game</text>
+  <rect class="box" x="40" y="116" width="190" height="34" rx="8"/><text x="135" y="138" text-anchor="middle">state document · v42</text>
+  <rect class="box" x="40" y="160" width="190" height="34" rx="8"/><text x="135" y="182" text-anchor="middle">aha-room · transport</text>
+  <rect class="box" x="510" y="30" width="230" height="190" rx="14"/>
+  <text x="625" y="56" text-anchor="middle" font-weight="500">Phone (player)</text>
+  <rect class="box" x="530" y="72" width="190" height="34" rx="8"/><text x="625" y="94" text-anchor="middle">the view</text>
+  <rect class="box" x="530" y="116" width="190" height="34" rx="8"/><text x="625" y="138" text-anchor="middle">mirror · v42 + my slice</text>
+  <rect class="box" x="530" y="160" width="190" height="34" rx="8"/><text x="625" y="182" text-anchor="middle">aha-room · transport</text>
+  <path class="arrow" d="M250 168 H505"/><text class="small" x="378" y="160" text-anchor="middle">snapshots, patches, messages, frames</text>
+  <path class="arrow" d="M510 190 H255"/><text class="small" x="382" y="208" text-anchor="middle">input, answers (batched)</text>
+  <text class="small" x="380" y="238" text-anchor="middle">relay today · presenter-app bridge later · in-memory for tests and solo mode</text>
+</svg>
+</div>
+
+<h2 id="quick">Quick start</h2>
+<p>A game page loads one script and calls one of two entry points. Everything below the line is the SDK's business: the room code, the QR, sockets, tokens, reconnects, parsing.</p>
+<h4>Big screen</h4>
+<pre><code><span class="k">import</span> { AhaRoom } <span class="k">from</span> <span class="s">'/js/aha-room.js'</span>;
+
+<span class="k">const</span> room = <span class="k">await</span> AhaRoom.host({ game: <span class="s">'cs'</span>, lobby: { qr: <span class="s">'#qrimg'</span>, code: <span class="s">'#code'</span>, url: <span class="s">'#joinurl'</span> } });
+
+room.on(<span class="s">'join'</span>,  ({ id, name, rejoin }) =&gt; addPainter(id, name));
+room.on(<span class="s">'leave'</span>, ({ id }) =&gt; liftBrush(id));
+room.on(<span class="s">'msg'</span>,   (m) =&gt; { <span class="k">if</span> (m.t === <span class="s">'stroke'</span>) paint(m.id, m); });
+
+room.state.set({ phase: <span class="s">'painting'</span>, palette, scale: <span class="s">'Lydian'</span> });   <span class="c">// replicated to every phone</span>
+room.state.setFor(id, { streak: 3 });                               <span class="c">// this phone only</span></code></pre>
+<h4>Phone</h4>
+<pre><code><span class="k">const</span> me = AhaRoom.join({ game: <span class="s">'cs'</span>, askName: showNameForm });   <span class="c">// code comes from the URL</span>
+
+me.on(<span class="s">'welcome'</span>, ({ id, name, rejoined }) =&gt; showSheet());
+me.on(<span class="s">'state'</span>,   (doc, mine) =&gt; render(doc.phase, doc.palette, mine.streak));
+me.on(<span class="s">'status'</span>,  (s) =&gt; setTag(s));   <span class="c">// 'waiting-for-host' | 'reconnecting' | 'host-left' | 'ok'</span>
+
+me.input(<span class="s">'stroke'</span>, { every: 50 })   <span class="c">// batches points into one message per 50 ms</span>
+  .push([u, v, pressure, dt]);</code></pre>
+
+<h2 id="api">API</h2>
+
+<h3 id="api-session">Session</h3>
+<div class="tbl"><table>
+  <tr><th>Call</th><th>Returns</th><th>Notes</th></tr>
+  <tr><td><code>AhaRoom.host(opts)</code></td><td><code>Promise&lt;Room&gt;</code></td><td>Creates a room unless the transport provides one. <code>opts.game</code> is the short prefix used in join URLs (<code>/cs/CODE</code>). <code>opts.lobby</code> names the elements to fill; omit it when embedded.</td></tr>
+  <tr><td><code>AhaRoom.join(opts)</code></td><td><code>Me</code></td><td>Reads the code from <code>?join=</code> or <code>opts.code</code>. Calls <code>opts.askName()</code> once, then remembers the name and a reconnect token per room code. A reload rejoins silently.</td></tr>
+  <tr><td><code>room.send(m)</code> · <code>room.sendTo(id, m)</code></td><td>—</td><td>Any JSON object. Arrives on phones as <code>'msg'</code>. Whether <code>sendTo</code> is private depends on the transport (see capabilities).</td></tr>
+  <tr><td><code>me.send(m)</code></td><td>—</td><td>Arrives on the host as <code>'msg'</code> with <code>m.id</code> set by the SDK. A game can never spoof another player's id.</td></tr>
+  <tr><td><code>room.players</code></td><td><code>Map&lt;id, {name, online}&gt;</code></td><td>Kept across disconnects, so a phone that comes back gets its seat, not a new one.</td></tr>
+  <tr><td><code>room.close()</code> · <code>me.close()</code></td><td>—</td><td>Stops reconnecting. Phones see <code>'host-left'</code>.</td></tr>
+</table></div>
+<h4>Events</h4>
+<div class="tbl"><table>
+  <tr><th>Side</th><th>Event</th><th>Payload</th></tr>
+  <tr><td>host</td><td><code>join</code></td><td><code>{ id, name, rejoin }</code>. <code>rejoin</code> is true when the token was seen before.</td></tr>
+  <tr><td>host</td><td><code>leave</code></td><td><code>{ id }</code>. Fired on socket close; the seat stays reserved.</td></tr>
+  <tr><td>host</td><td><code>msg</code></td><td>the player's object plus <code>id</code></td></tr>
+  <tr><td>host</td><td><code>status</code></td><td><code>'ok' | 'reconnecting'</code></td></tr>
+  <tr><td>phone</td><td><code>welcome</code></td><td><code>{ id, name, rejoined }</code></td></tr>
+  <tr><td>phone</td><td><code>state</code></td><td><code>(doc, mine)</code>: the full document and this player's private slice, after every change</td></tr>
+  <tr><td>phone</td><td><code>msg</code></td><td>the host's object</td></tr>
+  <tr><td>phone</td><td><code>status</code></td><td><code>'ok' | 'waiting-for-host' | 'reconnecting' | 'host-left'</code></td></tr>
+</table></div>
+
+<h3 id="api-state">State document</h3>
+<p>The document is a plain JSON object owned by the host. It is meant for what a slide needs: phase, the current question, when the timer ends, the roster, scores. Keep it under 16 KB so any transport carries it in one message.</p>
+<div class="tbl"><table>
+  <tr><th>Call</th><th>What happens</th></tr>
+  <tr><td><code>room.state.set(patch)</code></td><td>Shallow-merges the patch, bumps the version, broadcasts <code>{t:'patch', v, p}</code>. Deleting a key: set it to <code>null</code>.</td></tr>
+  <tr><td><code>room.state.setFor(id, patch)</code></td><td>Same for one player's private slice. Delivered only to that player on transports with unicast; on broadcast transports it is tagged and filtered, so treat it as not secret there.</td></tr>
+  <tr><td><code>room.state.get()</code> · <code>me.state.get()</code></td><td>The current document. On the phone, also <code>me.state.mine()</code>.</td></tr>
+  <tr><td><code>me.on('state', fn)</code></td><td>Fires with the full document after each applied patch or snapshot. Games render from the document, not from patches.</td></tr>
+</table></div>
+<p>Consistency rules, which are what make the document survive a slow or lossy transport:</p>
+<ul>
+  <li>Every patch carries the version it produces. A phone that receives version 44 while holding 42 discards it and asks for a snapshot. It never applies out of order.</li>
+  <li>A phone that joins, rejoins, or resyncs gets one full snapshot, then patches. The snapshot is idempotent: applying it twice is harmless.</li>
+  <li>Patches are coalesced: several <code>set</code> calls in one frame go out as one message.</li>
+  <li>The host is the only writer. Phones express intent with <code>send</code>, the host decides, the document changes.</li>
+</ul>
+<p>What stays out of the document: anything that changes more than a few times a second. That is what the fast lanes are for.</p>
+
+<h3 id="api-time">Time</h3>
+<p>Timers are the most common thing to get wrong across a network. The SDK keeps a host-clock estimate on every phone and games express deadlines as host timestamps, never as countdown ticks.</p>
+<pre><code>room.state.set({ question: q, endsAt: room.now() + 15000 });   <span class="c">// host</span>
+
+me.on(<span class="s">'state'</span>, doc =&gt; {                                            <span class="c">// phone</span>
+  <span class="k">const</span> left = Math.max(0, doc.endsAt - me.now());               <span class="c">// me.now() is host time</span>
+  drawBar(left / 15000);
+});</code></pre>
+<p><code>me.now()</code> is corrected on every snapshot and refined by the round-trip of a ping every few seconds. Accuracy of a few tens of milliseconds is enough for a bar; a phone that was asleep snaps back on its next message.</p>
+
+<h3 id="api-fast">Fast lanes <span class="pill">opt-in</span></h3>
+<p>Three helpers, each a copy of a pattern that already works on this site. None of them is loaded unless the game asks.</p>
+<div class="tbl"><table>
+  <tr><th>Helper</th><th>Pattern it packages</th><th>From</th></tr>
+  <tr><td><code>room.stream(name, hz, fn)</code> · <code>me.stream(name, opts)</code></td><td>Fixed-rate snapshots of arrays of numbers. The phone side keeps the last two and interpolates, so 10 Hz looks like 60. Rounds numbers, drops frames when the socket is behind.</td><td>Survival Quiz</td></tr>
+  <tr><td><code>room.frame(canvas, opts)</code> · <code>me.on('frame', img)</code></td><td>A JPEG of a canvas, only when the game marks it dirty, throttled by player count. The latest frame is cached and sent to whoever joins, so nothing is ever replayed.</td><td>Color &amp; Sound</td></tr>
+  <tr><td><code>me.input(name, opts)</code></td><td>Quantises and batches high-rate input (touch points, taps) into one message per interval, with a millisecond offset per sample so the host can recover timing.</td><td>Color &amp; Sound</td></tr>
+</table></div>
+<p>Simulation inside the Durable Object, as Marshmallow Live does, is not a helper. It is a different backend with its own room class, and it stays that way.</p>
+
+<h3 id="api-report">Reporting <span class="pill">embed</span></h3>
+<p>A game that runs inside a presentation needs to hand results back: a score per participant, an answer per question, a winner. Standalone, this is a no-op.</p>
+<pre><code>room.report({ kind: <span class="s">'score'</span>, byPlayer: { p7: 1200, p9: 800 } });
+room.report({ kind: <span class="s">'answer'</span>, player: <span class="s">'p7'</span>, question: 3, choice: 1, correct: <span class="k">true</span> });
+room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the slide can advance</span></code></pre>
+<p>Reports go to the transport, which knows whether there is a parent to tell. The shapes are the only part of the SDK that couples to AhaSlides, so they are kept in one small file.</p>
+
+<h2 id="wire">Wire protocol</h2>
+<p>Every message is a JSON object with a short <code>t</code>. The SDK reserves types with an underscore; a game's own messages never collide with it.</p>
+<div class="tbl"><table>
+  <tr><th>Type</th><th>Direction</th><th>Fields</th><th>Meaning</th></tr>
+  <tr><td><code>_welcome</code></td><td>host → phone</td><td><code>id, name, rejoined, v, doc, mine, now</code></td><td>You are in. Includes the snapshot so a phone renders after one message.</td></tr>
+  <tr><td><code>_join</code> · <code>_leave</code></td><td>relay → host</td><td><code>id, name, rejoin</code></td><td>Roster changes. Produced by the transport, not the game.</td></tr>
+  <tr><td><code>_snap</code></td><td>host → phone</td><td><code>v, doc, mine, now</code></td><td>Full document. Sent on join, on resync, and after any gap.</td></tr>
+  <tr><td><code>_patch</code></td><td>host → phones</td><td><code>v, p</code> (and <code>to</code> for a private slice)</td><td>Shallow merge into the document at version <code>v</code>.</td></tr>
+  <tr><td><code>_resync</code></td><td>phone → host</td><td><code>v</code></td><td>I hold version <code>v</code> and saw a gap; send a snapshot.</td></tr>
+  <tr><td><code>_ping</code> · <code>_pong</code></td><td>both</td><td><code>t0, now</code></td><td>Clock offset and liveness.</td></tr>
+  <tr><td><code>_nohost</code> · <code>_hostgone</code></td><td>relay → phone</td><td>—</td><td>The big screen is not here yet, or left.</td></tr>
+  <tr><td><code>_frame</code> · <code>_stream</code> · <code>_input</code></td><td>varies</td><td>helper-specific</td><td>Fast lanes.</td></tr>
+  <tr><td>anything else</td><td>either</td><td>game-defined</td><td>Delivered as <code>'msg'</code>. Phone messages get <code>id</code> stamped by the transport.</td></tr>
+</table></div>
+<div class="card"><b>Limits.</b> One message under 64 KB; the document under 16 KB; a phone sends at most 20 messages a second (the input helper enforces this by batching); the host sends the document at most once per animation frame. Frames are the exception and are governed by their own throttle: 0.7 s plus 30 ms per phone, capped at 2.5 s.</div>
+
+<h2 id="transports">Transports</h2>
+<p>A transport moves bytes and knows who is on the other end. It is the only place a socket, a room code, or a parent window is ever touched. The game never sees it.</p>
+<pre><code><span class="k">interface</span> Transport {
+  caps: { unicast: boolean; providesIdentity: boolean; providesRoom: boolean;
+          maxBytes: number; maxRate: number; fastLanes: boolean };
+  connect(role: <span class="s">'host'</span> | <span class="s">'player'</span>, opts: { room?: string; identity?: { id, name, token } }): Promise&lt;void&gt;;
+  send(obj: object, to?: string): void;
+  close(): void;
+  onMessage(fn: (obj: object) =&gt; void): void;          <span class="c">// player messages arrive with id stamped</span>
+  onPeer(fn: (ev: <span class="s">'join'</span> | <span class="s">'leave'</span>, peer: { id, name, rejoin }) =&gt; void): void;
+  onStatus(fn: (s: string) =&gt; void): void;
+}</code></pre>
+<p>The SDK reads <code>caps</code> and adapts: no lobby UI when the transport provides identity and a room; <code>setFor</code> tagged rather than private when there is no unicast; fast-lane helpers refuse to start when <code>fastLanes</code> is false, so a game finds out at development time, not in a room.</p>
+<div class="tbl"><table>
+  <tr><th>Transport</th><th>Status</th><th>Capabilities</th><th>Notes</th></tr>
+  <tr><td><code>relay</code></td><td><span class="pill">today</span></td><td>unicast, fast lanes, 1 MB messages</td><td>The <code>Room</code> Durable Object in <code>src/worker.js</code>, unchanged. Room by 4-letter code from <code>POST /api/room</code>, or by any string when embedded (see below).</td></tr>
+  <tr><td><code>memory</code></td><td><span class="pill">phase 1</span></td><td>everything</td><td>Host and players in one page. Used by tests and by every page's solo mode, so solo and room mode run the same code path.</td></tr>
+  <tr><td><code>embed</code></td><td><span class="pill">phase 1</span></td><td>as relay, plus identity and room from the parent</td><td>The relay transport with identity and room supplied by the parent app over URL or postMessage. Data never touches the parent.</td></tr>
+  <tr><td><code>bridge</code></td><td><span class="pill later">phase 3</span></td><td>no unicast, no fast lanes, small messages</td><td>The parent forwards messages over the presentation's own realtime channel. The document survives it by design; fast lanes do not, and stay on the relay.</td></tr>
+</table></div>
+
+<h2 id="embed">Embedding in the presenter and audience apps</h2>
+<p>The audience app already mounts a game per active slide and remounts on slide change; the presenter app already knows every participant's id and name. Embedding a room game means giving both apps an iframe and telling the SDK what it no longer has to do. Two steps, in this order.</p>
+
+<h3>Step 1 · Hybrid: identity from the parent, data over the relay</h3>
+<p>The presenter app embeds the big-screen page; the audience app embeds the phone page. Both derive the room from the presentation and slide, so there is no code to exchange and no QR to show. Bytes still flow directly between the iframes and the relay: nothing crosses the AhaSlides channel, the game is unchanged, and the only new part is <code>report()</code>.</p>
+<pre><code><span class="c">presenter app, big screen</span>
+&lt;iframe src="https://tiny-kingdom…/color-and-sound?host=1&amp;embed=1&amp;room=P8f3k-s12"&gt;
+
+<span class="c">audience app, phone</span>
+&lt;iframe src="https://tiny-kingdom…/color-and-sound?join=P8f3k-s12&amp;embed=1&amp;name=Chau&amp;token=a91…"&gt;</code></pre>
+<p>The relay names rooms by string, so <code>presentationId-slideId</code> is a valid room. The worker's join route gains a second form for these longer names. The token is the participant id, so a participant who reloads or switches tabs keeps their seat, exactly as today.</p>
+<h4>postMessage between iframe and parent</h4>
+<div class="tbl"><table>
+  <tr><th>Message</th><th>Direction</th><th>Meaning</th></tr>
+  <tr><td><code>{ aha: 'ready' }</code></td><td>iframe → parent</td><td>The SDK is up. The parent may now send identity if it did not put it in the URL.</td></tr>
+  <tr><td><code>{ aha: 'identity', id, name, token, room }</code></td><td>parent → iframe</td><td>Alternative to URL parameters, for tokens that should not appear in a URL.</td></tr>
+  <tr><td><code>{ aha: 'slide', active: true | false }</code></td><td>parent → iframe</td><td>The slide came into or left view. The game pauses its sound and timers when inactive.</td></tr>
+  <tr><td><code>{ aha: 'report', … }</code></td><td>iframe → parent</td><td>Scores, answers, done. Shapes from the reporting section.</td></tr>
+  <tr><td><code>{ aha: 'size', h }</code></td><td>iframe → parent</td><td>Preferred height, for phones where the iframe should not scroll.</td></tr>
+</table></div>
+<p>The audience app's skin engine drives its own quiz loop and leaderboard. A room game does not join that loop: it is its own slide type, with its own results, which is why <code>report</code> exists. Whether the presenter app persists those reports as presentation results or only as a leaderboard is a product decision, not an SDK one.</p>
+
+<h3>Step 2 · Bridge: the parent carries the messages <span class="pill later">later</span></h3>
+<p>Same SDK interface, new transport: the iframe hands each message to the parent over postMessage and the parent forwards it over the presentation's realtime channel. Worth doing when the product wants no second backend. Three constraints, all of which the design above already absorbs:</p>
+<ul>
+  <li><b>Broadcast, not unicast.</b> Private slices are tagged and filtered on the phone. Fine for state, not for a correct answer before its reveal. Games that need secrecy keep it on the host until reveal time, which is good practice on any transport.</li>
+  <li><b>Rate.</b> Thirty phones sending strokes at 15 messages a second is not a load that channel should take. The bridge caps rate and message size in <code>caps</code>; fast lanes refuse to start and stay on the relay if the game needs them.</li>
+  <li><b>Ordering and loss.</b> Not guaranteed. This is exactly why the document is versioned and resyncs from a snapshot.</li>
+</ul>
+
+<h2 id="rules">Rules for game authors</h2>
+<div class="card warn"><b>The one rule that keeps the swap possible:</b> a game never touches a socket, a room code, localStorage, or <code>window.parent</code>. It talks to <code>room</code> and <code>me</code>, and nothing else. Everything the SDK cannot do through that surface is a gap in the SDK, to be fixed there.</div>
+<ul>
+  <li>Render from the document, not from the sequence of patches. A phone may skip patches and land on a snapshot.</li>
+  <li>Deadlines are host timestamps. Never ship a countdown.</li>
+  <li>Phones send intent (<code>answer</code>, <code>move</code>, <code>stroke</code>), the host decides and writes the document. If a phone could break the game by lying, the host is trusting it too much.</li>
+  <li>Anything a phone must not know yet stays on the host. Reveal by writing it into the document.</li>
+  <li>Sanitise nothing yourself. Names arrive clean, ids are stamped by the transport, numbers are still numbers and must be clamped by the game as today.</li>
+  <li>Design for a phone that reloads mid-game. With a reserved seat and a snapshot on rejoin, that should be invisible.</li>
+</ul>
+
+<h2 id="migration">Migration</h2>
+<p>Nothing forces the pages to move together: the relay does not change, so a migrated page and an unmigrated one coexist. Suggested order, easiest and most instructive first.</p>
+<div class="tbl"><table>
+  <tr><th>Page</th><th>What moves to the SDK</th><th>What stays</th></tr>
+  <tr><td>Color &amp; Sound</td><td>host and join plumbing, palette and scale into the document, strokes through <code>input</code>, sheet through <code>frame</code></td><td>the engine</td></tr>
+  <tr><td>Gremlin Siege</td><td>its <code>emit</code> style maps one-to-one onto events; phase strip and countdowns become <code>endsAt</code> in the document; quiz offers become private slices</td><td>simulation, view, audio</td></tr>
+  <tr><td>Survival Quiz, Survival Brawl, Brawl Quiz</td><td>plumbing; 10 Hz snapshots through <code>stream</code>; phase and banner into the document</td><td>fighters, quiz pool</td></tr>
+  <tr><td>Marshmallow, Marshmallow Live</td><td>plumbing and lobby only</td><td>the physics room, as its own transport-bound feature</td></tr>
+</table></div>
+<p>Each migration deletes roughly 80 lines and one localStorage scheme. The end state is one file that knows about sockets.</p>
+
+<h2 id="roadmap">Roadmap</h2>
+<ol>
+  <li><b>Phase 1 — core.</b> <code>aha-room.js</code>: session, state document, time, reporting stub; <code>relay</code>, <code>memory</code> and <code>embed</code> transports; the longer room-name route in the worker. Move Color &amp; Sound and Gremlin Siege. About 250 lines of SDK and one page of docs.</li>
+  <li><b>Phase 2 — fast lanes.</b> <code>stream</code>, <code>frame</code>, <code>input</code>. Move the other four pages and delete the copies.</li>
+  <li><b>Phase 3 — bridge.</b> When the presenter app has a plugin host, the bridge transport and the report shapes it expects. No game changes.</li>
+</ol>
+
+<h2 id="open">Open questions</h2>
+<ul>
+  <li><b>Where do reports land?</b> Presentation results, a leaderboard, or both. Decides the report shapes in phase 1.</li>
+  <li><b>Room naming for embeds.</b> <code>presentationId-slideId</code> is derivable by both apps but guessable. If rooms need to be unguessable, the presenter app mints them and passes them down.</li>
+  <li><b>Who owns the big screen when the presenter's tab reloads?</b> Today the relay replaces the host and phones re-register. Inside a presentation, the new host should also receive a snapshot of its own document, which means the host persists it (localStorage, per room) or the relay keeps the last snapshot. The second is cleaner and small.</li>
+  <li><b>Package form.</b> One ES module on this site is enough for phase 1. Publishing to the org registry only matters when the audience app imports it directly rather than embedding a page.</li>
+</ul>
+
+<p class="foot">Draft for discussion. Source: <code>public/sdk.html</code> in tiny-kingdom. Related: the Color &amp; Sound room protocol in <code>docs/color-and-sound.md</code>.</p>
+</main>
+</div>
+</body>
+</html>
