@@ -2,7 +2,10 @@
    Needs /vendor/zzfx.js loaded first. Browsers only let audio start after a tap, so call SFX.unlock() from a click handler. */
 const SFX = (() => {
   const state = { on: true, music: true, ready: false, gain: null, musicGain: null, musicSrc: null, musicBuf: null, last: {} };
-  try { state.on = localStorage.getItem('tk-tr-sfx') !== '0'; state.music = localStorage.getItem('tk-tr-music') !== '0'; } catch (e) {}
+  const cfg = (typeof CONFIG !== 'undefined' && CONFIG.sound) || { effects: true, music: true, volume: 1, musicVolume: 0.3 };
+  state.on = cfg.effects !== false; state.music = cfg.music !== false; state.volume = cfg.volume === undefined ? 1 : +cfg.volume; state.musicVolume = cfg.musicVolume === undefined ? 0.3 : +cfg.musicVolume;
+  const explicit = typeof CONFIG !== 'undefined' && CONFIG.explicit && CONFIG.explicit.sound;
+  if (!explicit) try { if (localStorage.getItem('tk-tr-sfx') !== null) state.on = localStorage.getItem('tk-tr-sfx') !== '0'; if (localStorage.getItem('tk-tr-music') !== null) state.music = localStorage.getItem('tk-tr-music') !== '0'; } catch (e) {}
 
   // ZzFX parameters: volume, randomness, frequency, attack, sustain, release, shape, shapeCurve, slide, deltaSlide,
   // pitchJump, pitchJumpTime, repeatTime, noise, modulation, bitCrush, delay, sustainVolume, decay, tremolo
@@ -34,7 +37,7 @@ const SFX = (() => {
     try { if (zzfxX.state !== 'running') zzfxX.resume(); } catch (e) { return; }
     if (state.ready) return;
     state.ready = true;
-    state.gain = zzfxX.createGain(); state.gain.gain.value = state.on ? 1 : 0; state.gain.connect(zzfxX.destination);
+    state.gain = zzfxX.createGain(); state.gain.gain.value = state.on ? state.volume : 0; state.gain.connect(zzfxX.destination);
     state.musicGain = zzfxX.createGain(); state.musicGain.gain.value = 0; state.musicGain.connect(zzfxX.destination);
   }
   function play(name, opts) {
@@ -47,8 +50,8 @@ const SFX = (() => {
       const src = zzfxX.createBufferSource(); src.buffer = buf; src.connect(state.gain); src.start();
     } catch (e) {}
   }
-  function setOn(on) { state.on = on; try { localStorage.setItem('tk-tr-sfx', on ? '1' : '0'); } catch (e) {} if (state.gain) state.gain.gain.value = on ? 1 : 0; }
-  function setMusic(on) { state.music = on; try { localStorage.setItem('tk-tr-music', on ? '1' : '0'); } catch (e) {} if (state.musicGain) state.musicGain.gain.setTargetAtTime(on && state.musicSrc ? 0.3 : 0, zzfxX.currentTime, 0.2); }
+  function setOn(on) { state.on = on; try { localStorage.setItem('tk-tr-sfx', on ? '1' : '0'); } catch (e) {} if (state.gain) state.gain.gain.value = on ? state.volume : 0; }
+  function setMusic(on) { state.music = on; try { localStorage.setItem('tk-tr-music', on ? '1' : '0'); } catch (e) {} if (state.musicGain) state.musicGain.gain.setTargetAtTime(on && state.musicSrc ? state.musicVolume : 0, zzfxX.currentTime, 0.2); }
 
   // ------------------------------------------------------------ the soundtrack: a cheerful four-chord loop, written here, not sampled
   function song() {
@@ -88,7 +91,7 @@ const SFX = (() => {
       try { const [l, r] = zzfxM(...song()); const buf = zzfxX.createBuffer(2, l.length, zzfxR); buf.getChannelData(0).set(l); buf.getChannelData(1).set(r); state.musicBuf = buf; } catch (e) { return; }
     }
     const src = zzfxX.createBufferSource(); src.buffer = state.musicBuf; src.loop = true; src.connect(state.musicGain); src.start(); state.musicSrc = src;
-    state.musicGain.gain.setTargetAtTime(state.music ? 0.3 : 0, zzfxX.currentTime, 0.5);
+    state.musicGain.gain.setTargetAtTime(state.music ? state.musicVolume : 0, zzfxX.currentTime, 0.5);
   }
   function stopMusic() { if (!state.musicSrc) return; const src = state.musicSrc; state.musicSrc = null; state.musicGain.gain.setTargetAtTime(0, zzfxX.currentTime, 0.4); setTimeout(() => { try { src.stop(); } catch (e) {} }, 1500); }
   return { unlock, play, setOn, setMusic, startMusic, stopMusic, get on() { return state.on; }, get music() { return state.music; } };

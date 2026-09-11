@@ -46,7 +46,8 @@
   // ------------------------------------------------------------ numbers to tune
   const RULES = {
     maxWaves: 10,          // hold all of these and the room wins outright
-    quizTime: 15,          // seconds from the wave start to answer the quiz
+    quizTime: 15,          // seconds from the wave start to answer the quiz…
+    placeTime: 5,          // …then this long to drag the gun into place (a gun not placed in time is lost)
     towerHp: 10,           // attention points; every gremlin that gets through bites some off
     spawnGap: 1.0,         // seconds between gremlins leaving the spawn…
     spawnRoom: 9,          // …shrinking for rooms bigger than this, so a big room gets a denser wave rather than a longer one
@@ -55,7 +56,7 @@
     hpPerPlayer: 0,        // …and grows by this share for every player beyond six (off: the gremlin count already scales with the room)
     botRight: 0.5,         // how often a bot answers right (the tuning target: half the room)
     botAnsMin: 3, botAnsMax: 10, botPlace: 2.5,
-    between: 3,            // seconds between waves (just the countdown)
+    between: 5,            // seconds between waves: watch the field settle, get ready for the next quiz
     maxStreakLevel: 4,     // gun level = min(this, streak - 1)
     godStreak: 6,          // from this streak on a right answer is God Mode: it refills the emptiest guns on the board…
     godBase: 4,            // …streak minus this many of them (streak 6 = 2 guns, 7 = 3, and so on)
@@ -119,7 +120,7 @@
     const rules = Object.assign({}, RULES, opts && opts.rules);
     return {
       rules, rand: (opts && opts.rand) || Math.random,
-      phase: 'lobby', wave: 0, time: 0, timeLeft: 0, quizLeft: 0,
+      phase: 'lobby', wave: 0, time: 0, timeLeft: 0, quizLeft: 0, placeLeft: 0, quizPool: (opts && opts.quiz && opts.quiz.length) ? opts.quiz : QUIZ,
       tower: { hp: rules.towerHp, max: rules.towerHp },
       players: new Map(), order: [], guns: [], enemies: [], queue: [], spawnT: 0, shots: [], quiz: null, events: [], seq: 0, eid: 0,
       won: null, survived: 0, lastQuiz: -1,
@@ -150,11 +151,11 @@
   // ------------------------------------------------------------ waves
   function startWave(S) {
     if (S.phase === 'over' || S.wave >= S.rules.maxWaves) return false;
-    S.wave++; S.phase = 'wave'; S.quizLeft = S.rules.quizTime; S.shots = []; S.enemies = []; S.spawnT = 0;              // the first gremlin leaves the spawn on the very first step
+    S.wave++; S.phase = 'wave'; S.quizLeft = S.rules.quizTime; S.placeLeft = 0; S.shots = []; S.enemies = []; S.spawnT = 0;              // the first gremlin leaves the spawn on the very first step
     const active = [...S.players.values()].filter(p => !p.gone).length;
     S.queue = waveList(S.wave, active, S.rules);
-    let qi; do { qi = Math.floor(S.rand() * QUIZ.length); } while (qi === S.lastQuiz);
-    S.lastQuiz = qi; S.quiz = { i: qi, q: QUIZ[qi][0], opts: QUIZ[qi][1], answer: QUIZ[qi][2] };
+    const pool = S.quizPool; let qi; do { qi = Math.floor(S.rand() * pool.length); } while (pool.length > 1 && qi === S.lastQuiz);
+    S.lastQuiz = qi; S.quiz = { i: qi, q: pool[qi][0], opts: pool[qi][1], answer: pool[qi][2] };
     for (const p of S.players.values()) {
       p.answered = false;
       if (p.bot) { p.bot_ans = S.rules.botAnsMin + S.rand() * (S.rules.botAnsMax - S.rules.botAnsMin); p.bot_place = 0; }
@@ -196,7 +197,8 @@
     return 'wrong';
   }
   function place(S, id, x, z) {
-    const p = S.players.get(id); if (!p || !p.pending || S.phase === 'over') return 'none';
+    const p = S.players.get(id); if (!p || !p.pending || S.phase !== 'wave') return 'none';
+    if (S.quizLeft <= 0 && S.placeLeft <= 0) { p.pending = null; return 'late'; }
     const type = LEVEL_GUN[p.pending.level];
     if (!freeTile(S, x, z)) return 'taken';
     const ammo = LEVELS[p.pending.level].ammo;
@@ -229,7 +231,8 @@
   function step(S, dt) {
     if (S.phase !== 'wave') return;
     S.time += dt; S.seq++;
-    if (S.quizLeft > 0) { S.quizLeft -= dt; if (S.quizLeft <= 0) { S.quizLeft = 0; S.events.push({ e: 'quizEnd' }); } }
+    if (S.quizLeft > 0) { S.quizLeft -= dt; if (S.quizLeft <= 0) { S.quizLeft = 0; S.placeLeft = S.rules.placeTime; S.events.push({ e: 'quizEnd' }); } }
+    else if (S.placeLeft > 0) { S.placeLeft -= dt; if (S.placeLeft <= 0) { S.placeLeft = 0; for (const p of S.players.values()) if (p.pending) { p.pending = null; S.events.push({ e: 'unplaced', id: p.id }); } S.events.push({ e: 'placeEnd' }); } }
     const R = S.rules;
     // Bots answer, then place their gun somewhere sensible.
     for (const p of S.players.values()) {
@@ -288,7 +291,7 @@
   function snapshot(S) {
     // Road distance + speed rather than a position, so renderers can move enemies smoothly between snapshots.
     const e = S.enemies.map(e => [e.id, e.kind, +(e.hp / e.max).toFixed(2), +e.d.toFixed(3), +e.side.toFixed(2), e.speed, e.state]);
-    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)), ga: S.guns.map(g => g.dead ? 0 : g.ammo) };
+    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), pl: Math.ceil(S.placeLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)), ga: S.guns.map(g => g.dead ? 0 : g.ammo) };
   }
   function roster(S) {
     return [...S.order].map(id => { const p = S.players.get(id); return { id, name: p.name, bot: p.bot, skin: p.skin, kills: p.kills, dmg: Math.round(p.dmg), correct: p.correct, wrong: p.wrong, streak: p.streak, best: p.best, gods: p.gods || 0, refills: p.refills || 0, guns: p.guns, alive: S.guns.filter(g => !g.dead && g.owner === id).length, lost: p.lost, gone: p.gone }; });
