@@ -207,8 +207,8 @@ function joinGame(code, name) {
   player.code = code; player.name = name;
   let token = ''; try { token = localStorage.getItem('tk-tr-tok-' + code) || ''; if (!token) { token = Math.random().toString(36).slice(2, 12); localStorage.setItem('tk-tr-tok-' + code, token); } } catch (e) {}
   show('s-play'); $('#p-name').textContent = name;
-  let seen = !CONFIG.player.onboarding; try { seen = seen || localStorage.getItem('tk-tr-onboard') === '1'; } catch (e) {}
-  if (!seen) $('#p-onboard').classList.add('on');
+  let seen = !CONFIG.player.onboarding; try { seen = seen || localStorage.getItem('tk-tr-onboard') === ONBOARD_VERSION; } catch (e) {}
+  if (!seen) openOnboarding();
   emit('joined', { code, name });
   player.view = new View($('#gl'), { lite: true, orbit: true, margins: { x: 0.96, y: 0.72, yBias: -0.12 } }); player.view.buildMap().then(() => { player.mapReady = true; });
   player.link = link(WS_BASE() + code + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token), playerReceive, st => { if (st === 'down') toast('Reconnecting…'); });
@@ -331,7 +331,35 @@ function placeAt(x, z) {
 }
 function gunRange() { return TR.LEVELS[player.pending ? player.pending.level : 0].range; }
 $('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#b-place').disabled = true; $('#pl-hint').textContent = 'Placing…'; player.link.send({ t: 'place', x: player.sel.x, z: player.sel.z }); };
-$('#b-onboard').onclick = () => { SFX.unlock(); SFX.play('go'); $('#p-onboard').classList.remove('on'); if ($('#onboard-skip').checked) { try { localStorage.setItem('tk-tr-onboard', '1'); } catch (e) {} } };
+// Onboarding: one idea per step, Next to move on, the last step confirms. Remembered per version, so a reworked guide shows once more.
+const ONBOARD_VERSION = 'v2';
+const ONBOARD_STEPS = () => [
+  { ic: '👹', h: 'The ' + T.enemies + ' are coming', p: 'They march down the road to the ' + T.tower + '. Every one that gets through takes a bite. When its 10 points are gone, the game is over.' },
+  { ic: '❓', h: 'Answer the quiz', p: 'Every wave opens with a quiz at the bottom of your screen. You have 15 seconds. Answer right and you earn a gun.' },
+  { ic: '👆', h: 'Drag your gun onto the board', p: 'A see-through gun appears on the board. Drag it with one finger to a free green tile near the road, then tap Place. You get 5 seconds after the quiz closes.' },
+  { ic: '🔥', h: 'Keep your streak', p: 'Right again next wave means a bigger gun. Wrong or too slow means no gun and the streak is gone.', ladder: '🏹 ballista → 💣 cannon → 🔩 turret → 🪨 catapult → 💎 crystal turret' },
+  { ic: '⚡', h: 'God Mode', p: 'Six right in a row and your answers start refilling the emptiest guns on the board: two at streak 6, three at 7, and so on. The whole room sees it.' },
+  { ic: '🪫', h: 'Guns run dry', p: 'Every gun carries limited ammo and vanishes when empty, and the next horde marches every 25 seconds. Keep answering, keep placing.' },
+  { ic: '🎮', h: 'Look around', p: 'One finger turns the board, pinch to zoom, ⌖ resets the view. 🔊 mutes, ? brings this guide back. Ready?' },
+];
+let obStep = 0;
+function openOnboarding() { obStep = 0; $('#p-onboard').classList.add('on'); renderOnboarding(); }
+function renderOnboarding() {
+  const steps = ONBOARD_STEPS(); const s = steps[obStep]; const last = obStep === steps.length - 1;
+  $('#ob-dots').innerHTML = steps.map((_, i) => `<i class="${i === obStep ? 'on' : ''}"></i>`).join('');
+  $('#ob-step').innerHTML = `<div class="big-ic">${s.ic}</div><h2>${esc(s.h)}</h2><p>${esc(s.p)}</p>${s.ladder ? `<div class="ladder">${esc(s.ladder)}</div>` : ''}`;
+  $('#b-ob-back').style.visibility = obStep ? 'visible' : 'hidden';
+  $('#b-ob-next').textContent = last ? '✅ Got it — let\'s defend!' : 'Next ›';
+  $('#ob-skip-row').style.visibility = last ? 'visible' : 'hidden';
+}
+$('#b-ob-back').onclick = () => { if (obStep > 0) { obStep--; renderOnboarding(); } };
+$('#b-ob-next').onclick = () => {
+  SFX.unlock(); const steps = ONBOARD_STEPS();
+  if (obStep < steps.length - 1) { obStep++; renderOnboarding(); SFX.play('tick'); return; }
+  SFX.play('go'); $('#p-onboard').classList.remove('on');
+  if ($('#onboard-skip').checked) { try { localStorage.setItem('tk-tr-onboard', ONBOARD_VERSION); } catch (e) {} }
+};
+$('#p-help').onclick = () => { SFX.unlock(); openOnboarding(); };
 $('#p-recenter').onclick = () => { const v = player.view; if (!v) return; v.cam.theta = v.cam.portrait ? Math.PI / 2 - 0.35 : -0.55; v.cam.phi = 0.95; v.cam.fit = 0; v.fitBoard(); };
 function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
 function redFlash() { const r = $('#p-red'); r.classList.add('on'); setTimeout(() => r.classList.remove('on'), 120); }

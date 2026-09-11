@@ -90,6 +90,43 @@
   .row input[type=range] { width: 100%; accent-color: #5b6b5e; height: 18px; }
   .panel .reset { width: 100%; margin-top: 12px; border: 1px solid rgba(51,50,45,.2); opacity: .7; }
 
+  /* room mode: the QR card on the big screen, the join box and status tag on phones */
+  .card {
+    position: fixed; z-index: 4; right: 14px; top: max(14px, env(safe-area-inset-top));
+    padding: 10px 12px 9px; border-radius: 14px; text-align: center; cursor: pointer;
+    background: rgba(255,255,255,.78); border: 1px solid rgba(51,50,45,.16);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-size: 12.5px;
+  }
+  .card[hidden] { display: none; }
+  .card img { display: block; width: 124px; height: 124px; margin: 0 auto 6px; image-rendering: pixelated; }
+  .card.big img { width: 300px; height: 300px; }
+  .card b { display: block; font-weight: 500; font-size: 17px; letter-spacing: .14em; }
+  .card.big b { font-size: 26px; }
+  .card .url { opacity: .6; font-size: 11.5px; }
+  .card .who { opacity: .6; font-size: 11.5px; margin-top: 5px; max-width: 200px; line-height: 1.35; }
+  .card.big .who { max-width: 300px; }
+  .join {
+    position: fixed; z-index: 5; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; padding: 20px;
+    background: rgba(242,239,231,.94);
+  }
+  .join[hidden] { display: none; }
+  .join h2 { font-weight: 500; font-size: 21px; margin: 0; }
+  .join input {
+    font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; text-align: center;
+    border: 1px solid rgba(51,50,45,.3); background: #fff; width: min(260px, 80vw);
+  }
+  .join button {
+    font: inherit; font-size: 15px; font-weight: 500; padding: 10px 24px; border-radius: 10px;
+    border: 0; background: #33322D; color: #F2EFE7; cursor: pointer;
+  }
+  .join .st { font-size: 13px; opacity: .6; text-align: center; max-width: 30ch; line-height: 1.4; }
+  .tag {
+    position: fixed; z-index: 3; left: 50%; transform: translateX(-50%);
+    top: max(10px, env(safe-area-inset-top)); font-size: 12.5px; opacity: .55;
+    pointer-events: none; white-space: nowrap; max-width: calc(100vw - 20px); overflow: hidden; text-overflow: ellipsis;
+  }
+  .tag[hidden] { display: none; }
   @media (max-width: 560px) {
     .panel { right: 8px; left: 8px; width: auto; max-height: 52vh; }
     .row { grid-template-columns: 78px 1fr 36px; }
@@ -107,6 +144,20 @@
 <div class="paper"></div>
 <div class="edge"></div>
 <p class="say" id="say">Paint on it. Every mark keeps blooming after you lift your finger.</p>
+<p class="tag" id="tag" hidden></p>
+
+<div class="card" id="card" hidden title="Click to enlarge">
+  <img id="qrimg" alt="QR code to join">
+  <b id="code"></b>
+  <div class="url" id="joinurl"></div>
+  <div class="who" id="who"></div>
+</div>
+<div class="join" id="join" hidden>
+  <h2>🎨 Join the painting</h2>
+  <input id="jname" maxlength="16" placeholder="Your name" autocomplete="off">
+  <button id="jbtn">Join</button>
+  <div class="st" id="jst"></div>
+</div>
 
 <div class="panel" id="panel" hidden>
     <div class="phead"><span>Tuning</span><button class="t" id="cfgHelp" aria-pressed="false">What do these do?</button></div>
@@ -170,14 +221,16 @@
     <button class="t" id="play">Play</button>
     <button class="t" id="players">Solo</button>
   </div>
-  <div class="group">
+  <div class="group" id="g-act">
     <button class="t" id="undo">Undo</button>
     <button class="t" id="clear">Clear</button>
     <button class="t" id="save">Save</button>
     <button class="t" id="tune" aria-pressed="false">Tune</button>
+    <button class="t" id="host" title="Open a room: phones scan a code and paint on this screen">📱 Host a room</button>
   </div>
 </div>
 
+<script src="/vendor/qr.js"></script>
 <script>
 (() => {
   const view = document.getElementById('c');
@@ -192,7 +245,32 @@
   let marks = [];                    // brushes that keep drawing themselves: salt, drips
   const wet = document.createElement('canvas');
   const wctx = wet.getContext('2d');
-  let hover = null, stroke = null, undoStack = [], strokeSpeed = 0;
+  let hover = null, undoStack = [], lastSnapT = 0, wetDirty = false;
+
+  /* ---------- room mode ----------
+     ?host=1 opens a room on the big screen; /cs/CODE (= ?join=CODE) is a phone.
+     Phones are controllers: they send raw pointer input, the host paints and
+     plays every note, and the host sends back a small JPEG of the sheet. The
+     picture is the shared state, so joining late costs one image, not a
+     replay of every stroke ever made. ---------------------------------- */
+  const qs = new URLSearchParams(location.search);
+  const JOIN_CODE = (qs.get('join') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  const isClient = !!JOIN_CODE, isHost = !isClient && qs.get('host') === '1';
+  let hostAR = 0;                                    // client: the big screen's aspect ratio, sets the sheet
+  const net = { sock: null, myId: '', lastFrame: '', lastFrameAt: 0, paintedAt: 0, roster: new Map() };
+  function mpAll(o) { const s = net.sock; if (s && s.readyState === 1) { try { s.send(JSON.stringify(o)); } catch (e) {} } }
+  function mpTo(id, o) { mpAll(Object.assign({ to: id }, o)); }
+  const touch = () => { net.paintedAt = performance.now(); };   // the sheet changed: phones need a new frame
+
+  // one painter per hand on the sheet: the local pointer, each phone, the bots
+  function makePainter(id, name, remote) {
+    return { id, name: name || '', remote: !!remote, brush: { size: 'M', color: null, type: 'wash' },
+             stroke: null, speed: 0, lastMix: 0, sid: 0, t0: 0, lastAt: 0, lastPt: null, labelUntil: 0 };
+  }
+  const painters = new Map();
+  const local = makePainter('me', '', false);
+  painters.set(local.id, local);
+  const botP = makePainter('bot', '', false);
 
   const ACTIVE_MAX = 6;
   const SIZES = { S: 0.035, M: 0.072, L: 0.125 };
@@ -212,7 +290,7 @@
              warp: 0.13, alpha: [0.012, 0.026], live: 4, bake: 30, gran: 1.2,
              space: 0.4, decay: 1.2, bright: 1, notes: 1 }
   };
-  let brush = { size: 'M', color: null, type: 'wash' };   // color null = mix
+  const brush = local.brush;                              // the dock edits the local painter; color null = mix
 
   const CELL = 16, SAT = 1.0;      // SAT ~ where paper stops accepting pigment
   let ink = null, gw = 0, gh = 0;
@@ -310,6 +388,11 @@
       s: clamp(sat + rand(-10, 18), 20, 88) * (i === 4 ? 1.2 : 1),
       l: clamp(light + rand(-8, 10), 44, 80)
     }));
+    applyPalette(palette);
+    sendMeta();
+  }
+  function applyPalette(pal) {
+    palette = pal.map(c => ({ h: +c.h || 0, s: clamp(+c.s || 0, 0, 100), l: clamp(+c.l || 0, 0, 100) }));
     rankPalette();
     for (let i = 0; i < 5; i++) {
       const el = document.getElementById('sw' + i);
@@ -320,11 +403,10 @@
       el.setAttribute('aria-label', 'Colour ' + (i + 1) + ' — ' + el.title);
     }
   }
-  let lastMix = 0;
-  function chosenIndex() {
-    if (brush.color !== null) return brush.color;
-    if (Math.random() > 0.62) lastMix = (Math.random() * palette.length) | 0;
-    return lastMix;
+  function chosenIndex(p) {
+    if (p.brush.color !== null) return p.brush.color;
+    if (Math.random() > 0.62) p.lastMix = (Math.random() * palette.length) | 0;
+    return p.lastMix;
   }
 
   /* ---------- deformation ---------- */

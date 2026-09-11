@@ -103,7 +103,8 @@
   #p-place.on { display:block; }
   #p-place.on ~ #p-btn, #p-place.on ~ #p-recenter, #p-quiz.on ~ #p-btn, #p-quiz.on ~ #p-recenter { display:none; }
   #p-sound { position:absolute; left:10px; bottom:92px; width:44px; height:44px; border-radius:22px; padding:0; font-size:20px; background:rgba(255,255,255,.9); }
-  #p-place.on ~ #p-sound, #p-quiz.on ~ #p-sound { display:none; }
+  #p-place.on ~ #p-sound, #p-quiz.on ~ #p-sound, #p-place.on ~ #p-help, #p-quiz.on ~ #p-help { display:none; }
+  #p-help { position:absolute; left:62px; bottom:92px; width:44px; height:44px; border-radius:22px; padding:0; font-size:20px; font-weight:700; background:rgba(255,255,255,.9); }
   #p-feed { position:absolute; left:60px; right:60px; bottom:92px; display:flex; flex-direction:column; gap:4px; align-items:center; pointer-events:none !important; }
   #p-feed .f { background:rgba(255,255,255,.88); border-radius:12px; padding:4px 10px; font-size:12px; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,.1); max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:opacity .6s; }
   #p-feed .f.tally { background:rgba(32,48,63,.85); color:#fff; }
@@ -120,11 +121,14 @@
   #p-msg.on { opacity:1; }
   #p-onboard { position:absolute; inset:0; background:rgba(32,48,63,.55); display:none; align-items:flex-end; justify-content:center; padding:12px; pointer-events:auto; }
   #p-onboard.on { display:flex; }
-  #p-onboard .card { text-align:left; padding:18px 20px 16px; max-width:460px; }
-  #p-onboard h2 { text-align:center; }
-  #p-onboard ul { margin:0 0 12px; padding:0; list-style:none; }
-  #p-onboard li { display:flex; gap:10px; align-items:flex-start; margin:8px 0; line-height:1.35; font-size:15px; }
-  #p-onboard li .ic { font-size:22px; width:30px; flex:none; text-align:center; }
+  #p-onboard .card { text-align:center; padding:18px 20px 16px; max-width:460px; }
+  #p-onboard .dots { display:flex; gap:6px; justify-content:center; margin-bottom:10px; }
+  #p-onboard .dots i { width:8px; height:8px; border-radius:50%; background:#d8e0ea; } #p-onboard .dots i.on { background:var(--blue); width:22px; border-radius:4px; }
+  #p-onboard .step { min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; }
+  #p-onboard .step .big-ic { font-size:56px; line-height:1; }
+  #p-onboard .step h2 { margin:0; font-size:22px; }
+  #p-onboard .step p { margin:0; font-size:16px; line-height:1.4; opacity:.9; }
+  #p-onboard .step .ladder { font-size:13px; opacity:.8; }
   #p-onboard .foot { display:flex; flex-direction:column; gap:8px; align-items:center; }
   #p-onboard label { font-size:13px; opacity:.75; display:flex; gap:6px; align-items:center; white-space:nowrap; }
   #toast { position:fixed; left:50%; top:70px; transform:translateX(-50%); background:rgba(32,48,63,.92); color:#fff; padding:8px 16px; border-radius:14px; font-weight:600; opacity:0; transition:opacity .25s; white-space:nowrap; z-index:9; pointer-events:none; }
@@ -212,17 +216,15 @@
   <div id="p-feed"></div>
   <button class="ghost" id="p-recenter" title="Reset the camera">⌖</button>
   <button class="ghost" id="p-sound" title="Sound">🔊</button>
+  <button class="ghost" id="p-help" title="How to play">?</button>
   <button id="p-btn">Waiting…</button>
   <div id="p-onboard"><div class="card">
-    <h2>🏰 How to defend</h2>
-    <ul>
-      <li><span class="ic">👹</span><span>Gremlins march down the road to the Attention Tower. Every one that gets through bites it. When it's gone, the game is over.</span></li>
-      <li><span class="ic">❓</span><span>Each wave starts with a quiz at the bottom of your screen. <b>Answer right</b> and you get a gun to <b>drag onto the board</b>, with your name on it.</span></li>
-      <li><span class="ic">🔥</span><span>Right again next wave = a <b>bigger gun</b>: ballista → cannon → turret → catapult → 💎 crystal turret. Six in a row = ⚡ <b>God Mode</b>: you refill the emptiest guns on the board (2 at streak 6, 3 at 7, and so on). Wrong or too slow = no gun, streak lost.</span></li>
-      <li><span class="ic">🪫</span><span>Guns carry limited ammo and vanish when empty, so keep answering and keep placing.</span></li>
-      <li><span class="ic">👆</span><span>One finger turns the board, pinch to zoom, ⌖ resets the view.</span></li>
-    </ul>
-    <div class="foot"><button class="big" id="b-onboard">Got it — let's defend!</button><label><input type="checkbox" id="onboard-skip" checked> Don't show this again</label></div>
+    <div class="dots" id="ob-dots"></div>
+    <div class="step" id="ob-step"></div>
+    <div class="foot">
+      <div class="row" style="width:100%;justify-content:space-between"><button class="ghost" id="b-ob-back">‹ Back</button><button class="big" id="b-ob-next">Next ›</button></div>
+      <label id="ob-skip-row"><input type="checkbox" id="onboard-skip" checked> Don't show this again</label>
+    </div>
   </div></div>
 </div></div>
 
