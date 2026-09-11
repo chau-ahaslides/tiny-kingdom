@@ -538,6 +538,18 @@ class View {
   boom(x, z, r) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: .8 })); m.position.set(x, 0.4, z); m.scale.setScalar(.1); this.scene.add(m); this.fx.push({ m, t: 0, life: .35, r: r + .2, kind: 'boom' }); }
   async coin(pos) { const g = await loadGLB('dungeon/coin'); const m = g.scene.clone(true); m.position.copy(pos).setY(0.6); this.scene.add(m); this.fx.push({ m, t: 0, life: .8, kind: 'coin' }); }
   hitKeep() { this.keepFlash = 0.35; }
+  // The tower has fallen: it shakes, then its storeys tumble off one by one into the grass under a cloud of dust.
+  crumbleKeep() {
+    if (!this.keep || this.crumbled) return; this.crumbled = true; this.keepFlash = 1.4;
+    this.focus = { x: TR.END[0] - 1.5, z: TR.END[1] - 0.5, dist: this.cam.fit * 0.55 };   // the camera glides in to watch
+    const parts = [...this.keep.children].filter(o => !o.isSprite).sort((a, b) => b.position.y - a.position.y);   // top first
+    for (const o of this.keep.children) if (o.isSprite) o.visible = false;
+    parts.forEach((o, i) => {
+      this.scene.attach(o); const a = Math.random() * Math.PI * 2;
+      this.fx.push({ m: o, t: -1.2 - i * 0.28, life: 4, kind: 'tumble', vx: Math.cos(a) * (0.8 + Math.random()), vz: Math.sin(a) * (0.8 + Math.random()), vy: 1.5 + Math.random() * 1.5, rx: (Math.random() - .5) * 6, rz: (Math.random() - .5) * 6 });
+    });
+    for (let k = 0; k < 40; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.2 + Math.random() * .2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xb8a58a, transparent: true, opacity: .85 })); m.visible = false; m.position.set(TR.END[0] + (Math.random() - .5) * 1.2, 0.2 + Math.random() * 2.5, TR.END[1] + (Math.random() - .5) * 1.2); this.scene.add(m); this.fx.push({ m, t: -1.0 - Math.random() * 2.2, life: 1.8 + Math.random(), kind: 'smoke', vx: (Math.random() - .5) * 1.5, vz: (Math.random() - .5) * 1.5 }); }
+  }
   biteText(text) {
     const sp = textSprite(text, { size: 64, fill: '#e5533d', w: 192, h: 96, scale: 1.6 }); sp.renderOrder = 12;
     sp.position.set(TR.END[0] + (Math.random() - .5) * .6, 2.6, TR.END[1]); this.scene.add(sp);
@@ -561,10 +573,11 @@ class View {
       s.t += dt / s.dur; if (s.t >= 1 || !s.tgt.root) { this.scene.remove(s.m); return false; }
       const aim = s.tgt.holder.position.clone().setY(s.tgt.kind === 'ufo' ? 0.9 : 0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
     });
-    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'ring') { f.m.scale.setScalar(1 + k * 5); f.m.material.opacity = .9 * (1 - k); } else if (f.kind === 'spark') { f.vy -= 4 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += f.vy * dt; f.m.rotation.x += dt * 6; f.m.rotation.y += dt * 4; } else if (f.kind === 'collapse') { const e = k * k; f.m.rotation.z = Math.cos(f.dir) * 0.9 * e; f.m.rotation.x = Math.sin(f.dir) * 0.9 * e; f.m.position.y = 0.2 - 1.4 * e; f.m.scale.setScalar(1 - 0.5 * e); } else if (f.kind === 'smoke') { f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += dt * 0.9; f.m.scale.setScalar(1 + k * 1.5); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
+    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.t < 0) { if (f.kind === 'smoke') f.m.visible = false; return true; } if (f.kind === 'smoke') f.m.visible = true; if (f.kind === 'tumble') { f.vy -= 9 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += f.vy * dt; if (f.m.position.y < 0.05) { f.m.position.y = 0.05; f.vy = -f.vy * 0.25; f.vx *= 0.7; f.vz *= 0.7; f.rx *= 0.5; f.rz *= 0.5; } f.m.rotation.x += f.rx * dt; f.m.rotation.z += f.rz * dt; if (k >= 1) return false; return true; } if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'ring') { f.m.scale.setScalar(1 + k * 5); f.m.material.opacity = .9 * (1 - k); } else if (f.kind === 'spark') { f.vy -= 4 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += f.vy * dt; f.m.rotation.x += dt * 6; f.m.rotation.y += dt * 4; } else if (f.kind === 'collapse') { const e = k * k; f.m.rotation.z = Math.cos(f.dir) * 0.9 * e; f.m.rotation.x = Math.sin(f.dir) * 0.9 * e; f.m.position.y = 0.2 - 1.4 * e; f.m.scale.setScalar(1 - 0.5 * e); } else if (f.kind === 'smoke') { f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += dt * 0.9; f.m.scale.setScalar(1 + k * 1.5); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
     if (this.crystal) this.crystal.rotation.y += dt * 0.8;
     if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.END[0] + (Math.random() - .5) * .08; } else this.keep.position.x = TR.END[0]; }
     if (this.ghost && this.ghost.visible) this.ghost.children[0].scale.setScalar(1 + 0.08 * Math.sin(performance.now() / 150));
+    if (this.focus && dt > 0) { const k = Math.min(1, 1.5 * dt); this.center.x += (this.focus.x - this.center.x) * k; this.center.z += (this.focus.z - this.center.z) * k; this.cam.dist += (this.focus.dist - this.cam.dist) * k; this.placeCamera(); }
     this.renderer.render(this.scene, this.camera);
   }
 }
@@ -747,13 +760,15 @@ $('#b-recenter').onclick = () => { const v = host.view; if (!v) return; v.cam.th
 $('#b-abort').onclick = () => { if (confirm('End the game for everyone?')) finish(false, true); };
 function finish(won, aborted) {
   const S = host.S; if (host.paused) setPaused(false); host.running = false; S.phase = 'over'; SFX.stopMusic(); SFX.play(won ? 'win' : 'lose');
+  const fallen = !won && !aborted;
   const survived = aborted ? Math.max(0, S.wave - 1) : S.survived;
   const list = TR.roster(S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
   host.link.send({ t: 'over', won, board: list, survived, aborted: !!aborted });
   $('#ov-title').textContent = won ? '🏆 Legendary! The tower held every wave' : '💥 The Attention Tower has fallen';
   $('#ov-text').textContent = won ? 'All ' + S.rules.maxWaves + ' waves held. The Gremlins give up.' : (aborted ? 'The game was ended early after ' + survived + ' wave' + (survived === 1 ? '' : 's') + '.' : 'The defence held for ' + survived + ' wave' + (survived === 1 ? '' : 's') + ' and fell in wave ' + S.wave + '. The Attention Gremlins have the room.');
   $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)} <span class="hint">🔫${r.guns} placed · best streak ${r.best}</span></td><td>${r.kills} kills</td></tr>`).join('');
-  show('s-hostover');
+  if (fallen) { host.view.crumbleKeep(); $('#h-quiz').classList.remove('on'); bigMsg('💥 The Attention Tower has fallen!', 5000); setTimeout(() => { SFX.play('boom'); setTimeout(() => SFX.play('boom', { pitch: .8 }), 500); }, 1200); setTimeout(() => show('s-hostover'), 5500); }
+  else show('s-hostover');
 }
 $('#b-again').onclick = () => location.href = location.pathname;
 
@@ -782,7 +797,7 @@ function playerReceive(m) {
   }
   if (m.t === 'roster') { player.roster = m.list; const me = m.list.find(r => r.id === player.id); if (me) { player.streak = me.streak; player.kills = me.kills; player.gunsN = me.alive; updateMe(); } return; }
   if (m.t === 'guns') { player.guns = m.list; v.setGuns(m.list); return; }
-  if (m.t === 'gunDown') { const g = player.guns.find(g => g.i === m.i); if (g) g.dead = true; v.removeGun(m.i); if (m.owner === player.id) { player.gunsN = Math.max(0, player.gunsN - 1); updateMe(); redFlash(); SFX.play('empty'); pMsg('🪫 YOUR GUN IS OUT OF AMMO\nAnswer right to place another', 2200); if (navigator.vibrate) navigator.vibrate(80); } return; }
+  if (m.t === 'gunDown') { const g = player.guns.find(g => g.i === m.i); if (g) g.dead = true; v.removeGun(m.i); if (m.owner === player.id) { player.gunsN = Math.max(0, player.gunsN - 1); updateMe(); SFX.play('empty'); if (navigator.vibrate) navigator.vibrate(40); } return; }
   if (m.t === 'gun') { player.guns.push(m.g); v.addGun(m.g); if (m.g.owner === player.id) { player.gunsN++; updateMe(); } if (player.sel && player.sel.x === m.g.x && player.sel.z === m.g.z) placeAt(m.g.x, m.g.z); return; }
   if (m.t === 'quiz') { showQuiz(m); SFX.play('quiz'); return; }
   if (m.t === 'ans') {
@@ -838,8 +853,9 @@ function playerReceive(m) {
     player.ph = 'over'; $('#p-quiz').classList.remove('on'); closePlace();
     const me = m.board.find(r => r.id === player.id); const rank = m.board.findIndex(r => r.id === player.id) + 1;
     SFX.play(m.won ? 'win' : 'lose');
+    const fallen = !m.won && !m.aborted; if (fallen) { v.crumbleKeep(); redFlash(); setTimeout(() => SFX.play('boom'), 1200); }
     setBtn(m.won ? 'ok' : 'hot', m.won ? '🏆 Every wave held!' : '💥 The tower fell after ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's'));
-    pMsg((m.won ? '🏆 LEGENDARY!\nThe tower held every wave.\n' : '💥 THE TOWER HAS FALLEN\nHeld for ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's') + '.\n') + (me ? 'You shot ' + me.kills + ' gremlins (#' + rank + ')' : ''), 60000);
+    setTimeout(() => pMsg((m.won ? '🏆 LEGENDARY!\nThe tower held every wave.\n' : '💥 THE TOWER HAS FALLEN\nHeld for ' + m.survived + ' wave' + (m.survived === 1 ? '' : 's') + '.\n') + (me ? 'You shot ' + me.kills + ' gremlins (#' + rank + ')' : ''), 60000), fallen ? 3500 : 0);
   }
 }
 function updateMe() { $('#p-streak').textContent = player.streak; $('#p-kills').textContent = player.kills; $('#p-guns').textContent = player.gunsN; }
@@ -889,7 +905,7 @@ function playerTick(ts) {
   const s = player.snap;
   if (s) {
     v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh, s.ga);
-    for (const g of v.guns) if (g && g.low && g.owner === player.id && !g.warned) { g.warned = true; SFX.play('low'); pMsg('🪫 Your gun is running low!', 1400); }
+    for (const g of v.guns) if (g && g.low && g.owner === player.id && !g.warned) { g.warned = true; SFX.play('low'); }
     const bar = $('#p-thp'); bar.style.width = (100 * s.th / s.tm) + '%'; bar.classList.toggle('low', s.th <= s.tm * 0.3); $('#p-tpct').textContent = s.th + '/' + s.tm;
     $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
     if (s.ph === 'wave') $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';
