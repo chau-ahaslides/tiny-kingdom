@@ -212,6 +212,7 @@
   </div>
   <div class="group">
     <button class="t" id="sound" aria-pressed="true">Sound</button>
+    <button class="t" id="zoom" hidden title="Back to the whole sheet">1.0×</button>
     <button class="t" id="scale">Lydian</button>
     <button class="t" id="play">Play</button>
     <button class="t" id="players">Solo</button>
@@ -258,7 +259,8 @@ import { AhaRoom } from '/js/aha-room.js';
   // one painter per hand on the sheet: the local pointer, each phone, the bots
   function makePainter(id, name, remote) {
     return { id, name: name || '', remote: !!remote, brush: { size: 'M', color: null, type: 'wash' },
-             stroke: null, speed: 0, lastMix: 0, sid: 0, t0: 0, lastAt: 0, lastPt: null, labelUntil: 0 };
+             stroke: null, speed: 0, lastMix: 0, sid: 0, t0: 0, lastAt: 0, lastPt: null, labelUntil: 0,
+             scale: 1 };                                 // brush scale: a zoomed-in phone paints finer
   }
   const painters = new Map();
   const local = makePainter('me', '', false);
@@ -1465,7 +1467,7 @@ import { AhaRoom } from '/js/aha-room.js';
   }
 
   /* ---------- your brush ---------- */
-  function brushRadius(p) { return short * SIZES[p.brush.size] * CFG.pool * rand(0.75, 1.25); }
+  function brushRadius(p) { return short * SIZES[p.brush.size] * (p.scale || 1) * CFG.pool * rand(0.75, 1.25); }
 
   function dab(p, x, y, job, forceIx, r0, ang) {
     const ci = forceIx === undefined ? chosenIndex(p) : forceIx;
@@ -1605,31 +1607,110 @@ import { AhaRoom } from '/js/aha-room.js';
   const realPr = e => e.pointerType === 'pen' && e.pressure > 0 && e.pressure !== 0.5;
   const prOf = e => (e.pressure > 0 ? e.pressure : 0.5);
 
-  // the sheet may be letterboxed (phones), so pointer positions are sheet-relative
+  /* ---------- the phone's view of the sheet: pinch to zoom, two fingers to pan ----------
+     The brush keeps its size on the screen, so zooming in paints finer on the
+     shared sheet: the stroke goes to the host with k = 1/zoom and the host
+     scales its brush by it. The big screen never zooms (z stays 1). --------- */
+  const zoom = { z: 1, x: 0, y: 0 };                    // scale, and the sheet point at the view's top-left
   let vrect = { left: 0, top: 0 };
+  const toSheet = (cx, cy) => ({ x: (cx - vrect.left) / zoom.z + zoom.x, y: (cy - vrect.top) / zoom.z + zoom.y });
+  const zoomBtn = document.getElementById('zoom');
+  function clampView() {
+    zoom.z = clamp(zoom.z, 1, 8);
+    zoom.x = clamp(zoom.x, 0, W - W / zoom.z);
+    zoom.y = clamp(zoom.y, 0, H - H / zoom.z);
+    if (zoomBtn) { zoomBtn.hidden = zoom.z < 1.02; zoomBtn.textContent = zoom.z.toFixed(1) + '×'; }
+  }
+  function zoomAt(cx, cy, factor) {                     // the sheet point under the cursor stays put
+    const s = toSheet(cx, cy);
+    zoom.z = clamp(zoom.z * factor, 1, 8);
+    zoom.x = s.x - (cx - vrect.left) / zoom.z;
+    zoom.y = s.y - (cy - vrect.top) / zoom.z;
+    clampView();
+  }
+  if (zoomBtn) zoomBtn.onclick = () => { zoom.z = 1; zoom.x = 0; zoom.y = 0; clampView(); };
+  view.addEventListener('wheel', e => {                 // a phone-mode page on a laptop, for trying it out
+    if (!isClient) return;
+    e.preventDefault();
+    vrect = view.getBoundingClientRect();
+    zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.002));
+  }, { passive: false });
+
+  const touches = new Map();                            // active fingers on the sheet, screen coords
+  let gesture = null, pendingDown = null;
+  function startStroke(pd) {
+    const f = pd.pts[0];
+    hover = { x: f.x, y: f.y, touch: true };
+    local.scale = 1 / zoom.z;
+    down(local, f.x, f.y, f.pr, f.real);
+    netDown(f.x, f.y, f.pr, f.real);
+    for (const q of pd.pts.slice(1)) { move(local, q.x, q.y, q.pr, q.real); netMove(q.x, q.y, q.pr); }
+  }
+  function lift() { if (hover && hover.touch) hover = null; up(local); netUp(); }
   view.addEventListener('pointerdown', e => {
     if (isClient && !(me && me.id)) return;            // not in the room yet
     vrect = view.getBoundingClientRect();
     try { view.setPointerCapture(e.pointerId); } catch (err) {}
-    const x = e.clientX - vrect.left, y = e.clientY - vrect.top;
-    hover = { x, y, touch: e.pointerType !== 'mouse' };
-    down(local, x, y, prOf(e), realPr(e));
-    netDown(x, y, prOf(e), realPr(e));
+    const s = toSheet(e.clientX, e.clientY);
+    const pt = { x: s.x, y: s.y, pr: prOf(e), real: realPr(e) };
+    if (isClient && e.pointerType !== 'mouse') {
+      touches.set(e.pointerId, { cx: e.clientX, cy: e.clientY });
+      if (touches.size === 2) {                         // a second finger: this is a pinch, not a stroke
+        if (pendingDown) { clearTimeout(pendingDown.t); pendingDown = null; }
+        else if (local.stroke) lift();
+        hover = null;
+        const [a, b] = [...touches.values()];
+        gesture = { z0: zoom.z, d0: Math.hypot(a.cx - b.cx, a.cy - b.cy) || 1, mid: toSheet((a.cx + b.cx) / 2, (a.cy + b.cy) / 2) };
+        return;
+      }
+      if (touches.size > 2 || gesture) return;
+      // one finger: wait a beat in case a second one is on its way
+      pendingDown = { id: e.pointerId, pts: [pt], t: setTimeout(() => { const pd = pendingDown; pendingDown = null; if (pd) startStroke(pd); }, 120) };
+      return;
+    }
+    hover = { x: s.x, y: s.y, touch: e.pointerType !== 'mouse' };
+    local.scale = 1 / zoom.z;
+    down(local, s.x, s.y, pt.pr, pt.real);
+    netDown(s.x, s.y, pt.pr, pt.real);
   });
   view.addEventListener('pointermove', e => {
-    const x = e.clientX - vrect.left, y = e.clientY - vrect.top;
-    if (e.pointerType === 'mouse' || local.stroke) hover = { x, y, touch: e.pointerType !== 'mouse' };
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { cx: e.clientX, cy: e.clientY });
+    if (gesture) {
+      if (touches.size < 2) return;
+      const [a, b] = [...touches.values()];
+      const mx = (a.cx + b.cx) / 2, my = (a.cy + b.cy) / 2;
+      zoom.z = clamp(gesture.z0 * Math.hypot(a.cx - b.cx, a.cy - b.cy) / gesture.d0, 1, 8);
+      zoom.x = gesture.mid.x - (mx - vrect.left) / zoom.z;   // the sheet point between the fingers follows them
+      zoom.y = gesture.mid.y - (my - vrect.top) / zoom.z;
+      clampView();
+      return;
+    }
+    if (pendingDown && pendingDown.id === e.pointerId) {
+      const s = toSheet(e.clientX, e.clientY);
+      pendingDown.pts.push({ x: s.x, y: s.y, pr: prOf(e), real: realPr(e) });
+      return;
+    }
+    const s = toSheet(e.clientX, e.clientY);
+    if (e.pointerType === 'mouse' || local.stroke) hover = { x: s.x, y: s.y, touch: e.pointerType !== 'mouse' };
     if (!local.stroke) return;
     const batch = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
     for (const ev of (batch && batch.length ? batch : [e])) {
-      const ex = ev.clientX - vrect.left, ey = ev.clientY - vrect.top;
-      move(local, ex, ey, prOf(ev), realPr(ev));
-      netMove(ex, ey, prOf(ev));
+      const q = toSheet(ev.clientX, ev.clientY);
+      move(local, q.x, q.y, prOf(ev), realPr(ev));
+      netMove(q.x, q.y, prOf(ev));
     }
   });
-  view.addEventListener('pointerup', e => { if (hover && hover.touch) hover = null; up(local); netUp(); });
-  view.addEventListener('pointercancel', () => { hover = null; up(local); netUp(); });
-  view.addEventListener('pointerleave', () => { hover = null; });
+  const endPointer = e => {
+    if (touches.has(e.pointerId)) {
+      touches.delete(e.pointerId);
+      if (gesture) { if (touches.size < 2) gesture = null; return; }
+      if (pendingDown && pendingDown.id === e.pointerId) { clearTimeout(pendingDown.t); const pd = pendingDown; pendingDown = null; startStroke(pd); }   // a quick tap is a dab
+    }
+    lift();
+  };
+  view.addEventListener('pointerup', endPointer);
+  view.addEventListener('pointercancel', endPointer);
+  view.addEventListener('pointerleave', () => { if (!gesture && !local.stroke) hover = null; });
 
   /* ---------- phone → host: the stroke as it happens ----------
      The SDK's input helper batches points every 50 ms, quantised to 1/10000
@@ -1640,7 +1721,7 @@ import { AhaRoom } from '/js/aha-room.js';
   function netDown(x, y, pr, real) {
     if (!me || !pts) return;
     curStroke = ++strokeSeq; lastSent = [x, y];
-    me.send({ t: 'd', s: curStroke, b: brush.type, z: brush.size, c: brush.color === null ? -1 : brush.color, r: real ? 1 : 0, p: [q4(x / W), q4(y / H), q4(pr)] });
+    me.send({ t: 'd', s: curStroke, b: brush.type, z: brush.size, c: brush.color === null ? -1 : brush.color, r: real ? 1 : 0, k: +(1 / zoom.z).toFixed(3), p: [q4(x / W), q4(y / H), q4(pr)] });
     pts.start({ s: curStroke });
   }
   function netMove(x, y, pr) {
@@ -1668,6 +1749,7 @@ import { AhaRoom } from '/js/aha-room.js';
       p.brush.size = SIZES[m.z] ? m.z : 'M';
       p.brush.color = (Number.isInteger(m.c) && m.c >= 0 && m.c < 5) ? m.c : null;
       p.sid = m.s; p.t0 = performance.now(); p.real = !!m.r;
+      p.scale = clamp(+m.k || 1, 0.1, 1);               // the phone was zoomed in: a finer brush
       down(p, dq(pt[0], 1e4) * W, dq(pt[1], 1e4) * H, clamp(dq(pt[2], 1e4), 0.02, 1), p.real);
     } else if (m.t === 's') {
       if (!p.stroke || p.sid !== m.s || !Array.isArray(m.pts)) return;
@@ -1904,8 +1986,9 @@ import { AhaRoom } from '/js/aha-room.js';
       }
     }
 
-    vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    vctx.clearRect(0, 0, W, H);
+    // the view may be zoomed into a part of the sheet (phones); everything below draws in sheet coordinates
+    vctx.setTransform(dpr * zoom.z, 0, 0, dpr * zoom.z, -zoom.x * dpr * zoom.z, -zoom.y * dpr * zoom.z);
+    vctx.clearRect(zoom.x, zoom.y, W / zoom.z, H / zoom.z);
     vctx.drawImage(paint, 0, 0, W, H);
     if (wetDirty) { wetAny = drawWet(); wetDirty = false; }   // the strokes still under fingers
     if (wetAny && sized(wet)) vctx.drawImage(wet, 0, 0, W, H);
@@ -1940,9 +2023,9 @@ import { AhaRoom } from '/js/aha-room.js';
     if (hover) {                       // brush footprint, so you can aim
       vctx.save();
       vctx.strokeStyle = 'rgba(51,50,45,.22)';
-      vctx.lineWidth = 1;
+      vctx.lineWidth = 1 / zoom.z;
       vctx.beginPath();
-      vctx.arc(hover.x, hover.y, short * SIZES[brush.size], 0, 6.29);
+      vctx.arc(hover.x, hover.y, short * SIZES[brush.size] / zoom.z, 0, 6.29);   // constant on screen: zoomed in, it paints finer
       vctx.stroke();
       vctx.restore();
     }
@@ -2057,6 +2140,7 @@ import { AhaRoom } from '/js/aha-room.js';
       pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     sendMeta();                 // the sheet's shape changed: phones re-fit
+    if (isClient) clampView();  // and a zoomed view stays inside the new sheet
   }
   let rt;
   const later = () => { clearTimeout(rt); rt = setTimeout(resize, 250); };

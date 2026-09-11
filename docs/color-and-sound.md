@@ -25,7 +25,7 @@ Phone → host, as ordinary game messages (`id` is stamped by the relay):
 
 | t   | fields | when |
 |-----|--------|------|
-| `d` | `s` stroke id, `b` brush (`wash`/`sable`), `z` size (`S`/`M`/`L`), `c` colour index or −1 for Mix, `r` real pressure, `p` first point ×10000 | finger down |
+| `d` | `s` stroke id, `b` brush (`wash`/`sable`), `z` size (`S`/`M`/`L`), `c` colour index or −1 for Mix, `r` real pressure, `k` brush scale = 1/zoom, `p` first point ×10000 | finger down |
 | `s` | `s`, `pts` array of `[u, v, pressure, ms]` ×`q`, `q` = 10000 | every 50 ms while moving (the input helper) |
 | `u` | `s` | finger up |
 
@@ -35,6 +35,16 @@ Host → phones, through the SDK:
   `_players` presence slice;
 - frames: 640 px on the long side, WebP quality 0.55, only when the sheet changed, every 0.7 s
   plus 30 ms per phone, capped at 2.5 s; `frames.now()` after Undo and Clear.
+
+## Zoom on the phone
+
+Pinch to zoom (1× to 8×) and move two fingers to pan; a `1.0×`-style button in the dock returns
+to the whole sheet. The brush keeps its size on the screen, so zooming in paints finer: the
+stroke's `d` message carries `k = 1/zoom` and the host multiplies its brush radius by it. A lone
+finger waits 120 ms before it starts a stroke, in case a second finger is on its way; a second
+finger during a stroke lifts it and starts the gesture. The big screen never zooms. The host's
+frame is 640 px wide, so a zoomed phone shows the others' paint softly; the phone's own stroke
+is rendered locally at its own resolution.
 
 ## Why an image rather than a stroke log
 
