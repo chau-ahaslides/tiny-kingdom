@@ -3,3 +3,7 @@
   Access-Control-Allow-Origin: *
 /vendor/*
   Cache-Control: public, max-age=86400
+/tower-raid
+  Cache-Control: no-cache
+/js/*
+  Cache-Control: no-cache
