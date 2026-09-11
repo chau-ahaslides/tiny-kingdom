@@ -85,6 +85,8 @@ export default {
     if (ml) return Response.redirect(url.origin + '/marshmallow-live?join=' + ml[1].toUpperCase(), 302);
     const tr = url.pathname.match(/^\/tr\/([A-Za-z0-9]{4,8})$/);
     if (tr) return Response.redirect(url.origin + '/tower-raid?join=' + tr[1].toUpperCase(), 302);
+    const cs = url.pathname.match(/^\/cs\/([A-Za-z0-9]{4,8})$/);
+    if (cs) return Response.redirect(url.origin + '/color-and-sound?join=' + cs[1].toUpperCase(), 302);
     return new Response('Not found', { status: 404 });
   }
 };

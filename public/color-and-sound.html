@@ -478,6 +478,7 @@
     }
     const t = b.done / b.layers;
     const pts = deform(b.base, 1, 0.10 + t * 0.05, 0.7);
+    touch();
     pctx.save();
     // once the paper is loaded, pigment settles on the surface (source-over) and
     // converges to its own mass tone instead of multiplying toward black
@@ -916,7 +917,7 @@
         if (b.acc > 95) {
           b.acc = 0; b.left--;
           b.pts.push({ x: b.x, y: b.y });
-          dab(b.x, b.y, b.job, b.ci, short * b.size * rand(0.8, 1.2), Math.atan2(b.ty - b.y, b.tx - b.x));
+          dab(botP, b.x, b.y, b.job, b.ci, short * b.size * rand(0.8, 1.2), Math.atan2(b.ty - b.y, b.tx - b.x));
         }
         if (b.left <= 0) {
           b.job.spine = b.pts.length > 1 ? b.pts : null;
@@ -1229,22 +1230,28 @@
     };
   }
 
-  function drawWetStroke() {
-    const st = stroke && stroke.ol;
-    if (!st) return;
-    const B = BRUSHES[st.type];
+  // every stroke still under a finger, on one shared wet layer
+  function drawWet() {
     wctx.save();
     wctx.setTransform(1, 0, 0, 1, 0, 0);
     wctx.clearRect(0, 0, wet.width, wet.height);
     wctx.restore();
-    if (B.mat === 'acrylic') paintAcrylic(wctx, st, B, null, true);
-    else paintOutline(wctx, st, B, B.live, 2.2);
+    let any = false;
+    for (const p of painters.values()) {
+      const st = p.stroke && p.stroke.ol;
+      if (!st) continue;
+      any = true;
+      const B = BRUSHES[st.type];
+      if (B.mat === 'acrylic') paintAcrylic(wctx, st, B, null, true);
+      else paintOutline(wctx, st, B, B.live, 2.2);
+    }
+    return any;
   }
 
-  function bakeStroke() {
-    const st = stroke && stroke.ol;
+  function bakeStroke(st) {
     if (!st || st.pts.length < 2) return;
     st.done = true;
+    touch();
     const B = BRUSHES[st.type], c = palette[st.ci];
     if (B.mat === 'acrylic') {
       // pick up whatever is already on the canvas at a few points and drag it
@@ -1465,16 +1472,16 @@
   }
 
   /* ---------- your brush ---------- */
-  function brushRadius() { return short * SIZES[brush.size] * CFG.pool * rand(0.75, 1.25); }
+  function brushRadius(p) { return short * SIZES[p.brush.size] * CFG.pool * rand(0.75, 1.25); }
 
-  function dab(x, y, job, forceIx, r0, ang, px, py) {
-    const ci = forceIx === undefined ? chosenIndex() : forceIx;
+  function dab(p, x, y, job, forceIx, r0, ang) {
+    const ci = forceIx === undefined ? chosenIndex(p) : forceIx;
     const c = palette[ci];
-    const B = BRUSHES[brush.type] || BRUSHES.wash;
+    const B = BRUSHES[p.brush.type] || BRUSHES.wash;
     if (soundOn) {
       tonicDrone();
       const now = performance.now();
-      const locked = forceIx !== undefined ? true : brush.color !== null;
+      const locked = forceIx !== undefined ? true : p.brush.color !== null;
       let kind = voiceOf(c.h);
       let shift = 0;
       if (now - (lastByVoice[kind] || 0) < VOICE_GAP[kind] * CFG.gap && !locked) {
@@ -1484,10 +1491,10 @@
       if (now - (lastByVoice[kind] || 0) >= VOICE_GAP[kind] * CFG.gap) {
         // the note is filed, not played; the grid slot decides what sounds
         // a brush moving slowly is loaded and rings longer; a fast one is dry
-        const fast = clamp(strokeSpeed / 1.8, 0, 1);
+        const fast = clamp(p.speed / 1.8, 0, 1);
         const speed = clamp((now - lastNoteT) / 260, 0, 1);
         const pit = stepPitch(job, y);
-        const loud = brush.size === 'L' ? 1.55 : brush.size === 'M' ? 1 : 0.55;   // S/M/L is loudness
+        const loud = p.brush.size === 'L' ? 1.55 : p.brush.size === 'M' ? 1 : 0.55;   // S/M/L is loudness
         lastNoteT = now; lastByVoice[kind] = now;
         const nn = Math.max(0, B.notes === undefined ? 1 : B.notes);
         for (let q = 0; q < nn; q++) {                         // Spray fires grace notes
@@ -1503,8 +1510,8 @@
         }
       }
     }
-    const baseR = (r0 || brushRadius()) * B.r;
-    const lock = forceIx !== undefined ? true : brush.color !== null;
+    const baseR = (r0 || brushRadius(p)) * B.r;
+    const lock = forceIx !== undefined ? true : p.brush.color !== null;
 
     if (B.prim === 'outline') return;         // painted by the stroke outline, not by dabs
     if (B.prim !== 'pool') {                  // the non-pool mechanisms draw themselves
@@ -1537,39 +1544,45 @@
     }
   }
 
-  function down(x, y, pr, real) {
+  function down(p, x, y, pr, real) {
+    if (p.stroke) up(p);
     if (playing) stopPlay();
     if (soundOn) wake();
     snapshot();
     document.getElementById('say').classList.add('gone');
-    stroke = { job: newJob(true, brush.color), pts: [{ x, y }], last: { x, y } };
-    const B0 = BRUSHES[brush.type] || BRUSHES.wash;
+    p.stroke = { job: newJob(true, p.brush.color), pts: [{ x, y }], last: { x, y } };
+    const B0 = BRUSHES[p.brush.type] || BRUSHES.wash;
     if (B0.prim === 'outline') {
-      stroke.ol = {
-        type: brush.type, ci: chosenIndex(), pts: [[x, y, pr === undefined ? 0.5 : pr]],
-        size: brushRadius() * B0.r * 2, realPressure: !!real, done: false
+      p.stroke.ol = {
+        type: p.brush.type, ci: chosenIndex(p), pts: [[x, y, pr === undefined ? 0.5 : pr]],
+        size: brushRadius(p) * B0.r * 2, realPressure: !!real, done: false
       };
-      stroke.dirty = true;
+      wetDirty = true;
     }
-    dab(x, y, stroke.job);
+    p.lastPt = { x, y }; p.lastAt = performance.now();
+    dab(p, x, y, p.stroke.job);
   }
-  function move(x, y, pr, real) {
+  // t: when the sample happened. Phone points arrive in batches, so they carry
+  // their own clock; without it every batch would read as one instant.
+  function move(p, x, y, pr, real, t) {
+    const stroke = p.stroke;
     if (!stroke) return;
-    const B = BRUSHES[brush.type] || BRUSHES.wash;
+    const B = BRUSHES[p.brush.type] || BRUSHES.wash;
     if (stroke.ol) {                              // geometry samples every couple of pixels
       const l = stroke.ol.pts[stroke.ol.pts.length - 1];
       if (Math.hypot(x - l[0], y - l[1]) >= 1.6) {
         stroke.ol.pts.push([x, y, pr === undefined ? 0.5 : pr]);
         if (real) stroke.ol.realPressure = true;
-        stroke.dirty = true;
+        wetDirty = true;
       }
     }
-    const gap = short * SIZES[brush.size] * 0.5 * B.space;
+    const gap = short * SIZES[p.brush.size] * 0.5 * B.space;
     const dx = x - stroke.last.x, dy = y - stroke.last.y;
     const step = Math.hypot(dx, dy);
-    const tNow = performance.now();
-    if (stroke.tPrev) strokeSpeed = step / Math.max(1, tNow - stroke.tPrev);   // px per ms
+    const tNow = t === undefined ? performance.now() : t;
+    if (stroke.tPrev) p.speed = step / Math.max(1, tNow - stroke.tPrev);   // px per ms
     stroke.tPrev = tNow;
+    p.lastPt = { x, y }; p.lastAt = performance.now();
     if (stroke.ol) {
       // space notes by the path's actual length, so tight curves stay in time
       stroke.run = (stroke.run || 0) + step;
@@ -1577,42 +1590,259 @@
       stroke.lastRun = stroke.run;
     } else if (step < gap) return;
     const ang = Math.atan2(dy, dx);
-    const px = stroke.last.x, py = stroke.last.y;
     stroke.last = { x, y };
     stroke.pts.push({ x, y });
-    dab(x, y, stroke.job, undefined, undefined, ang, px, py);
+    dab(p, x, y, stroke.job, undefined, undefined, ang);
   }
-  function up() {
+  function up(p) {
+    const stroke = p.stroke;
     if (!stroke) return;
-    strokeSpeed = 0;
-    if (stroke.ol) bakeStroke();
+    p.speed = 0;
+    if (stroke.ol) bakeStroke(stroke.ol);
     stroke.job.spine = stroke.pts;
     stroke.job.closed = true;
-    stroke = null;
+    p.stroke = null;
+    p.labelUntil = performance.now() + 1400;
+    wetDirty = true;
   }
+  function liftAll() { for (const p of painters.values()) { p.stroke = null; p.speed = 0; } wetDirty = true; }
 
   // a stylus reports real pressure; a mouse reports a constant, so we let the
   // stroke library infer width from speed instead
   const realPr = e => e.pointerType === 'pen' && e.pressure > 0 && e.pressure !== 0.5;
   const prOf = e => (e.pressure > 0 ? e.pressure : 0.5);
 
+  // the sheet may be letterboxed (phones), so pointer positions are sheet-relative
+  let vrect = { left: 0, top: 0 };
   view.addEventListener('pointerdown', e => {
-    view.setPointerCapture(e.pointerId);
-    hover = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
-    down(e.clientX, e.clientY, prOf(e), realPr(e));
+    if (isClient && !net.myId) return;                 // not in the room yet
+    vrect = view.getBoundingClientRect();
+    try { view.setPointerCapture(e.pointerId); } catch (err) {}
+    const x = e.clientX - vrect.left, y = e.clientY - vrect.top;
+    hover = { x, y, touch: e.pointerType !== 'mouse' };
+    down(local, x, y, prOf(e), realPr(e));
+    netDown(x, y, prOf(e), realPr(e));
   });
   view.addEventListener('pointermove', e => {
-    if (e.pointerType === 'mouse' || stroke) hover = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
-    const batch = (stroke && e.getCoalescedEvents) ? e.getCoalescedEvents() : null;
-    if (batch && batch.length) {
-      for (const ev of batch) move(ev.clientX, ev.clientY, prOf(ev), realPr(ev));
-    } else {
-      move(e.clientX, e.clientY, prOf(e), realPr(e));
+    const x = e.clientX - vrect.left, y = e.clientY - vrect.top;
+    if (e.pointerType === 'mouse' || local.stroke) hover = { x, y, touch: e.pointerType !== 'mouse' };
+    if (!local.stroke) return;
+    const batch = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    for (const ev of (batch && batch.length ? batch : [e])) {
+      const ex = ev.clientX - vrect.left, ey = ev.clientY - vrect.top;
+      move(local, ex, ey, prOf(ev), realPr(ev));
+      netMove(ex, ey, prOf(ev), realPr(ev));
     }
   });
-  view.addEventListener('pointerup', e => { if (hover && hover.touch) hover = null; up(); });
-  view.addEventListener('pointercancel', () => { hover = null; up(); });
+  view.addEventListener('pointerup', e => { if (hover && hover.touch) hover = null; up(local); netUp(); });
+  view.addEventListener('pointercancel', () => { hover = null; up(local); netUp(); });
   view.addEventListener('pointerleave', () => { hover = null; });
+
+  /* ---------- phone → host: the stroke as it happens ----------
+     Points are quantised to 1/10000 of the sheet, with pressure and a
+     millisecond offset, and batched every 50 ms: ~15 messages a second per
+     painter however fast the finger moves, ~15 bytes a point. ---------- */
+  let outBuf = [], outTimer = 0, strokeSeq = 0, curStroke = 0, strokeT0 = 0, lastSent = null, outReal = 0;
+  const q4 = v => Math.round(clamp(v, 0, 1) * 10000);
+  const encPt = (x, y, pr) => [q4(x / W), q4(y / H), Math.round(clamp(pr, 0, 1) * 100), Math.round(performance.now() - strokeT0)];
+  function flushOut() {
+    if (!outBuf.length || !curStroke) return;
+    mpAll({ t: 's', s: curStroke, p: outBuf, r: outReal });
+    outBuf = [];
+  }
+  function netDown(x, y, pr, real) {
+    if (!isClient) return;
+    curStroke = ++strokeSeq; strokeT0 = performance.now(); outBuf = []; outReal = real ? 1 : 0;
+    lastSent = [x, y];
+    mpAll({ t: 'd', s: curStroke, b: brush.type, z: brush.size, c: brush.color === null ? -1 : brush.color, r: outReal, p: encPt(x, y, pr) });
+    if (!outTimer) outTimer = setInterval(flushOut, 50);
+  }
+  function netMove(x, y, pr, real) {
+    if (!isClient || !curStroke) return;
+    if (lastSent && Math.hypot(x - lastSent[0], y - lastSent[1]) < 1) return;   // sub-pixel jitter: not worth a byte
+    lastSent = [x, y];
+    if (real) outReal = 1;
+    outBuf.push(encPt(x, y, pr));
+  }
+  let lastUpAt = 0;
+  function netUp() {
+    if (!isClient || !curStroke) return;
+    flushOut();
+    mpAll({ t: 'u', s: curStroke });
+    curStroke = 0; lastUpAt = performance.now();
+  }
+
+  /* ---------- host: phones' input becomes strokes on this sheet ---------- */
+  const dqx = u => clamp(+u || 0, 0, 10000) / 10000 * W;
+  const dqy = v => clamp(+v || 0, 0, 10000) / 10000 * H;
+  const dqp = v => clamp((+v || 50) / 100, 0.02, 1);
+  function renderRoster() {
+    const who = document.getElementById('who');
+    const names = [...net.roster.values()].map(n => String(n).replace(/[<>&]/g, ''));
+    who.textContent = names.length
+      ? names.length + (names.length === 1 ? ' painter: ' : ' painters: ') + names.slice(0, 10).join(', ') + (names.length > 10 ? '…' : '')
+      : 'nobody yet — scan to paint';
+  }
+  function metaMsg() { return { t: 'm', ar: +(W / H).toFixed(4), pal: palette, sc: scaleIx, cfg: CFG }; }
+  function sendMeta() { if (isHost) mpAll(metaMsg()); }
+  function hostMsg(m) {
+    if (m.t === 'join') {
+      net.roster.set(m.id, m.name);
+      const p = painters.get(m.id);
+      if (p) p.name = m.name; else painters.set(m.id, makePainter(m.id, m.name, true));
+      renderRoster();
+      mpTo(m.id, metaMsg());
+      if (net.lastFrame) mpTo(m.id, { t: 'f', d: net.lastFrame });   // the whole painting so far, in one image
+      return;
+    }
+    if (m.t === 'leave') {
+      const p = painters.get(m.id);
+      if (p) { up(p); painters.delete(m.id); }
+      net.roster.delete(m.id);
+      renderRoster();
+      return;
+    }
+    const p = painters.get(m.id);
+    if (!p) return;
+    if (m.t === 'd') {
+      const pt = m.p;
+      if (!Array.isArray(pt)) return;
+      p.brush.type = BRUSHES[m.b] ? m.b : 'wash';
+      p.brush.size = SIZES[m.z] ? m.z : 'M';
+      p.brush.color = (Number.isInteger(m.c) && m.c >= 0 && m.c < 5) ? m.c : null;
+      p.sid = m.s; p.t0 = performance.now() - (pt[3] | 0);
+      down(p, dqx(pt[0]), dqy(pt[1]), dqp(pt[2]), !!m.r);
+    } else if (m.t === 's') {
+      if (!p.stroke || p.sid !== m.s || !Array.isArray(m.p)) return;
+      for (const pt of m.p.slice(0, 200)) if (Array.isArray(pt)) move(p, dqx(pt[0]), dqy(pt[1]), dqp(pt[2]), !!m.r, p.t0 + (pt[3] | 0));
+    } else if (m.t === 'u') {
+      if (p.stroke && p.sid === m.s) up(p);
+    }
+  }
+
+  /* ---------- host → phones: the sheet as a picture ----------
+     One JPEG, 640 px on the long side, only when something changed, at most
+     every 0.7–2.5 s depending on how many phones must receive it. Nothing is
+     replayed: a new phone gets the latest frame and is up to date. ------ */
+  const fcan = document.createElement('canvas');
+  const frameInterval = () => Math.min(2500, 700 + 30 * net.roster.size);
+  function sendFrame() {
+    if (!sized(paint)) return;
+    const long = 640;
+    const fw = W >= H ? long : Math.max(1, Math.round(long * W / H));
+    const fh = W >= H ? Math.max(1, Math.round(long * H / W)) : long;
+    if (fcan.width !== fw || fcan.height !== fh) { fcan.width = fw; fcan.height = fh; }
+    fcan.getContext('2d').drawImage(paint, 0, 0, fw, fh);
+    let d;
+    try { d = fcan.toDataURL('image/jpeg', 0.55); } catch (e) { return; }
+    net.lastFrame = d; net.lastFrameAt = performance.now();
+    if (net.roster.size) mpAll({ t: 'f', d });
+  }
+  async function initHost() {
+    const card = document.getElementById('card');
+    card.hidden = false;
+    document.getElementById('who').textContent = 'opening a room…';
+    let code = '';
+    try { code = (await (await fetch('/api/room', { method: 'POST' })).json()).code; }
+    catch (e) { document.getElementById('who').textContent = 'could not open a room — reload'; return; }
+    const joinUrl = location.origin + '/cs/' + code;
+    const qr = window.qrcode(0, 'M');
+    qr.addData(joinUrl); qr.make();
+    document.getElementById('qrimg').src = qr.createDataURL(4, 2);
+    document.getElementById('code').textContent = code;
+    document.getElementById('joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
+    renderRoster();
+    card.onclick = () => card.classList.toggle('big');
+    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const connect = () => {
+      const ws = new WebSocket(proto + location.host + '/ws/' + code + '?role=host');
+      net.sock = ws;
+      ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } hostMsg(m); };
+      ws.onclose = () => { if (ws !== net.sock) return; setTimeout(() => { if (ws === net.sock) connect(); }, 1200); };   // phones re-register on their own
+    };
+    connect();
+  }
+
+  /* ---------- phone side ---------- */
+  const tagEl = document.getElementById('tag');
+  function setTag(s) { tagEl.textContent = s; tagEl.hidden = !s; }
+  let frameNext = '', frameBusy = false;
+  function queueFrame(d) { frameNext = d; if (!frameBusy) decodeFrame(); }
+  function decodeFrame() {
+    // while your own stroke is in flight the sheet is left alone: the host's
+    // picture would be a beat behind your finger and wipe its tail
+    if (!frameNext || local.stroke || performance.now() - lastUpAt < 300) { frameBusy = false; return; }
+    frameBusy = true;
+    const d = frameNext; frameNext = '';
+    const img = new Image();
+    img.onload = () => {
+      if (sized(paint)) {
+        pctx.save();
+        pctx.setTransform(1, 0, 0, 1, 0, 0);
+        pctx.globalCompositeOperation = 'source-over';
+        pctx.globalAlpha = 1;
+        pctx.drawImage(img, 0, 0, paint.width, paint.height);
+        pctx.restore();
+        queue = []; userQueue = []; active = []; marks = [];   // the host already bloomed these
+      }
+      decodeFrame();
+    };
+    img.onerror = decodeFrame;
+    img.src = d;
+  }
+  function clientMsg(m, st) {
+    if (m.t === 'welcome') {
+      net.myId = m.id;
+      document.getElementById('join').hidden = true;
+      setTag('🎨 ' + String(m.name).replace(/[<>&]/g, '') + ' — painting on the big screen');
+    } else if (m.t === 'nohost') {
+      setTag('waiting for the big screen…');
+    } else if (m.t === 'hostgone') {
+      setTag('the big screen closed — waiting…');
+    } else if (m.t === 'm') {
+      if (+m.ar > 0.2 && +m.ar < 5 && +m.ar !== hostAR) { hostAR = +m.ar; resize(); }
+      if (Array.isArray(m.pal) && m.pal.length === 5) applyPalette(m.pal);
+      if (Number.isInteger(m.sc)) { scaleIx = clamp(m.sc, 0, SCALES.length - 1); scaleBtn.textContent = SCALES[scaleIx].name; }
+      if (m.cfg && typeof m.cfg === 'object') for (const k of CFG_KEYS) if (typeof m.cfg[k] === 'number') CFG[k] = m.cfg[k];
+    } else if (m.t === 'f' && typeof m.d === 'string' && m.d.slice(0, 11) === 'data:image/') {
+      queueFrame(m.d);
+    }
+  }
+  function initClient() {
+    const jb = document.getElementById('join');
+    jb.hidden = false;
+    const st = document.getElementById('jst');
+    const tokKey = 'cs-tok-' + JOIN_CODE, nameKey = 'cs-name-' + JOIN_CODE;
+    let token = '';
+    try {
+      token = localStorage.getItem(tokKey) || '';
+      if (!token) { token = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(tokKey, token); }
+    } catch (e) {}
+    let name = '', retries = 0;
+    const doJoin = n => {
+      name = n;
+      try { localStorage.setItem(nameKey, n); } catch (e) {}
+      st.textContent = retries ? 'reconnecting…' : 'joining…';
+      const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+      const ws = new WebSocket(proto + location.host + '/ws/' + JOIN_CODE + '?role=player&name=' + encodeURIComponent(n) + '&token=' + encodeURIComponent(token));
+      net.sock = ws;
+      ws.onopen = () => { retries = 0; };
+      ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } clientMsg(m, st); };
+      ws.onclose = () => {
+        if (ws !== net.sock) return;
+        retries++;
+        if (net.myId) setTag('⚠ reconnecting…'); else st.textContent = '⚠ reconnecting…';
+        setTimeout(() => { if (ws === net.sock) doJoin(name); }, Math.min(5000, 800 * retries));
+      };
+    };
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && name && net.sock && net.sock.readyState > 1) doJoin(name); });
+    const jname = document.getElementById('jname');
+    document.getElementById('jbtn').onclick = () => doJoin((jname.value || '').trim().slice(0, 16) || 'Painter ' + (2 + Math.random() * 97 | 0));
+    jname.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('jbtn').click(); });
+    let saved = '';
+    try { saved = localStorage.getItem(nameKey) || ''; } catch (e) {}
+    if (saved) doJoin(saved);                         // reload = seamless rejoin
+  }
 
   /* ---------- a whole composition, on demand ---------- */
   function resample(pts) {
@@ -1722,15 +1952,23 @@
   }
 
   /* ---------- loop: several pools spread at once ---------- */
-  let prevTs = 0;
+  let prevTs = 0, wetAny = false;
   function frame(ts) {
     if (!sized(paint)) { requestAnimationFrame(frame); return; }   // iframe not laid out yet
     const dt = Math.min(64, (ts || 0) - prevTs || 16);
     prevTs = ts || 0;
+    const now = performance.now();
     if (bots.length && !playing) stepBots(dt);
+    if (marks.length) touch();
     for (let i = marks.length - 1; i >= 0; i--) {
       if (marks[i].step(dt)) marks.splice(i, 1);
     }
+    if (isHost) {
+      // a phone that vanished mid-stroke (lost signal, pocketed) never sends its lift
+      for (const p of painters.values()) if (p.remote && p.stroke && now - p.lastAt > 3000) up(p);
+      if (net.sock && net.paintedAt > net.lastFrameAt && now - net.lastFrameAt >= frameInterval()) sendFrame();
+    }
+    if (isClient && frameNext && !frameBusy) decodeFrame();   // a frame held back while you were painting
     fill();
     const per = reduced ? 60 : Math.min(14, 3 + Math.ceil((queue.length + userQueue.length) / 8));
 
@@ -1771,9 +2009,22 @@
     vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     vctx.clearRect(0, 0, W, H);
     vctx.drawImage(paint, 0, 0, W, H);
-    if (stroke && stroke.ol) {                 // the stroke still under your finger
-      if (stroke.dirty) { drawWetStroke(); stroke.dirty = false; }
-      if (sized(wet)) vctx.drawImage(wet, 0, 0, W, H);
+    if (wetDirty) { wetAny = drawWet(); wetDirty = false; }   // the strokes still under fingers
+    if (wetAny && sized(wet)) vctx.drawImage(wet, 0, 0, W, H);
+
+    if (isHost) {                      // who is painting where
+      vctx.save();
+      vctx.font = '500 13px "Bricolage Grotesque", "Helvetica Neue", sans-serif';
+      vctx.textAlign = 'center';
+      vctx.fillStyle = '#33322D';
+      for (const p of painters.values()) {
+        if (!p.remote || !p.lastPt || !p.name) continue;
+        const a = p.stroke ? 0.7 : 0.7 * clamp((p.labelUntil - now) / 1400, 0, 1);
+        if (a <= 0) continue;
+        vctx.globalAlpha = a;
+        vctx.fillText(p.name, p.lastPt.x, p.lastPt.y - short * SIZES[p.brush.size] - 8);
+      }
+      vctx.restore();
     }
 
     if (playing && actx) {             // the playhead sweeping the canvas
@@ -1804,7 +2055,10 @@
   const sized = c => c && c.width > 0 && c.height > 0;
 
   function snapshot() {
-    if (!sized(paint)) return;
+    if (!sized(paint) || isClient) return;            // phones show the host's picture; nothing to undo locally
+    const now = performance.now();
+    if (now - lastSnapT < 300) return;                 // a room full of painters starts strokes constantly
+    lastSnapT = now;
     const s = document.createElement('canvas');
     s.width = paint.width; s.height = paint.height;
     s.getContext('2d').drawImage(paint, 0, 0);
@@ -1817,12 +2071,13 @@
     const s = snap.canvas;
     if (!sized(s)) return;
     ink = snap.ink.slice();
-    queue = []; userQueue = []; active = []; marks = []; stroke = null;
+    queue = []; userQueue = []; active = []; marks = []; liftAll();
     if (sized(wet)) { wctx.save(); wctx.setTransform(1,0,0,1,0,0); wctx.clearRect(0,0,wet.width,wet.height); wctx.restore(); }
     pctx.setTransform(1, 0, 0, 1, 0, 0);
     pctx.clearRect(0, 0, paint.width, paint.height);
     pctx.drawImage(s, 0, 0);
     pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    touch();
   }
 
   function grain() {
@@ -1844,7 +2099,7 @@
     pctx.restore();
   }
   function wipe() {
-    queue = []; userQueue = []; active = []; marks = []; stroke = null;
+    queue = []; userQueue = []; active = []; marks = []; liftAll();
     if (sized(wet)) { wctx.save(); wctx.setTransform(1,0,0,1,0,0); wctx.clearRect(0,0,wet.width,wet.height); wctx.restore(); }
     pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     pctx.globalCompositeOperation = 'source-over';
@@ -1853,12 +2108,34 @@
     pctx.fillRect(0, 0, W, H);
     inkInit();
     grain();
+    touch();
+  }
+
+  // a phone shows the big screen's sheet, letterboxed to its own shape, above the dock
+  function sheetRect() {
+    const ar = hostAR || (innerWidth / Math.max(1, innerHeight));
+    const pad = 8, top = 40, bottom = 92;
+    const aw = Math.max(1, innerWidth - pad * 2), ah = Math.max(1, innerHeight - top - bottom);
+    let w = aw, h = w / ar;
+    if (h > ah) { h = ah; w = h * ar; }
+    return { w: Math.max(1, w | 0), h: Math.max(1, h | 0), x: ((innerWidth - w) / 2) | 0, y: (top + (ah - h) / 2) | 0 };
   }
 
   let started = false;
   function resize() {
-    const w = Math.max(1, innerWidth | 0), h = Math.max(1, innerHeight | 0);
+    const r = isClient ? sheetRect() : { w: innerWidth | 0, h: innerHeight | 0, x: 0, y: 0 };
+    const w = Math.max(1, r.w), h = Math.max(1, r.h);
     const d = Math.min(devicePixelRatio || 1, 2);
+    if (isClient) {
+      view.style.inset = 'auto';
+      view.style.left = r.x + 'px'; view.style.top = r.y + 'px';
+      view.style.width = w + 'px'; view.style.height = h + 'px';
+      view.style.boxShadow = '0 1px 14px rgba(51,50,45,.14), 0 0 0 1px rgba(51,50,45,.1)';
+      const sideways = hostAR > 1.15 && innerHeight > innerWidth * 1.1;
+      document.getElementById('say').textContent = sideways
+        ? 'Turn your phone sideways for a bigger sheet.'
+        : 'Paint on the sheet. It lands on the big screen.';
+    }
     if (w === W && h === H && d === dpr) return;
 
     let keep = null;
@@ -1881,6 +2158,7 @@
       pctx.drawImage(keep, 0, 0, keep.width, keep.height, 0, 0, paint.width, paint.height);
       pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
+    sendMeta();                 // the sheet's shape changed: phones re-fit
   }
   let rt;
   const later = () => { clearTimeout(rt); rt = setTimeout(resize, 250); };
@@ -1952,6 +2230,7 @@
       const out = document.getElementById('v_' + k);
       if (out) out.textContent = fmtCfg(k, CFG[k]);
       if (k === 'master' && master && actx) master.gain.setTargetAtTime(CFG.master, actx.currentTime, 0.1);
+      sendMeta();
     });
     syncCfg(k);
   }
@@ -1973,6 +2252,7 @@
   if (resetBtn) resetBtn.onclick = () => {
     Object.assign(CFG, DEFAULTS);
     for (const k of CFG_KEYS) syncCfg(k);
+    sendMeta();
   };
 
   const playBtn = document.getElementById('play');
@@ -1992,6 +2272,7 @@
     scaleIx = (scaleIx + 1) % SCALES.length;
     scaleBtn.textContent = SCALES[scaleIx].name;
     if (soundOn) auditionScale();
+    sendMeta();
   };
   document.getElementById('undo').onclick = undo;
   document.getElementById('clear').onclick = () => { stopPlay(); snapshot(); wipe(); };
@@ -2008,10 +2289,27 @@
   newPalette();
   setColor(null);
 
+  /* ---------- room mode wiring ---------- */
+  const hide = ids => ids.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  document.getElementById('host').onclick = () => { location.search = '?host=1'; };
+  if (isClient) {
+    // a phone is a brush: colours, brush, size, and its own notes if it wants them
+    hide(['shuffle', 'play', 'players', 'scale', 'g-act', 'panel']);
+    soundOn = false;                                   // thirty phones is not an arrangement; the big screen plays
+    soundBtn.setAttribute('aria-pressed', 'false');
+    soundBtn.title = 'Hear your own strokes on this phone';
+    initClient();
+  } else if (isHost) {
+    hide(['players', 'host']);
+    document.getElementById('say').textContent = 'Scan the code to paint together. Click the sheet once so it can make sound.';
+    document.addEventListener('pointerdown', () => { if (soundOn) wake(); }, { once: true });
+    initHost();
+  }
+
   function boot() {
     if (innerWidth < 2 || innerHeight < 2) { requestAnimationFrame(boot); return; }
     resize();
-    if (!started) { started = true; wipe(); growOne(true); }
+    if (!started) { started = true; wipe(); if (!isClient) growOne(true); }
     requestAnimationFrame(frame);
   }
   boot();
