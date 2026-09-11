@@ -1,12 +1,13 @@
 /* Survival Quiz — answer quizzes to grow strong, then survive the battle royale.
    Modes: solo (default) · host (?host=1 — desktop runs the sim, phones scan to join) · client (?join=CODE).
    Multiplayer is host-authoritative: phones send inputs, the host streams snapshots.
+   Rooms, identity, the QR and reconnects belong to the aha-room SDK: this file talks to `room` and `me` only.
    Quizzes stay on the field until someone answers CORRECTLY — wrong answers hurt only the answerer. */
+import { AhaRoom } from './aha-room.js';
 (async () => {
 const rnd = (a, b) => a + Math.random() * (b - a);
 const qs = new URLSearchParams(location.search);
 const MODE = qs.get('join') ? 'client' : (qs.has('host') ? 'host' : 'solo');
-const JOIN_CODE = (qs.get('join') || '').toUpperCase();
 const P = Math.max(4, Math.min(20, parseInt(qs.get('players'), 10) || 12));
 
 // ---------- quiz pool (randomized for now — inject window.QUIZ_POOL later) ----------
@@ -78,11 +79,10 @@ let human = null;                 // solo: You · client: own fighter · host: n
 const byId = {};
 
 // ---------- networking (host & client) ----------
-let sock = null, started = MODE === 'solo';
-const lobby = new Map();
-let myId = null, spectate = false, joinName = '', lastMsgAt = 0, clientReconnect = null;
-function mpAll(o) { if (sock && sock.readyState === 1) { try { sock.send(JSON.stringify(o)); } catch (e) {} } }
-function mpTo(id, o) { o.to = id; mpAll(o); }
+let room = null, me = null, started = MODE === 'solo';   // room: the big screen's session · me: this phone's
+let myId = null, spectate = false, lastMsgAt = 0;
+const mpAll = o => { if (room) room.send(o); };           // host → every phone (a no-op in solo)
+const mpTo = (id, o) => { if (room) room.sendTo(id, o); };
 
 // ---------- PIXI stage: fixed world, fit or follow ----------
 PIXI.BaseTexture.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
@@ -421,7 +421,7 @@ app.view.addEventListener('pointerdown', e => {
   const tx = Math.max(b.x0, Math.min(b.x1, wx)), ty = Math.max(b.y0, Math.min(b.y1, wy));
   if (MODE === 'client') {
     if (!human || human.dead || spectate) return;
-    mpAll({ t: 'input', x: Math.round(tx), y: Math.round(ty) });
+    me.send({ t: 'input', x: Math.round(tx), y: Math.round(ty) });
     human.ptx = tx; human.pty = ty;                               // predict yourself — everyone else is playback
     showTap(tx, ty);
   } else if (MODE === 'solo') {
@@ -936,80 +936,68 @@ function soloRoster() {
 }
 
 // ---------- HOST mode ----------
+function hostMsg(m) {                                                // phones' intent; `id` is stamped by the SDK
+  if (m.t === 'input' && started && phase === 'quiz') {
+    const p = byId[m.id];
+    if (p && p.remote && !p.dead && p.state !== 'quiz') {
+      const b = BOUNDS();
+      p.tx = Math.max(b.x0, Math.min(b.x1, +m.x || 0));
+      p.ty = Math.max(b.y0, Math.min(b.y1, +m.y || 0));
+    }
+  } else if (m.t === 'answer' && started) {
+    const p = byId[m.id];
+    if (p && p.remote && p.state === 'quiz' && p.quizDef && m.n === p.quizN) {   // stale answers (to an expired offer) are dropped
+      const right = m.choice === p.quizDef.c;
+      const r2 = applyQuizResult(p, right);
+      r2.correct = p.quizDef.c;
+      mpTo(m.id, Object.assign({ t: 'quizres' }, r2));
+      if (right) { if (p.quizQ && quizzes.indexOf(p.quizQ) >= 0) consumeQuiz(p.quizQ); }
+      else if (p.quizQ) lockQuiz(p, p.quizQ);                   // wrong: the quiz stays for everyone else
+      releaseQuiz(p);
+    }
+  }
+}
 async function initHost() {
   const lobbyEl = document.getElementById('lobby');
   lobbyEl.style.display = 'flex';
   banner.textContent = '\u{1F4F1} waiting for players — scan to join';
-  const res = await fetch('/api/room', { method: 'POST' });
-  const { code } = await res.json();
-  const joinUrl = location.origin + '/sq/' + code;
-  document.getElementById('roomcode').textContent = code;
-  const qr = window.qrcode(0, 'M');
-  qr.addData(joinUrl); qr.make();
-  document.getElementById('qrbox').innerHTML = qr.createImgTag(5, 8);
-  document.getElementById('joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
+  try { room = await AhaRoom.host(); }
+  catch (e) { banner.textContent = '⚠ could not open a room — reload'; return; }
+  document.getElementById('roomcode').textContent = room.code;
+  document.getElementById('joinurl').textContent = room.joinUrl.replace(/^https?:\/\//, '');
+  room.qr().then(d => { if (d) document.getElementById('qrbox').innerHTML = '<img alt="QR code to join" src="' + d + '">'; });
   const namesEl = document.getElementById('lobbynames');
-  const renderNames = () => {
-    namesEl.innerHTML = lobby.size
-      ? [...lobby.values()].map(n => '<span class="lname">⚔ ' + n.replace(/[<>&]/g, '') + '</span>').join('')
-      : '<i>nobody yet — scan the code!</i>';
+  const renderNames = list => {
+    const here = list.filter(p => p.online);
+    namesEl.innerHTML = here.length ? here.map(p => '<span class="lname">⚔ ' + p.name + '</span>').join('') : '<i>nobody yet — scan the code!</i>';
   };
-  renderNames();
-  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-  const hostMsg = ev => {
-    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-    if (m.t === 'join') {
-      lobby.set(m.id, m.name); renderNames();
-      const back = byId[m.id];
-      if (back) { back.remote = true; back.tx = null; }            // their knight is theirs again
-      if (started) mpTo(m.id, { t: 'start', roster: players.map(p => [p.id, p.name, p.c, p.t]), late: back ? 0 : 1 });
-    } else if (m.t === 'leave') {
-      lobby.delete(m.id); renderNames();
-      const p = byId[m.id];
-      if (p && !p.dead) { p.remote = false; p.tx = null; if (p.state === 'quiz') releaseQuiz(p); }   // their knight fights on as a bot
-    } else if (m.t === 'input' && started && phase === 'quiz') {
-      const p = byId[m.id];
-      if (p && p.remote && !p.dead && p.state !== 'quiz') {
-        const b = BOUNDS();
-        p.tx = Math.max(b.x0, Math.min(b.x1, +m.x || 0));
-        p.ty = Math.max(b.y0, Math.min(b.y1, +m.y || 0));
-      }
-    } else if (m.t === 'answer' && started) {
-      const p = byId[m.id];
-      if (p && p.remote && p.state === 'quiz' && p.quizDef && m.n === p.quizN) {   // stale answers (to an expired offer) are dropped
-        const right = m.choice === p.quizDef.c;
-        const r2 = applyQuizResult(p, right);
-        r2.correct = p.quizDef.c;
-        mpTo(m.id, Object.assign({ t: 'quizres' }, r2));
-        if (right) { if (p.quizQ && quizzes.indexOf(p.quizQ) >= 0) consumeQuiz(p.quizQ); }
-        else if (p.quizQ) lockQuiz(p, p.quizQ);                   // wrong: the quiz stays for everyone else
-        releaseQuiz(p);
-      }
+  renderNames([]);
+  const roster = () => players.map(p => [p.id, p.name, p.c, p.t]);
+  const told = new Set();                                            // phones that hold this game's roster
+  const tell = id => { told.add(id); mpTo(id, { t: 'start', roster: roster(), late: byId[id] ? 0 : 1 }); };
+  // ownership follows presence, so it also holds when the big screen reconnects (the roster replays with no join events)
+  room.on('players', list => {
+    renderNames(list);
+    for (const pl of list) {
+      const p = byId[pl.id];
+      if (pl.online) { if (p && !p.remote) { p.remote = true; p.tx = null; } if (started && !told.has(pl.id)) tell(pl.id); }   // their knight is theirs again
+      else if (p && p.remote && !p.dead) { p.remote = false; p.tx = null; if (p.state === 'quiz') releaseQuiz(p); }         // their knight fights on as a bot
     }
-  };
-  const connectHost = () => {
-    const ws = new WebSocket(proto + location.host + '/ws/' + code + '?role=host');
-    sock = ws;
-    ws.onmessage = hostMsg;
-    ws.onopen = () => { if (started) banner.textContent = ''; };
-    ws.onclose = () => {
-      if (ws !== sock) return;
-      if (started) banner.textContent = '⚠ room link lost — reconnecting…';
-      setTimeout(() => { if (ws === sock) connectHost(); }, 1200);   // players re-register via their own reconnects
-    };
-  };
-  connectHost();
+  });
+  room.on('join', ({ id }) => { const p = byId[id]; if (p) { p.remote = true; p.tx = null; } if (started) tell(id); });   // a reloaded phone needs the roster again
+  room.on('msg', hostMsg);
+  room.on('status', s => { if (started) banner.textContent = s === 'reconnecting' ? '⚠ room link lost — reconnecting…' : ''; });
   document.getElementById('startbtn').addEventListener('click', () => {
     if (started) return;
     started = true;
     lobbyEl.style.display = 'none';
     const KITS = shuffle(COLORS.flatMap(c => TYPES.map(t => ({ c, t }))));
-    const remotes = [...lobby.entries()];
+    const remotes = [...room.players.values()].filter(p => p.online);
     const total = Math.max(8, Math.min(20, remotes.length + 7));
     players = [];
-    remotes.forEach(([id, name], i) => {
+    remotes.forEach((r, i) => {
       const k = KITS[i % KITS.length];
-      players.push(fighterProps({ id, name, c: k.c, t: k.t, remote: true }));
+      players.push(fighterProps({ id: r.id, name: r.name, c: k.c, t: k.t, remote: true }));
     });
     for (let i = remotes.length; i < total; i++) {
       const k = KITS[i % KITS.length];
@@ -1023,7 +1011,8 @@ async function initHost() {
     quizLeft = quizTotal;
     for (let i = 0; i < Math.max(3, Math.round(players.length / 3)); i++) spawnQuiz();
     pop('❓ QUIZ TIME ❓');
-    mpAll({ t: 'start', roster: players.map(p => [p.id, p.name, p.c, p.t]) });
+    remotes.forEach(r => told.add(r.id));
+    mpAll({ t: 'start', roster: roster() });
   });
 }
 let snapAcc = 0;
@@ -1045,55 +1034,29 @@ let snapA = null, snapB = null;
 const clientQuizVis = new Map();
 const clientArrows = [];
 function initClient() {
-  const jb = document.getElementById('joinbox');
+  const jb = document.getElementById('joinbox'), jstatus = document.getElementById('jstatus');
+  const jname = document.getElementById('jname'), jbtn = document.getElementById('jbtn');
   jb.style.display = 'flex';
   banner.textContent = '';
-  const jstatus = document.getElementById('jstatus');
-  const tokKey = 'tk-sq-tok-' + JOIN_CODE, nameKey = 'tk-sq-name-' + JOIN_CODE;
-  let token = '';
-  try {
-    token = localStorage.getItem(tokKey) || '';
-    if (!token) { token = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(tokKey, token); }
-  } catch (e) {}
-  let retries = 0;
-  const doJoin = name => {
-    joinName = name;
-    try { localStorage.setItem(nameKey, name); } catch (e) {}
-    document.getElementById('jname').style.display = 'none';
-    document.getElementById('jbtn').style.display = 'none';
-    jstatus.textContent = retries ? 'reconnecting…' : 'joining…';
-    const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const ws = new WebSocket(proto + location.host + '/ws/' + JOIN_CODE + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token));
-    sock = ws;
-    ws.onopen = () => { retries = 0; };
-    ws.onmessage = ev => {
-      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-      lastMsgAt = performance.now();
-      onClientMsg(m, jb, jstatus);
-    };
-    ws.onclose = () => {
-      if (ws !== sock || over) return;                            // superseded socket, or game finished
-      if (!started) jstatus.textContent = '⚠ reconnecting…';
-      else banner.textContent = '⚠ reconnecting…';
-      retries++;
-      setTimeout(() => { if (ws === sock && !over) doJoin(joinName); }, Math.min(5000, 800 * retries));
-    };
-  };
-  clientReconnect = () => { if (joinName && sock && sock.readyState > 1 && !over) doJoin(joinName); };
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) clientReconnect(); });
-  document.getElementById('jbtn').addEventListener('click', () => {
-    doJoin((document.getElementById('jname').value || '').trim() || 'Knight ' + Math.floor(rnd(2, 99)));
+  jname.style.display = jbtn.style.display = 'none';
+  jstatus.textContent = 'joining…';                                  // a reload rejoins silently: the SDK asks for a name only when it has none
+  const askName = () => new Promise(res => {
+    jname.style.display = jbtn.style.display = '';
+    jstatus.textContent = '';
+    const go = () => { jname.style.display = jbtn.style.display = 'none'; jstatus.textContent = 'joining…'; res((jname.value || '').trim() || 'Knight ' + Math.floor(rnd(2, 99))); };
+    jbtn.addEventListener('click', go);
+    jname.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
   });
-  let savedName = '';
-  try { savedName = localStorage.getItem(nameKey) || ''; } catch (e) {}
-  if (savedName) { jstatus.textContent = 'reconnecting…'; doJoin(savedName); }   // reload = seamless rejoin
-  else { try { document.getElementById('jname').value = ''; } catch (e) {} }
+  me = AhaRoom.join({ askName });
+  me.on('welcome', w => { myId = w.id; jstatus.innerHTML = '✅ joined as <b>' + w.name + '</b><br>waiting for the host to start…'; });
+  me.on('status', s => {
+    const msg = s === 'reconnecting' ? '⚠ reconnecting…' : s === 'waiting-for-host' ? '⌛ waiting for the big screen…' : s === 'host-left' ? '⚠ the host has left the island' : '';
+    if (msg) (started ? banner : jstatus).textContent = msg;
+  });
+  me.on('msg', m => { lastMsgAt = performance.now(); onClientMsg(m, jb); });
 }
-function onClientMsg(m, jb, jstatus) {
-  if (m.t === 'welcome') {
-    myId = m.id;
-    jstatus.innerHTML = '✅ joined as <b>' + m.name.replace(/[<>&]/g, '') + '</b><br>waiting for the host to start…';
-  } else if (m.t === 'start') {
+function onClientMsg(m, jb) {
+  if (m.t === 'start') {
     started = true;
     spectate = !m.roster.some(r => r[0] === myId);              // rejoining players get their own knight back
     if (players.length) { jb.style.display = 'none'; human = byId[myId] || null; if (human) { human.px = human.x; human.py = human.y; } return; }
@@ -1115,7 +1078,7 @@ function onClientMsg(m, jb, jstatus) {
     }
   } else if (m.t === 'quiz') {
     fillModal({ q: m.q, a: m.a }, (i, btns) => {
-      mpAll({ t: 'answer', choice: i, n: m.n });
+      me.send({ t: 'answer', choice: i, n: m.n });
       window.__qbtns = btns; window.__qchoice = i;
     });
   } else if (m.t === 'quizres') {
@@ -1131,8 +1094,6 @@ function onClientMsg(m, jb, jstatus) {
     if (p) addCrown(p);
     pop('\u{1F451} ' + m.name + '!');
     confetti();
-  } else if (m.t === 'hostgone') {
-    banner.textContent = '⚠ the host has left the island';
   }
 }
 function clientRender(dt) {
@@ -1248,7 +1209,7 @@ app.ticker.add(() => {
 window.arrows = arrows; window.OBST = OBST; window.quizzes = quizzes;
 window.inObst = inObst; window.__world = world; window.__isFollow = () => followMode;
 window.__byId = byId; window.__mode = MODE;
-window.__sock = () => sock;
+window.__room = () => room; window.__me = () => me;
 Object.defineProperty(window, 'players', { get: () => players });
 Object.defineProperty(window, 'human', { get: () => human });
 Object.defineProperty(window, 'over', { get: () => over });

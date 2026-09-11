@@ -67,7 +67,7 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
   background:linear-gradient(#e8d9a8, #cbb877); border:3px solid var(--ink); border-radius:16px;
   box-shadow:0 6px 0 rgba(0,0,0,.35); color:var(--ink); text-align:center; }
 #lobby h2, #joinbox h2 { margin:0; font-size:24px; text-shadow:0 1px 0 rgba(255,255,255,.45); }
-#qrbox img { image-rendering:pixelated; border:6px solid #fff; border-radius:8px; }
+#qrbox img { width:224px; max-width:70vw; image-rendering:pixelated; border:6px solid #fff; border-radius:8px; }
 #joinurl { font-size:13px; opacity:.8; word-break:break-all; }
 #roomcode { font-size:26px; letter-spacing:5px; color:#a5620e; }
 #lobbynames { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; min-height:26px; font-size:14px; }
