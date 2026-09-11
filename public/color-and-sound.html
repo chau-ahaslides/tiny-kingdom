@@ -45,6 +45,7 @@
     transition: transform 150ms ease, box-shadow 150ms ease;
   }
   .sw[aria-pressed="true"] { transform: scale(1.22); box-shadow: 0 0 0 2px rgba(51,50,45,.55); }
+  #sw5 { background: #fbfaf5; border-color: rgba(51,50,45,.38); }   /* white: always there, whatever the palette */
   .sw:focus-visible { outline: 2px solid #33322D; outline-offset: 3px; }
 
   button.t {
@@ -197,6 +198,7 @@
     <button class="sw" id="sw2" aria-pressed="false" aria-label="Colour 3"></button>
     <button class="sw" id="sw3" aria-pressed="false" aria-label="Colour 4"></button>
     <button class="sw" id="sw4" aria-pressed="false" aria-label="Colour 5"></button>
+    <button class="sw" id="sw5" aria-pressed="false" aria-label="White" title="White — paper comes back"></button>
     <button class="t" id="mix" aria-pressed="true">Mix</button>
     <button class="t" id="shuffle" aria-label="New palette">New hues</button>
   </div>
@@ -235,6 +237,11 @@ import { AhaRoom } from '/js/aha-room.js';
   const pctx = paint.getContext('2d');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PAPER = '#F2EFE7';
+  // White is always on the dock, whatever the palette. Watercolour has no white pigment, so it
+  // is paper coming back: laid on top (never multiplied), and it lightens the paper's load so
+  // later colours soak again. It hums as a soft pad instead of taking a hue's voice.
+  const WHITE_IX = 5, WHITE = { h: 42, s: 14, l: 97, white: true };
+  const colorAt = ci => (ci === WHITE_IX ? WHITE : palette[ci]);
 
   let W, H, dpr, short;              // the sheet, in CSS px
   let VW = 0, VH = 0;                // the screen; equal to the sheet on the big screen, a window onto it on phones
@@ -447,7 +454,7 @@ import { AhaRoom } from '/js/aha-room.js';
   function enqueue(o) {
     const c = o.color || pick(palette);
     const b = Object.assign({
-      voice: voiceOf(c.h),
+      voice: c.white ? 'pad' : voiceOf(c.h), white: !!c.white,
       rot: rand(0, 6.28), elong: rand(0.65, 1.7),
       h: c.h + rand(-8, 8), s: c.s, l: c.l,
       alpha: rand(0.013, 0.028), layers: (rand(20, 38) | 0),
@@ -470,12 +477,20 @@ import { AhaRoom } from '/js/aha-room.js';
       const loaded = inkRead(b.cx, b.cy, b.r);
       b.soak = clamp(1 - loaded / SAT, 0, 1) * 0.42 + 0.58;   // never fully refuses
       b.load = loaded;           // how much is already down under this pool
-      inkAdd(b.cx, b.cy, b.r * 0.85, b.alpha * b.layers * b.soak);
+      inkAdd(b.cx, b.cy, b.r * 0.85, b.white ? -b.alpha * b.layers * 0.6 : b.alpha * b.layers * b.soak);   // white lifts the load
     }
     const t = b.done / b.layers;
     const pts = deform(b.base, 1, 0.10 + t * 0.05, 0.7);
     touch();
     pctx.save();
+    if (b.white) {                                     // paper coming back: laid on top, never multiplied
+      pctx.globalCompositeOperation = 'source-over';
+      pctx.globalAlpha = b.alpha * (0.6 + Math.random() * 0.8) * (boost || 1) * 1.7;
+      pctx.fillStyle = `hsl(${WHITE.h + gauss() * 3} ${WHITE.s}% ${clamp(96 + gauss() * 1.5, 93, 99)}%)`;
+      pctx.fill(toPath(pts));
+      pctx.restore();
+      return;
+    }
     // once the paper is loaded, pigment settles on the surface (source-over) and
     // converges to its own mass tone instead of multiplying toward black
     const settle = Math.random() < clamp((b.load - 0.55) / 0.45, 0, 0.93);
@@ -489,6 +504,7 @@ import { AhaRoom } from '/js/aha-room.js';
   }
 
   function granulate(b) {
+    if (b.white) return;                               // no dark grains in white
     pctx.save();
     pctx.clip(b.path);
     pctx.globalCompositeOperation = 'multiply';
@@ -522,7 +538,8 @@ import { AhaRoom } from '/js/aha-room.js';
         rot: b.rot + rand(-0.5, 0.5),
         cx: b.cx + Math.cos(a) * d * b.elong, cy: b.cy + Math.sin(a) * d,
         r: Math.max(3, b.r * rand(0.48, 0.84)), gen: b.gen + 1, spread: true,
-        color: jump ? palette[4]
+        color: b.white ? WHITE
+                    : jump ? palette[4]
                     : b.lock
                       ? { h: b.h + rand(-3, 3), s: b.s + rand(-4, 4), l: b.l + rand(-3, 5) }
                       : { h: b.h + rand(-drift, drift), s: b.s + rand(-6, 10), l: b.l + rand(-4, 8) }
@@ -534,7 +551,8 @@ import { AhaRoom } from '/js/aha-room.js';
   function settle(job) {
     if (job.decorated || !job.spine || job.spine.length < 2) return;
     job.decorated = true;
-    const pal = (job.ci === null || job.ci === undefined) ? palette : [palette[job.ci]];
+    const pal = (job.ci === null || job.ci === undefined) ? palette : [colorAt(job.ci)];
+    if (pal[0].white) return;                          // white leaves no dark spatter
     const mid = job.spine[(job.spine.length / 2) | 0];
     const n = 25 + (Math.random() * 70 | 0);
     pctx.save();
@@ -630,7 +648,8 @@ import { AhaRoom } from '/js/aha-room.js';
     if (c.currentTime < droneUntil) return;
     if (CFG.drone <= 0) return;
     droneUntil = c.currentTime + 5.2;
-    const k = brush.color === null ? 'pad' : voiceOf(palette[brush.color].h);
+    const cc = brush.color === null ? null : colorAt(brush.color);
+    const k = (!cc || cc.white) ? 'pad' : voiceOf(cc.h);
     playNote(k, ROOT * 0.5, CFG.drone, 6.4, c.currentTime + 0.02, 0.22);
   }
 
@@ -1070,7 +1089,7 @@ import { AhaRoom } from '/js/aha-room.js';
   }
 
   function paintOutline(ctx, st, B, layers, alphaMul) {
-    const c = palette[st.ci];
+    const c = colorAt(st.ci);
     const loaded = strokeLoad(st);
     const soak = clamp(1 - loaded / SAT, 0, 1) * 0.42 + 0.58;
     st.soak = soak;
@@ -1089,11 +1108,17 @@ import { AhaRoom } from '/js/aha-room.js';
       if (!ol || ol.length < 3) continue;
       const warp = deform(ol.map(q => ({ x: q[0], y: q[1] })), 1, B.warp, 0.7);
       ctx.save();
-      ctx.globalCompositeOperation = settle ? 'source-over' : 'multiply';
-      ctx.globalAlpha = rand(B.alpha[0], B.alpha[1]) * alphaMul * soak * (settle ? 1.35 : 1);
-      const ll = (settle ? c.l - 10 : c.l) + gauss() * 5 + (core ? -4 : 3);
-      const ss = (settle ? c.s + 5 : c.s) + gauss() * 6;
-      ctx.fillStyle = `hsl(${c.h + gauss() * 5} ${clamp(ss, 15, 92)}% ${clamp(ll, 34, 92)}%)`;
+      if (c.white) {                                    // paper coming back
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = rand(B.alpha[0], B.alpha[1]) * alphaMul * 1.7;
+        ctx.fillStyle = `hsl(${c.h + gauss() * 3} ${c.s}% ${clamp(96 + gauss() * 1.5, 93, 99)}%)`;
+      } else {
+        ctx.globalCompositeOperation = settle ? 'source-over' : 'multiply';
+        ctx.globalAlpha = rand(B.alpha[0], B.alpha[1]) * alphaMul * soak * (settle ? 1.35 : 1);
+        const ll = (settle ? c.l - 10 : c.l) + gauss() * 5 + (core ? -4 : 3);
+        const ss = (settle ? c.s + 5 : c.s) + gauss() * 6;
+        ctx.fillStyle = `hsl(${c.h + gauss() * 5} ${clamp(ss, 15, 92)}% ${clamp(ll, 34, 92)}%)`;
+      }
       ctx.fill(toPath(warp));
       ctx.restore();
     }
@@ -1111,7 +1136,7 @@ import { AhaRoom } from '/js/aha-room.js';
   }
 
   function paintAcrylic(ctx, st, B, smear, preview) {
-    const c = palette[st.ci];
+    const c = colorAt(st.ci);
     const pts = st.pts;
     if (pts.length < 2) return;
     if (st.edge === undefined) {                 // a painter squares the brush to the stroke
@@ -1187,7 +1212,8 @@ import { AhaRoom } from '/js/aha-room.js';
 
   // dry-brush striations along the spine: the bristle marks inside the stroke
   function striate(ctx, st, B) {
-    const c = palette[st.ci];
+    const c = colorAt(st.ci);
+    if (c.white) return;                               // no dark bristle marks in white
     const n = Math.round(9 * (B.gran || 1));
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
@@ -1248,7 +1274,7 @@ import { AhaRoom } from '/js/aha-room.js';
     if (!st || st.pts.length < 2) return;
     st.done = true;
     touch();
-    const B = BRUSHES[st.type], c = palette[st.ci];
+    const B = BRUSHES[st.type], c = colorAt(st.ci);
     if (B.mat === 'acrylic') {
       // pick up whatever is already on the canvas at a few points and drag it
       const smear = [];
@@ -1287,7 +1313,7 @@ import { AhaRoom } from '/js/aha-room.js';
       pctx.clip(path);
       striate(pctx, st, B);
       pctx.globalCompositeOperation = 'multiply';
-      for (let i = 0; i < 90 * (B.gran || 1); i++) {
+      for (let i = 0; i < (c.white ? 0 : 90 * (B.gran || 1)); i++) {
         const q = st.pts[(Math.random() * st.pts.length) | 0];
         pctx.globalAlpha = rand(0.02, 0.07) * (st.soak === undefined ? 1 : st.soak);
         pctx.fillStyle = `hsl(${c.h} ${c.s}% ${clamp(c.l - rand(8, 24), 34, 90)}%)`;
@@ -1301,7 +1327,7 @@ import { AhaRoom } from '/js/aha-room.js';
     for (let i = 1; i < st.pts.length; i++) {
       acc += Math.hypot(st.pts[i][0] - st.pts[i - 1][0], st.pts[i][1] - st.pts[i - 1][1]);
       if (acc >= st.size * 0.5) {
-        inkAdd(st.pts[i][0], st.pts[i][1], st.size * 0.5, 0.45);
+        inkAdd(st.pts[i][0], st.pts[i][1], st.size * 0.5, c.white ? -0.3 : 0.45);   // white lifts the load
         acc = 0;
       }
     }
@@ -1472,13 +1498,13 @@ import { AhaRoom } from '/js/aha-room.js';
 
   function dab(p, x, y, job, forceIx, r0, ang) {
     const ci = forceIx === undefined ? chosenIndex(p) : forceIx;
-    const c = palette[ci];
+    const c = colorAt(ci);
     const B = BRUSHES[p.brush.type] || BRUSHES.wash;
     if (soundOn) {
       tonicDrone();
       const now = performance.now();
       const locked = forceIx !== undefined ? true : p.brush.color !== null;
-      let kind = voiceOf(c.h);
+      let kind = c.white ? 'pad' : voiceOf(c.h);         // white hums, it does not take a hue's voice
       let shift = 0;
       if (now - (lastByVoice[kind] || 0) < VOICE_GAP[kind] * CFG.gap && !locked) {
         shift = (VOICE_OCT[kind] || 0) - (VOICE_OCT.harp || 0);   // only Mix lets the harp cover
@@ -1756,7 +1782,7 @@ import { AhaRoom } from '/js/aha-room.js';
       if (!Array.isArray(pt)) return;
       p.brush.type = BRUSHES[m.b] ? m.b : 'wash';
       p.brush.size = SIZES[m.z] ? m.z : 'M';
-      p.brush.color = (Number.isInteger(m.c) && m.c >= 0 && m.c < 5) ? m.c : null;
+      p.brush.color = (Number.isInteger(m.c) && m.c >= 0 && m.c <= WHITE_IX) ? m.c : null;
       p.sid = m.s; p.t0 = performance.now(); p.real = !!m.r;
       p.scale = clamp(+m.k || 1, 0.1, 4);               // the phone was zoomed in (finer) or out (broader)
       down(p, dq(pt[0], 1e4) * W, dq(pt[1], 1e4) * H, clamp(dq(pt[2], 1e4), 0.02, 1), p.real);
@@ -2165,10 +2191,10 @@ import { AhaRoom } from '/js/aha-room.js';
   /* ---------- controls ---------- */
   function setColor(i) {
     brush.color = i;
-    for (let k = 0; k < 5; k++) document.getElementById('sw' + k).setAttribute('aria-pressed', String(k === i));
+    for (let k = 0; k < 6; k++) document.getElementById('sw' + k).setAttribute('aria-pressed', String(k === i));
     document.getElementById('mix').setAttribute('aria-pressed', String(i === null));
   }
-  for (let i = 0; i < 5; i++) document.getElementById('sw' + i).onclick = () => setColor(i);
+  for (let i = 0; i < 6; i++) document.getElementById('sw' + i).onclick = () => setColor(i);
   document.getElementById('mix').onclick = () => setColor(null);
   document.getElementById('shuffle').onclick = () => newPalette();
 

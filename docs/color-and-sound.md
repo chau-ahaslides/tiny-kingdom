@@ -36,6 +36,14 @@ Host → phones, through the SDK:
 - frames: 1280 px on the long side, WebP quality 0.6, only when the sheet changed, every 0.7 s
   plus 30 ms per phone, capped at 2.5 s; `frames.now()` after Undo and Clear.
 
+## White
+
+A sixth swatch, white, is always on the dock, whatever the palette (New hues never changes it).
+Watercolour has no white pigment, so white is paper coming back: it is laid on top with
+source-over compositing instead of multiplied, it leaves no dark grains, bristle marks or
+spatter, and it lightens the paper's ink load so later colours soak into it again. It sounds as a
+soft pad rather than taking a hue's voice. On the wire it is colour index 5.
+
 ## The phone's view: a window onto the sheet
 
 The phone's whole screen is painting area. The sheet keeps the big screen's shape and is sized so
