@@ -9,13 +9,10 @@ const seeded = (s) => () => { s = (s * 16807) % 2147483647; return s / 214748364
 // Plays a whole game with bots answering right with probability `right`.
 function play({ total, right, seed = 1, rules }) {
   const S = TR.create({ rand: seeded(seed), rules: Object.assign({ botRight: right }, rules) });
-  TR.setBots(S, total);
-  while (S.phase !== 'over') {
-    TR.startWave(S);
-    let t = 0;
-    while (S.phase === 'wave' && t < 300) { TR.step(S, 1 / 30); TR.takeEvents(S); t += 1 / 30; }
-    assert.ok(t < 300, 'a wave always ends');
-  }
+  TR.setBots(S, total); TR.startWave(S);
+  let t = 0;
+  while (S.phase !== 'over' && t < 900) { TR.step(S, 1 / 30); TR.takeEvents(S); t += 1 / 30; }
+  assert.ok(t < 900, 'a game always ends');
   return { survived: S.survived, won: S.won, guns: S.guns.length };
 }
 
@@ -57,6 +54,17 @@ test('a right answer earns a gun to place; a streak makes it bigger; a wrong ans
   assert.equal(S.guns.length, 2, 'guns placed earlier stay');
 });
 
+test('waves run on a fixed clock: the next horde marches when the clock runs out, whatever is left of this one', () => {
+  const S = TR.create({ rand: seeded(3), rules: { quizTime: 2, placeTime: 1, between: 1, towerHp: 999 } });
+  TR.addPlayer(S, 'a', 'Ann'); TR.startWave(S);
+  assert.equal(TR.startWave(S), false, 'no starting waves by hand mid-wave'); TR.takeEvents(S);
+  let t = 0, waves = [];
+  while (t < 9) { TR.step(S, 1 / 30); t += 1 / 30; waves.push(...TR.takeEvents(S).filter(e => e.e === 'wave').map(e => e.wave)); }
+  assert.deepEqual(waves, [2, 3], 'a new wave every four seconds');
+  assert.ok(S.enemies.length > 4, 'gremlins from several waves are on the road together: ' + S.enemies.length);
+  assert.equal(S.survived, 2);
+});
+
 test('the quiz closes after quizTime; an unanswered quiz breaks the streak too', () => {
   const S = TR.create({ rand: seeded(8), rules: { quizTime: 2 } });
   TR.addPlayer(S, 'a', 'Ann'); TR.startWave(S);
@@ -71,7 +79,7 @@ test('gremlins that reach the tower bite it; the game ends when it falls, counti
   TR.addPlayer(S, 'a', 'Ann'); TR.startWave(S);
   let reached = 0, t = 0;
   while (S.phase === 'wave' && t < 120) { TR.step(S, 1 / 30); t += 1 / 30; reached += TR.takeEvents(S).filter(e => e.e === 'reach').length; }
-  assert.equal(S.phase, 'over'); assert.equal(S.won, false); assert.equal(S.survived, 0);
+  assert.equal(S.phase, 'over'); assert.equal(S.won, false); assert.equal(S.survived, S.wave - 1, 'the wave it fell in does not count');
   assert.equal(reached, 3, 'three bites of one each');
 });
 
@@ -111,7 +119,7 @@ test('difficulty: a room that is right half the time rarely holds three waves', 
 });
 
 test('difficulty: a room that is always right holds well past three waves but still falls', () => {
-  for (let seed = 1; seed <= 4; seed++) { const r = play({ total: 8, right: 1, seed }); assert.ok(r.survived >= 4, `seed ${seed} survived ${r.survived}`); assert.equal(r.won, false); }
+  for (let seed = 1; seed <= 4; seed++) { const r = play({ total: 8, right: 1, seed }); assert.ok(r.survived >= 4, `seed ${seed} survived ${r.survived}`); assert.equal(r.won, false, `seed ${seed} won`); }
 });
 
 test('difficulty: a room that is mostly wrong falls in the first wave or two', () => {
@@ -121,11 +129,10 @@ test('difficulty: a room that is mostly wrong falls in the first wave or two', (
 
 test('a wave step with 40 guns and a big wave is cheap', () => {
   const S = TR.create({ rand: seeded(9), rules: { botRight: 1, botAnsMin: 0.1, botAnsMax: 0.2, botPlace: 0.1 } }); TR.setBots(S, 16);
-  for (let w = 0; w < 3; w++) { TR.startWave(S); let t = 0; while (S.phase === 'wave' && t < 300) { TR.step(S, 1 / 30); TR.takeEvents(S); t += 1 / 30; } }
+  TR.startWave(S); { let t = 0; while (S.phase === 'wave' && t < 60) { TR.step(S, 1 / 30); TR.takeEvents(S); t += 1 / 30; } }
   assert.ok(S.guns.length >= 40, `${S.guns.length} guns`);
-  S.phase = 'between'; TR.startWave(S);
   const t0 = performance.now();
-  for (let i = 0; i < 3000; i++) { TR.step(S, 1 / 60); TR.snapshot(S); TR.takeEvents(S); if (S.phase !== 'wave') { S.phase = 'between'; TR.startWave(S); } }
+  for (let i = 0; i < 3000; i++) { TR.step(S, 1 / 60); TR.snapshot(S); TR.takeEvents(S); }
   const per = (performance.now() - t0) / 3000;
   assert.ok(per < 0.6, `${per.toFixed(3)} ms per step+snapshot`);
 });

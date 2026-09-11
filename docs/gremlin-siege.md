@@ -63,7 +63,7 @@ Phone events: `ready`, `joined`, `welcome`, `quiz`, `answered`, `placedOwn`, `ov
 
 ## Pace of a wave
 
-`quizTime` seconds to answer while the gremlins already march, then `placeTime` seconds to drag the gun into place (a gun not placed in time is lost), then the wave plays out, then `between` seconds to get ready for the next quiz. All three are rules and can be overridden.
+`quizTime` seconds to answer while the gremlins already march, then `placeTime` seconds to drag the gun into place (a gun not placed in time is lost), then `between` seconds to watch. Then the next wave starts on the clock, whatever is left of this one, so hordes overlap. After the last wave the road has to clear for the win. All three durations are rules and can be overridden.
 
 ## Balance
 

@@ -21,7 +21,7 @@ function link(url, onMsg, onState) {
 async function openRoom() { const res = await fetch((CONFIG.api || '') + '/api/room', { method: 'POST' }); return (await res.json()).code; }
 
 /* ===================== HOST (big screen: runs the rules, streams the state) ===================== */
-const host = { link: null, code: '', view: null, S: null, total: CONFIG.host.partySize, lastSnap: 0, betweenT: 0, running: false, answers: new Map(), fx: { s: [], b: [] } };
+const host = { link: null, code: '', view: null, S: null, total: CONFIG.host.partySize, lastSnap: 0, running: false, answers: new Map(), fx: { s: [], b: [] } };
 async function startHost() {
   show('s-hostlobby');
   try { host.code = await openRoom(); } catch (e) { toast('Could not open a room — this page has to be served by the game server.'); return; }
@@ -74,15 +74,16 @@ $('#b-start').onclick = async () => {
   show('s-hostgame'); host.running = true; SFX.startMusic(); emit('start', { players: TR.roster(S) });
   beginWave();
 }
-function beginWave() {
-  const S = host.S;
-  host.answers.clear();
-  TR.startWave(S);
+// The first wave is started by hand; every later one starts on the clock inside the rules and arrives as a 'wave' event.
+function beginWave() { TR.startWave(host.S); onWave(); }
+function onWave() {
+  const S = host.S; host.answers.clear(); host.lastCount = 0;
+  const count = S.queue.filter(q => q.wave === S.wave).length;
   host.link.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, left: S.rules.quizTime });
   sendRoster();
-  bigMsg('Wave ' + S.wave + ' — ' + S.queue.length + ' ' + T.enemies + ' marching!', 2000); SFX.play('wave'); SFX.play('quiz');
-  emit('wave', { wave: S.wave, enemies: S.queue.length, quiz: { q: S.quiz.q, opts: S.quiz.opts } });
-  renderQuiz(); $('#h-quiz').classList.add('on'); $('#b-next').style.display = 'none';
+  bigMsg('Wave ' + S.wave + ' — ' + count + ' ' + T.enemies + ' marching!', 2000); SFX.play('wave'); SFX.play('quiz');
+  emit('wave', { wave: S.wave, enemies: count, quiz: { q: S.quiz.q, opts: S.quiz.opts } });
+  renderQuiz(); $('#h-quiz').classList.add('on');
 }
 function preload() {
   const names = new Set(['dungeon/coin', 'dungeon/character-orc', 'kit/enemy-ufo-a']);
@@ -118,8 +119,8 @@ function hostSim() {
   const S = host.S, view = host.view; if (!S || !view) return;
   const now = performance.now(); let elapsed = Math.min(2, (now - (host.simT || now)) / 1000); host.simT = now;
   if (host.paused) return;                       // the clock simply does not advance while paused
-  if (host.running && S.phase === 'wave') {
-    while (elapsed > 0) { const dt = Math.min(1 / 60, elapsed); elapsed -= dt; TR.step(S, dt); if (S.phase !== 'wave') break; }
+  if (host.running && (S.phase === 'wave' || S.phase === 'final')) {
+    while (elapsed > 0) { const dt = Math.min(1 / 60, elapsed); elapsed -= dt; TR.step(S, dt); if (S.phase === 'over') break; }
     for (const ev of TR.takeEvents(S)) {
       if (ev.e === 'shot') { view.shot(ev.gun, ev.target, ev.dur, ev.splash); host.fx.s.push([ev.gun, ev.target, +ev.dur.toFixed(2), ev.splash]); const g = S.guns[ev.gun]; if (g) SFX.play(g.type === 'ballista' ? 'arrow' : g.type === 'turret' || g.type === 'crystal' ? 'turret' : 'cannon', { pitch: 0.85 + Math.random() * 0.3 }); }
       else if (ev.e === 'boom') { view.boom(ev.x, ev.z, ev.r); host.fx.b.push([+ev.x.toFixed(2), +ev.z.toFixed(2), ev.r]); SFX.play('boom', { pitch: 0.9 + Math.random() * 0.2, vol: Math.min(1.3, ev.r) }); }
@@ -131,16 +132,12 @@ function hostSim() {
       else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); emit('gunDown', { gun: ev.gun, owner: ev.owner }); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) toast('🪫 ' + p.name + "'s gun is out of ammo"); }
       else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); SFX.play('answer', { pitch: 0.8 + Math.random() * 0.5 }); }
       else if (ev.e === 'quizEnd') { renderQuiz(); SFX.play('tick'); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); }
-      else if (ev.e === 'waveEnd') { renderQuiz(); SFX.play('clear'); emit('waveEnd', { wave: S.wave, hp: Math.max(0, S.tower.hp), max: S.tower.max, board: TR.roster(S) }); host.betweenT = S.rules.between; host.lastCount = 0; bigMsg('Wave ' + S.wave + ' held! Tower at ' + Math.max(0, S.tower.hp) + ' / ' + S.tower.max, 2500); sendRoster(); }
+      else if (ev.e === 'waveEnd') { SFX.play('clear'); emit('waveEnd', { wave: ev.wave, hp: Math.max(0, S.tower.hp), max: S.tower.max, board: TR.roster(S) }); if (S.phase === 'final') { $('#h-quiz').classList.remove('on'); bigMsg('Last wave held — clear the road!', 2500); sendRoster(); } }
+      else if (ev.e === 'wave') onWave();
       else if (ev.e === 'over') finish(ev.won);
     }
     const snap = TR.snapshot(S); host.snap = snap;
     if (now - host.lastSnap > 100) { host.lastSnap = now; host.link.send(snap); if (host.fx.s.length || host.fx.b.length) { host.link.send({ t: 'fx', s: host.fx.s, b: host.fx.b }); host.fx = { s: [], b: [] }; } }
-  } else if (host.running && S.phase === 'between') {
-    host.betweenT -= elapsed;
-    if (host.betweenT <= 0) beginWave();
-    const snap = TR.snapshot(S); host.snap = snap;
-    if (now - host.lastSnap > 500) { host.lastSnap = now; host.link.send(snap); }
   }
 }
 function hostTick(ts) {
@@ -149,22 +146,22 @@ function hostTick(ts) {
   const dt = Math.min(0.1, Math.max(0.001, ((ts || performance.now()) - (host.frameT || ts || performance.now())) / 1000)); host.frameT = ts || performance.now();
   const S = host.S, snap = host.snap;
   if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh, snap.ga); }
-  if (host.running && (S.phase === 'wave' || S.phase === 'between')) {
+  if (host.running && (S.phase === 'wave' || S.phase === 'final')) {
     $('#h-hp').textContent = Math.max(0, S.tower.hp) + ' / ' + S.tower.max; const bar = $('#h-hpbar'); bar.style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%'; bar.classList.toggle('low', S.tower.hp <= S.tower.max * 0.3);
     $('#h-wave').textContent = S.wave; $('#h-guns').textContent = S.guns.filter(g => !g.dead).length;
     $('#h-enemies').textContent = snap ? snap.left : 0;
     const now = performance.now(); if (Math.floor(now / 500) !== host.boardT) { host.boardT = Math.floor(now / 500); renderBoard(); if (S.phase === 'wave' && S.quizLeft > 0) renderQuiz(); }
   }
-  if (host.running && S.phase === 'wave') $('#h-time').textContent = S.quizLeft > 0 ? '❓ ' + Math.ceil(S.quizLeft) + ' s to answer' : S.placeLeft > 0 ? '📍 ' + Math.ceil(S.placeLeft) + ' s to place guns' : '⚔️ watch the wave';
-  else if (host.running && S.phase === 'between') {
-    const n = Math.max(0, Math.ceil(host.betweenT));
-    $('#h-time').textContent = '⏳ next quiz in ' + n; $('#b-next').style.display = '';
-    if (n <= 3 && n > 0 && n !== host.lastCount) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); SFX.play(n === 1 ? 'go' : 'tick'); }
-  }
+  if (host.running && S.phase === 'wave') {
+    const watching = S.quizLeft <= 0 && S.placeLeft <= 0; const n = Math.max(0, Math.ceil(S.cycleLeft));
+    $('#h-time').textContent = S.quizLeft > 0 ? '❓ ' + Math.ceil(S.quizLeft) + ' s to answer' : S.placeLeft > 0 ? '📍 ' + Math.ceil(S.placeLeft) + ' s to place guns' : '⏳ next quiz in ' + n;
+    $('#b-next').style.display = watching ? '' : 'none';
+    if (watching && n <= 3 && n > 0 && n !== host.lastCount && S.wave < S.rules.maxWaves) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); SFX.play(n === 1 ? 'go' : 'tick'); }
+  } else if (host.running && S.phase === 'final') { $('#h-time').textContent = '⚔️ clear the road!'; $('#b-next').style.display = 'none'; }
   view.frame(host.paused ? 0 : dt);
 }
 setInterval(hostSim, 1000 / 60);
-$('#b-next').onclick = () => { host.betweenT = 0; };
+$('#b-next').onclick = () => { if (host.S && host.S.phase === 'wave') host.S.cycleLeft = 0; };
 function setPaused(on) {
   if (!host.running || host.paused === on) return;
   host.paused = on; $('#b-pause').textContent = on ? '▶ Resume' : '⏸ Pause'; SFX.play('pause', { pitch: on ? 1 : 1.4 }); emit('pause', { on });
@@ -337,11 +334,11 @@ function playerTick(ts) {
     if (s.ph === 'wave') { $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%'; if (player.pending && player.placeTime) $('#pl-time').style.width = Math.max(0, 100 * (s.ql > 0 ? 1 : s.pl / player.placeTime)) + '%'; }
     if (player.ph === 'over') {}
     else if (player.paused) setBtn('', '⏸ Paused');
-    else if (s.ph === 'between') setBtn('', '✅ Wave ' + s.w + ' held — next quiz soon…');
+    else if (s.ph === 'final') setBtn('ok', '⚔️ Last wave held — clear the road! 👹 ' + s.left);
     else if (player.pending) setBtn('hot', '📍 Place your gun' + (s.pl > 0 ? ' — ' + s.pl + ' s' : '') + '!');
     else if (s.ph === 'wave' && !player.answered && s.ql > 0) setBtn('hot', '❓ Answer the quiz — ' + s.ql + ' s');
     else if (s.ph === 'wave' && s.pl > 0) setBtn('', '📍 Guns being placed — ' + s.pl + ' s');
-    else if (s.ph === 'wave') setBtn('ok', '⚔️ Wave ' + s.w + ' · 👹 ' + s.left + ' left');
+    else if (s.ph === 'wave') setBtn('ok', '⚔️ Wave ' + s.w + ' · 👹 ' + s.left + ' · next quiz in ' + s.nl + ' s');
     else setBtn('', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…');
   }
   v.frame(player.paused ? 0 : dt);
@@ -364,7 +361,7 @@ Object.assign(GremlinSiege, {
   join(code, name) { code = String(code || '').toUpperCase(); if (!/^[A-Z0-9]{4,8}$/.test(code)) return false; if (name) joinGame(code, String(name).slice(0, 16)); else askName(code); return true; },
   start() { if (host.S && host.S.phase === 'lobby') $('#b-start').click(); },
   pause(on) { setPaused(on === undefined ? !host.paused : !!on); },
-  nextWave() { if (host.S && host.S.phase === 'between') host.betweenT = 0; },
+  nextWave() { if (host.S && host.S.phase === 'wave') host.S.cycleLeft = 0; },
   end() { if (host.running) finish(false, true); },
   setPartySize(n) { host.total = Math.max(1, Math.min(CONFIG.host.maxParty, n | 0)); if (host.S) { TR.setBots(host.S, host.total); renderRoster(); sendRoster(); } },
   state() { const S = host.S; return S ? { code: host.code, phase: S.phase, wave: S.wave, tower: { hp: Math.max(0, S.tower.hp), max: S.tower.max }, quizLeft: Math.ceil(S.quizLeft), placeLeft: Math.ceil(S.placeLeft), guns: TR.gunList(S).filter(g => !g.dead).length, players: TR.roster(S), paused: !!host.paused } : null; },

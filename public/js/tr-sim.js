@@ -50,13 +50,13 @@
     placeTime: 5,          // …then this long to drag the gun into place (a gun not placed in time is lost)
     towerHp: 10,           // attention points; every gremlin that gets through bites some off
     spawnGap: 1.0,         // seconds between gremlins leaving the spawn…
-    spawnRoom: 9,          // …shrinking for rooms bigger than this, so a big room gets a denser wave rather than a longer one
-    countBase: 2, countPerWave: 2.5, countPerPlayer: 0.8,   // gremlins per wave
-    hpGrow: 0.55,          // enemy HP compounds by this share each wave
+    spawnRoom: 11,         // …shrinking for rooms bigger than this, so a big room gets a denser wave rather than a longer one
+    countBase: 4, countPerWave: 2.5, countPerPlayer: 1.0,   // gremlins per wave
+    hpGrow: 0.65,          // enemy HP compounds by this share each wave
     hpPerPlayer: 0,        // …and grows by this share for every player beyond six (off: the gremlin count already scales with the room)
     botRight: 0.5,         // how often a bot answers right (the tuning target: half the room)
     botAnsMin: 3, botAnsMax: 10, botPlace: 2.5,
-    between: 5,            // seconds between waves: watch the field settle, get ready for the next quiz
+    between: 5,            // seconds to watch the field before the next quiz; the next horde starts marching then, whatever is left of this one
     maxStreakLevel: 4,     // gun level = min(this, streak - 1)
     godStreak: 6,          // from this streak on a right answer is God Mode: it refills the emptiest guns on the board…
     godBase: 4,            // …streak minus this many of them (streak 6 = 2 guns, 7 = 3, and so on)
@@ -120,7 +120,7 @@
     const rules = Object.assign({}, RULES, opts && opts.rules);
     return {
       rules, rand: (opts && opts.rand) || Math.random,
-      phase: 'lobby', wave: 0, time: 0, timeLeft: 0, quizLeft: 0, placeLeft: 0, quizPool: (opts && opts.quiz && opts.quiz.length) ? opts.quiz : QUIZ,
+      phase: 'lobby', wave: 0, time: 0, cycleLeft: 0, quizLeft: 0, placeLeft: 0, quizPool: (opts && opts.quiz && opts.quiz.length) ? opts.quiz : QUIZ,
       tower: { hp: rules.towerHp, max: rules.towerHp },
       players: new Map(), order: [], guns: [], enemies: [], queue: [], spawnT: 0, shots: [], quiz: null, events: [], seq: 0, eid: 0,
       won: null, survived: 0, lastQuiz: -1,
@@ -149,26 +149,32 @@
   }
 
   // ------------------------------------------------------------ waves
+  // Waves run on a fixed clock: quizTime to answer, placeTime to place, `between` to watch, then the next wave starts —
+  // whatever is left of this one keeps marching.
   function startWave(S) {
-    if (S.phase === 'over' || S.wave >= S.rules.maxWaves) return false;
-    S.wave++; S.phase = 'wave'; S.quizLeft = S.rules.quizTime; S.placeLeft = 0; S.shots = []; S.enemies = []; S.spawnT = 0;              // the first gremlin leaves the spawn on the very first step
+    if (S.phase === 'over' || S.phase === 'final' || S.phase === 'wave' || S.wave >= S.rules.maxWaves) return false;   // waves advance on the clock (endWave), not by hand
+    S.wave++; S.phase = 'wave'; S.quizLeft = S.rules.quizTime; S.placeLeft = 0; S.cycleLeft = S.rules.quizTime + S.rules.placeTime + S.rules.between;
+    if (S.wave === 1) { S.shots = []; S.enemies = []; S.queue = []; S.spawnT = 0; }        // the first gremlin leaves the spawn on the very first step
     const active = [...S.players.values()].filter(p => !p.gone).length;
-    S.queue = waveList(S.wave, active, S.rules);
+    S.queue.push(...waveList(S.wave, active, S.rules).map(kind => ({ kind, wave: S.wave })));
     const pool = S.quizPool; let qi; do { qi = Math.floor(S.rand() * pool.length); } while (pool.length > 1 && qi === S.lastQuiz);
     S.lastQuiz = qi; S.quiz = { i: qi, q: pool[qi][0], opts: pool[qi][1], answer: pool[qi][2] };
     for (const p of S.players.values()) {
       p.answered = false;
       if (p.bot) { p.bot_ans = S.rules.botAnsMin + S.rand() * (S.rules.botAnsMax - S.rules.botAnsMin); p.bot_place = 0; }
     }
-    S.events.push({ e: 'wave', wave: S.wave, count: S.queue.length });
+    S.events.push({ e: 'wave', wave: S.wave, count: S.queue.filter(q => q.wave === S.wave).length });
     return true;
   }
+  // The clock ran out on this wave: it counts as held, and the next one starts at once (or, after the last, the road just has to clear).
   function endWave(S) {
-    S.survived = S.wave; S.shots = []; S.enemies = []; S.queue = [];
+    if (S.phase !== 'wave') return;
+    S.survived = S.wave;
     // A quiz nobody answered still counts against the streak; a gun that was never placed is lost.
     for (const p of S.players.values()) { if (!p.answered && !p.gone) { p.streak = 0; } p.pending = null; }
-    if (S.wave >= S.rules.maxWaves) { S.phase = 'over'; S.won = true; S.events.push({ e: 'over', won: true, survived: S.survived }); }
-    else { S.phase = 'between'; S.events.push({ e: 'waveEnd', wave: S.wave }); }
+    S.events.push({ e: 'waveEnd', wave: S.wave });
+    if (S.wave >= S.rules.maxWaves) { S.phase = 'final'; S.quiz = null; S.cycleLeft = 0; }
+    else { S.phase = 'between'; startWave(S); }
   }
   function towerDown(S) { S.phase = 'over'; S.won = false; S.tower.hp = 0; S.survived = S.wave - 1; S.shots = []; S.events.push({ e: 'over', won: false, survived: S.survived }); }
 
@@ -217,8 +223,8 @@
   }
 
   // ------------------------------------------------------------ simulation
-  function spawn(S, kind) {
-    const def = ENEMY[kind]; const grow = Math.pow(1 + S.rules.hpGrow, S.wave - 1) * Math.max(1, 1 + S.rules.hpPerPlayer * (S.players.size - 6));
+  function spawn(S, kind, wave) {
+    const def = ENEMY[kind]; const grow = Math.pow(1 + S.rules.hpGrow, (wave || S.wave) - 1) * Math.max(1, 1 + S.rules.hpPerPlayer * (S.players.size - 6));
     const e = { id: ++S.eid, kind, hp: Math.round(def.hp * grow), max: Math.round(def.hp * grow), d: -0.6, side: ((S.eid % 3) - 1) * 0.26, speed: def.speed, bite: def.bite, fly: !!def.fly, state: 'run', t: 0 };
     S.enemies.push(e); S.events.push({ e: 'spawn', id: e.id, kind });
   }
@@ -229,19 +235,22 @@
     if (e.hp <= 0) { e.hp = 0; e.state = 'dead'; e.t = 0; if (gun) { gun.kills++; if (p) p.kills++; } S.events.push({ e: 'die', id: e.id, gun: gun ? gun.i : -1, owner: gun ? gun.owner : null, kills: p ? p.kills : 0 }); }
   }
   function step(S, dt) {
-    if (S.phase !== 'wave') return;
+    if (S.phase !== 'wave' && S.phase !== 'final') return;
     S.time += dt; S.seq++;
-    if (S.quizLeft > 0) { S.quizLeft -= dt; if (S.quizLeft <= 0) { S.quizLeft = 0; S.placeLeft = S.rules.placeTime; S.events.push({ e: 'quizEnd' }); } }
-    else if (S.placeLeft > 0) { S.placeLeft -= dt; if (S.placeLeft <= 0) { S.placeLeft = 0; for (const p of S.players.values()) if (p.pending) { p.pending = null; S.events.push({ e: 'unplaced', id: p.id }); } S.events.push({ e: 'placeEnd' }); } }
     const R = S.rules;
+    if (S.phase === 'wave') {
+      if (S.quizLeft > 0) { S.quizLeft -= dt; if (S.quizLeft <= 0) { S.quizLeft = 0; S.placeLeft = R.placeTime; S.events.push({ e: 'quizEnd' }); } }
+      else if (S.placeLeft > 0) { S.placeLeft -= dt; if (S.placeLeft <= 0) { S.placeLeft = 0; for (const p of S.players.values()) if (p.pending) { p.pending = null; S.events.push({ e: 'unplaced', id: p.id }); } S.events.push({ e: 'placeEnd' }); } }
+      S.cycleLeft -= dt;
+    }
     // Bots answer, then place their gun somewhere sensible.
     for (const p of S.players.values()) {
-      if (!p.bot) continue;
+      if (!p.bot || !S.quiz) continue;
       if (!p.answered && S.quizLeft > 0) { p.bot_ans -= dt; if (p.bot_ans <= 0) { const pick = S.rand() < R.botRight ? S.quiz.answer : (S.quiz.answer + 1 + Math.floor(S.rand() * 3)) % 4; answer(S, p.id, pick); S.events.push({ e: 'answer', id: p.id, i: pick }); p.bot_place = R.botPlace * (0.6 + 0.8 * S.rand()); } }
       else if (p.pending) { p.bot_place -= dt; if (p.bot_place <= 0) { const s = botSpot(S, p.pending.level, LEVEL_GUN[p.pending.level]); if (s) place(S, p.id, s.x, s.z); else p.pending = null; } }
     }
     // Gremlins leave the spawn one at a time and march.
-    if (S.queue.length) { S.spawnT -= dt; if (S.spawnT <= 0) { S.spawnT = R.spawnGap * Math.min(1, R.spawnRoom / Math.max(1, S.players.size)); spawn(S, S.queue.shift()); } }
+    if (S.queue.length) { S.spawnT -= dt; if (S.spawnT <= 0) { S.spawnT = R.spawnGap * Math.min(1, R.spawnRoom / Math.max(1, S.players.size)); const q = S.queue.shift(); spawn(S, q.kind, q.wave); } }
     for (const e of S.enemies) {
       if (e.state === 'run') {
         e.d += e.speed * dt;
@@ -284,14 +293,15 @@
       } else if (tgt) hurt(S, tgt, s.dmg, s.gun);
       return false;
     });
-    if (!S.queue.length && !S.enemies.some(e => e.state === 'run')) endWave(S);
+    if (S.phase === 'wave' && S.cycleLeft <= 0) endWave(S);
+    else if (S.phase === 'final' && !S.queue.length && !S.enemies.some(e => e.state === 'run')) { S.phase = 'over'; S.won = true; S.events.push({ e: 'over', won: true, survived: S.survived }); }
   }
 
   // ------------------------------------------------------------ output
   function snapshot(S) {
     // Road distance + speed rather than a position, so renderers can move enemies smoothly between snapshots.
     const e = S.enemies.map(e => [e.id, e.kind, +(e.hp / e.max).toFixed(2), +e.d.toFixed(3), +e.side.toFixed(2), e.speed, e.state]);
-    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), pl: Math.ceil(S.placeLeft), left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)), ga: S.guns.map(g => g.dead ? 0 : g.ammo) };
+    return { t: 's', ph: S.phase, w: S.wave, th: Math.max(0, S.tower.hp), tm: S.tower.max, ql: Math.ceil(S.quizLeft), pl: Math.ceil(S.placeLeft), nl: S.phase === 'wave' && S.quizLeft <= 0 && S.placeLeft <= 0 ? Math.ceil(S.cycleLeft) : 0, left: S.queue.length + S.enemies.filter(x => x.state === 'run').length, e, gy: S.guns.map(g => +g.yaw.toFixed(2)), gh: S.guns.map(g => g.dead ? 0 : +(g.ammo / g.max).toFixed(2)), ga: S.guns.map(g => g.dead ? 0 : g.ammo) };
   }
   function roster(S) {
     return [...S.order].map(id => { const p = S.players.get(id); return { id, name: p.name, bot: p.bot, skin: p.skin, kills: p.kills, dmg: Math.round(p.dmg), correct: p.correct, wrong: p.wrong, streak: p.streak, best: p.best, gods: p.gods || 0, refills: p.refills || 0, guns: p.guns, alive: S.guns.filter(g => !g.dead && g.owner === id).length, lost: p.lost, gone: p.gone }; });
