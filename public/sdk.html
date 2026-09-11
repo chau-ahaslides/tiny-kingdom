@@ -170,9 +170,9 @@
   <tr><td>Transports: <code>relay</code>, <code>memory</code>, <code>embed</code></td><td>same file</td><td><span class="pill">built</span> — embed is untested against a real parent app</td></tr>
   <tr><td>Rooms directory, <code>/j/CODE</code>, relay roster replay with online flags</td><td><code>src/worker.js</code></td><td><span class="pill">built</span></td></tr>
   <tr><td>Tests on the memory transport</td><td><code>test/aha-room.test.js</code></td><td><span class="pill">built</span> — 12 cases: snapshot, coalescing, private slices, resync after loss, presence, host-after-players, input batching, ticks, clock</td></tr>
-  <tr><td>Reference migration</td><td><code>public/color-and-sound.html</code></td><td><span class="pill">built</span> — the page no longer touches a socket, a code, a QR or localStorage</td></tr>
-  <tr><td>Other pages moved over</td><td>—</td><td><span class="pill later">next</span></td></tr>
-  <tr><td>Bridge transport, report shapes agreed with the presenter app, bots on the memory transport</td><td>—</td><td><span class="pill later">later</span></td></tr>
+  <tr><td>Pages on the SDK</td><td>Color &amp; Sound, Survival Quiz, Survival Brawl, Brawl Quiz, Gremlin Siege, Marshmallow</td><td><span class="pill">built</span> — none of them touches a socket, a code, a QR or a join URL; the only localStorage left is game settings and Gremlin Siege's onboarding flag. Each removed 35 to 60 lines net.</td></tr>
+  <tr><td>Marshmallow Live</td><td><code>public/marshmallow-live.html</code></td><td><span class="pill later">next</span> — its session runs through the physics object on <code>/mws/</code>, whose welcome carries a colour; needs a socket-path option on the relay transport first</td></tr>
+  <tr><td>Bridge transport, report shapes agreed with the presenter app, bots on the memory transport, a host-side keepalive for empty lobbies</td><td>—</td><td><span class="pill later">later</span></td></tr>
 </table></div>
 
 <h2 id="quick">Quick start</h2>
@@ -607,7 +607,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
   <tr><td>Survival Quiz, Survival Brawl, Brawl Quiz</td><td>plumbing; the 10 Hz snapshot through <code>tick</code>; phase and banner into the document</td><td>fighters, quiz pool</td></tr>
   <tr><td>Marshmallow, Marshmallow Live</td><td>plumbing and lobby only</td><td>the physics room, as its own transport-bound feature</td></tr>
 </table></div>
-<p>Each migration deletes roughly 80 lines and one localStorage scheme. The end state is one file that knows about sockets.</p>
+<p>Done for every page but Marshmallow Live. Each migration deleted its /api/room fetch, QR drawing, both socket paths, backoff, tab-wake rejoin, token and name storage, and the join/leave/welcome/hostgone branches; the game messages and the 10 Hz snapshots were left exactly as they were. Two patterns came up in every page and are worth knowing: a host reconnect yields one <code>players</code> event and no <code>join</code>s, so seating is reconciled from <code>room.players</code>; and the lobby is either the SDK card (Brawl Quiz, Color &amp; Sound) or the page's own markup filled from <code>room.code</code>, <code>room.joinUrl</code> and <code>room.qr()</code> (the rest), both of which the SDK supports on purpose.</p>
 
 <h2 id="roadmap">Roadmap</h2>
 <ol>
