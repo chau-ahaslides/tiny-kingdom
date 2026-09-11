@@ -40,11 +40,14 @@ Host → phones, through the SDK:
 
 The phone's whole screen is painting area. The sheet keeps the big screen's shape and is sized so
 that at 1× it covers the screen: a portrait phone sees a tall slice of the landscape sheet, centred
-to start, never a letterboxed strip. Pinch to zoom (1× to 8×) and move two fingers to pan; the
-screen never leaves the sheet. A `3.0×`-style button in the dock returns to 1×, centred.
+to start, never a letterboxed strip. Pinch to zoom from the whole sheet (letterboxed on the
+paper, with a faint edge) up to 8×, and move two fingers to pan; zoomed in, the screen never
+leaves the sheet. The dock button is two-way: "Fit" shows the whole sheet, "1×" returns to the
+centred slice at full size.
 
-The brush keeps its size on the screen, so zooming in paints finer: the stroke's `d` message
-carries `k = 1/zoom` and the host multiplies its brush radius by it. A lone finger waits 120 ms
+The brush keeps its size on the screen, so zooming in paints finer and zooming out paints
+broader: the stroke's `d` message carries `k = 1/zoom` and the host multiplies its brush radius
+by it (clamped to 0.1–4). A lone finger waits 120 ms
 before it starts a stroke, in case a second finger is on its way; a second finger during a stroke
 lifts it and starts the gesture. The big screen never zooms.
 

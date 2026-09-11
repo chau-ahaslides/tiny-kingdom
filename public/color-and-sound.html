@@ -212,7 +212,7 @@
   </div>
   <div class="group">
     <button class="t" id="sound" aria-pressed="true">Sound</button>
-    <button class="t" id="zoom" hidden title="Back to the whole sheet">1.0×</button>
+    <button class="t" id="zoom" hidden title="See the whole sheet">Fit</button>
     <button class="t" id="scale">Lydian</button>
     <button class="t" id="play">Play</button>
     <button class="t" id="players">Solo</button>
@@ -1616,20 +1616,28 @@ import { AhaRoom } from '/js/aha-room.js';
   let vrect = { left: 0, top: 0 };
   const toSheet = (cx, cy) => ({ x: (cx - vrect.left) / zoom.z + zoom.x, y: (cy - vrect.top) / zoom.z + zoom.y });
   const zoomBtn = document.getElementById('zoom');
+  const zMin = () => Math.min(1, VW / W, VH / H) || 1;   // zoomed all the way out, the whole sheet fits the screen
   function clampView() {
-    zoom.z = clamp(zoom.z, 1, 8);
-    zoom.x = clamp(zoom.x, 0, Math.max(0, W - VW / zoom.z));   // the screen never leaves the sheet
-    zoom.y = clamp(zoom.y, 0, Math.max(0, H - VH / zoom.z));
-    if (zoomBtn) { zoomBtn.hidden = zoom.z < 1.02; zoomBtn.textContent = zoom.z.toFixed(1) + '×'; }
+    zoom.z = clamp(zoom.z, zMin(), 8);
+    const sw = VW / zoom.z, sh = VH / zoom.z;            // the screen, in sheet units
+    zoom.x = sw >= W ? (W - sw) / 2 : clamp(zoom.x, 0, W - sw);   // sheet smaller than the screen: centred on the paper; else the screen stays on the sheet
+    zoom.y = sh >= H ? (H - sh) / 2 : clamp(zoom.y, 0, H - sh);
+    if (zoomBtn) {
+      zoomBtn.hidden = !isClient;
+      zoomBtn.textContent = zoom.z < 0.999 ? '1×' : zoom.z > 1.02 ? zoom.z.toFixed(1) + '× · Fit' : 'Fit';
+      zoomBtn.title = zoom.z < 0.999 ? 'Back to the sheet at full size' : 'See the whole sheet';
+    }
   }
   function zoomAt(cx, cy, factor) {                     // the sheet point under the cursor stays put
     const s = toSheet(cx, cy);
-    zoom.z = clamp(zoom.z * factor, 1, 8);
+    zoom.z = clamp(zoom.z * factor, zMin(), 8);
     zoom.x = s.x - (cx - vrect.left) / zoom.z;
     zoom.y = s.y - (cy - vrect.top) / zoom.z;
     clampView();
   }
-  if (zoomBtn) zoomBtn.onclick = () => { zoom.z = 1; zoom.x = (W - VW) / 2; zoom.y = (H - VH) / 2; clampView(); };
+  function homeView() { zoom.z = 1; zoom.x = (W - VW) / 2; zoom.y = (H - VH) / 2; clampView(); }
+  function fitView() { zoom.z = zMin(); clampView(); }
+  if (zoomBtn) zoomBtn.onclick = () => { if (zoom.z < 0.999) homeView(); else fitView(); };
   view.addEventListener('wheel', e => {                 // a phone-mode page on a laptop, for trying it out
     if (!isClient) return;
     e.preventDefault();
@@ -1680,7 +1688,7 @@ import { AhaRoom } from '/js/aha-room.js';
       if (touches.size < 2) return;
       const [a, b] = [...touches.values()];
       const mx = (a.cx + b.cx) / 2, my = (a.cy + b.cy) / 2;
-      zoom.z = clamp(gesture.z0 * Math.hypot(a.cx - b.cx, a.cy - b.cy) / gesture.d0, 1, 8);
+      zoom.z = clamp(gesture.z0 * Math.hypot(a.cx - b.cx, a.cy - b.cy) / gesture.d0, zMin(), 8);
       zoom.x = gesture.mid.x - (mx - vrect.left) / zoom.z;   // the sheet point between the fingers follows them
       zoom.y = gesture.mid.y - (my - vrect.top) / zoom.z;
       clampView();
@@ -1750,7 +1758,7 @@ import { AhaRoom } from '/js/aha-room.js';
       p.brush.size = SIZES[m.z] ? m.z : 'M';
       p.brush.color = (Number.isInteger(m.c) && m.c >= 0 && m.c < 5) ? m.c : null;
       p.sid = m.s; p.t0 = performance.now(); p.real = !!m.r;
-      p.scale = clamp(+m.k || 1, 0.1, 1);               // the phone was zoomed in: a finer brush
+      p.scale = clamp(+m.k || 1, 0.1, 4);               // the phone was zoomed in (finer) or out (broader)
       down(p, dq(pt[0], 1e4) * W, dq(pt[1], 1e4) * H, clamp(dq(pt[2], 1e4), 0.02, 1), p.real);
     } else if (m.t === 's') {
       if (!p.stroke || p.sid !== m.s || !Array.isArray(m.pts)) return;
@@ -1997,6 +2005,13 @@ import { AhaRoom } from '/js/aha-room.js';
     vctx.drawImage(paint, 0, 0, W, H);
     if (wetDirty) { wetAny = drawWet(); wetDirty = false; }   // the strokes still under fingers
     if (wetAny && sized(wet)) vctx.drawImage(wet, 0, 0, W, H);
+    if (isClient && (VW / zoom.z > W || VH / zoom.z > H)) {   // zoomed out past the sheet: show its edge on the paper
+      vctx.save();
+      vctx.strokeStyle = 'rgba(51,50,45,.28)';
+      vctx.lineWidth = 1 / zoom.z;
+      vctx.strokeRect(0, 0, W, H);
+      vctx.restore();
+    }
 
     if (isHost) {                      // who is painting where
       vctx.save();
