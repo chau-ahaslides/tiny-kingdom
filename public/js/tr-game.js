@@ -389,8 +389,8 @@ function playerTick(ts) {
     else if (s.ph === 'final') setBtn('ok', '⚔️ Last wave held — clear the road! 👹 ' + s.left);
     else if (player.pending) setBtn('hot', '📍 Place your gun' + (s.pl > 0 ? ' — ' + s.pl + ' s' : '') + '!');
     else if (s.ph === 'wave' && !player.answered && s.ql > 0) setBtn('hot', '❓ Answer the quiz — ' + s.ql + ' s');
-    else if (s.ph === 'wave' && s.pl > 0) setBtn('', '📍 Guns being placed — ' + s.pl + ' s');
-    else if (s.ph === 'wave') setBtn('ok', '⚔️ Wave ' + s.w + ' · 👹 ' + s.left + ' · next quiz in ' + s.nl + ' s');
+    else if (s.ph === 'wave' && (s.ql > 0 || s.pl > 0)) setBtn('', '⏳ Others answering & placing — ' + (s.ql > 0 ? s.ql + player.placeTime : s.pl) + ' s');
+    else if (s.ph === 'wave') setBtn('ok', '⚔️ Wave ' + s.w + ' · 👹 ' + s.left + ' · next wave in ' + s.nl + ' s');
     else setBtn('', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…');
   }
   v.frame(player.paused ? 0 : dt);
