@@ -12,6 +12,19 @@ const hex = c => '#' + c.toString(16).padStart(6, '0');
 const LEVEL_LABEL = ['🏹 Small ballista', '💣 Medium cannon', '🔩 BIG turret', '🪨 HUGE catapult', '💎 LEGENDARY crystal turret'];
 const TOP_LEVEL = LEVEL_LABEL.length - 1;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// The three-step clock of a wave: 1 answer, 2 place, 3 next wave on its way. `left` = [quizLeft, placeLeft, nextLeft], `total` = their full lengths.
+function phaseStrip(el, left, total, phaseName) {
+  if (!el) return;
+  const cur = phaseName === 'final' ? -1 : left[0] > 0 ? 0 : left[1] > 0 ? 1 : 2;
+  const labels = ['❓ Answer', '📍 Place gun', '👹 Next wave'];
+  if (!el.children.length) el.innerHTML = labels.map((l, i) => `<div class="ph p${i + 1}"><span>${l}</span><b></b><i></i></div>`).join('');
+  for (let i = 0; i < 3; i++) {
+    const d = el.children[i]; d.classList.toggle('on', i === cur); d.classList.toggle('done', cur > i || cur < 0);
+    const n = i === cur ? Math.max(0, Math.ceil(left[i])) : cur > i || cur < 0 ? 0 : Math.ceil(total[i]);
+    d.querySelector('b').textContent = i === cur ? n + ' s' : cur > i || cur < 0 ? '✓' : Math.ceil(total[i]) + ' s';
+    d.querySelector('i').style.width = (i === cur ? 100 * Math.max(0, left[i]) / total[i] : cur > i ? 0 : 100) + '%';
+  }
+}
 
 /* ===================== LOADER ===================== */
 const loader = new THREE.GLTFLoader();

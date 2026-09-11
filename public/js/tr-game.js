@@ -33,7 +33,7 @@ async function startHost() {
   host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.64, y: 0.64, yBias: -0.12 } }); await host.view.buildMap();
   renderRoster();
 }
-function helloFor(p) { const S = host.S; return { t: 'hello', name: p.name, skin: p.skin, ph: S.phase, wave: S.wave, quizTime: S.rules.quizTime, placeTime: S.rules.placeTime, towerHp: S.tower.max, streak: p.streak, kills: p.kills, alive: S.guns.filter(g => !g.dead && g.owner === p.id).length, pending: p.pending }; }
+function helloFor(p) { const S = host.S; return { t: 'hello', name: p.name, skin: p.skin, ph: S.phase, wave: S.wave, quizTime: S.rules.quizTime, placeTime: S.rules.placeTime, between: S.rules.between, towerHp: S.tower.max, streak: p.streak, kills: p.kills, alive: S.guns.filter(g => !g.dead && g.owner === p.id).length, pending: p.pending }; }
 function hostReceive(m) {
   const S = host.S; if (!S) return;
   if (m.t === 'join') {
@@ -154,10 +154,10 @@ function hostTick(ts) {
   }
   if (host.running && S.phase === 'wave') {
     const watching = S.quizLeft <= 0 && S.placeLeft <= 0; const n = Math.max(0, Math.ceil(S.cycleLeft));
-    $('#h-time').textContent = S.quizLeft > 0 ? '❓ ' + Math.ceil(S.quizLeft) + ' s to answer' : S.placeLeft > 0 ? '📍 ' + Math.ceil(S.placeLeft) + ' s to place guns' : '⏳ next quiz in ' + n;
+    phaseStrip($('#h-phases'), [S.quizLeft, S.placeLeft, watching ? S.cycleLeft : 0], [S.rules.quizTime, S.rules.placeTime, S.rules.between], S.phase);
     $('#b-next').style.display = watching ? '' : 'none';
     if (watching && n <= 3 && n > 0 && n !== host.lastCount && S.wave < S.rules.maxWaves) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); SFX.play(n === 1 ? 'go' : 'tick'); }
-  } else if (host.running && S.phase === 'final') { $('#h-time').textContent = '⚔️ clear the road!'; $('#b-next').style.display = 'none'; }
+  } else if (host.running && S.phase === 'final') { phaseStrip($('#h-phases'), [0, 0, 0], [S.rules.quizTime, S.rules.placeTime, S.rules.between], 'final'); $('#b-next').style.display = 'none'; }
   view.frame(host.paused ? 0 : dt);
 }
 setInterval(hostSim, 1000 / 60);
@@ -212,7 +212,7 @@ function playerReceive(m) {
   if (m.t === 'nohost') { pMsg('The big screen is not open yet…', 4000); return; }
   if (m.t === 'hostgone') { pMsg('Big screen disconnected', 5000); setBtn('', 'Waiting…'); return; }
   if (m.t === 'hello') {
-    player.quizTime = m.quizTime || 15; player.placeTime = m.placeTime || 5; player.ph = m.ph; player.streak = m.streak || 0; player.kills = m.kills || 0; player.gunsN = m.alive || 0; updateMe();
+    player.quizTime = m.quizTime || 15; player.placeTime = m.placeTime || 5; player.between = m.between || 5; player.ph = m.ph; player.streak = m.streak || 0; player.kills = m.kills || 0; player.gunsN = m.alive || 0; updateMe();
     if (m.pending) openPlace(m.pending.level, player.streak);
     if (m.ph === 'lobby') { setBtn('', 'Waiting for the host…'); pMsg('You are in!\nEach wave: answer right → place a gun with your name on it', 5000); }
     return;
@@ -331,7 +331,15 @@ function playerTick(ts) {
     for (const g of v.guns) if (g && g.low && g.owner === player.id && !g.warned) { g.warned = true; SFX.play('low'); }
     const bar = $('#p-thp'); bar.style.width = (100 * s.th / s.tm) + '%'; bar.classList.toggle('low', s.th <= s.tm * 0.3); $('#p-tpct').textContent = s.th + '/' + s.tm;
     $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
-    if (s.ph === 'wave') { $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%'; if (player.pending && player.placeTime) $('#pl-time').style.width = Math.max(0, 100 * (s.ql > 0 ? 1 : s.pl / player.placeTime)) + '%'; }
+    if (s.ph === 'wave' || s.ph === 'final') {
+      $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';
+      phaseStrip($('#p-phases'), [s.ql, s.pl, s.nl], [player.quizTime, player.placeTime, player.between], s.ph);
+      if (player.pending) {   // answered early? the rest of the answer phase plus the whole placement phase is yours to place in
+        const leftToPlace = s.ql > 0 ? s.ql + player.placeTime : s.pl; const full = player.quizTime + player.placeTime;
+        $('#pl-time').style.width = Math.max(0, 100 * leftToPlace / full) + '%'; $('#pl-clock').textContent = '⏱ ' + Math.max(0, leftToPlace) + ' s to place' + (leftToPlace <= 3 ? ' — hurry!' : '');
+        $('#pl-time').style.background = leftToPlace <= 3 ? 'var(--red)' : 'var(--gold)';
+      }
+    }
     if (player.ph === 'over') {}
     else if (player.paused) setBtn('', '⏸ Paused');
     else if (s.ph === 'final') setBtn('ok', '⚔️ Last wave held — clear the road! 👹 ' + s.left);
