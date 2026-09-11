@@ -56,7 +56,7 @@
     botRight: 0.5,         // how often a bot answers right (the tuning target: half the room)
     botAnsMin: 3, botAnsMax: 10, botPlace: 2.5,
     between: 3,            // seconds between waves (just the countdown)
-    maxStreakLevel: 2,     // gun level = min(this, streak - 1)
+    maxStreakLevel: 4,     // gun level = min(this, streak - 1)
   };
   const ENEMY = {
     gremlin: { hp: 110, speed: 1.15, bite: 1 },
@@ -66,12 +66,22 @@
   };
   // Every gun carries a fixed load of ammo and is removed when it runs dry, so the defence never piles up for good.
   const GUNS = {
-    ballista: { ammoSpeed: 9, splash: 0, levels: [{ dmg: 15, range: 2.4, reload: 1.0, ammo: 30 }, { dmg: 24, range: 2.7, reload: 0.9, ammo: 36 }, { dmg: 38, range: 3.0, reload: 0.8, ammo: 42 }] },
-    cannon: { ammoSpeed: 6, splash: 0.9, levels: [{ dmg: 22, range: 2.2, reload: 2.0, ammo: 16 }, { dmg: 34, range: 2.4, reload: 1.8, ammo: 20 }, { dmg: 52, range: 2.6, reload: 1.5, ammo: 24 }] },
-    turret: { ammoSpeed: 14, splash: 0, levels: [{ dmg: 4, range: 2.2, reload: 0.22, ammo: 120 }, { dmg: 6.5, range: 2.4, reload: 0.2, ammo: 150 }, { dmg: 10, range: 2.6, reload: 0.18, ammo: 180 }] },
+    ballista: { ammoSpeed: 9, splash: 0 },
+    cannon: { ammoSpeed: 6, splash: 0.9 },
+    turret: { ammoSpeed: 14, splash: 0 },
+    catapult: { ammoSpeed: 5, splash: 1.4 },
+    crystal: { ammoSpeed: 16, splash: 0.4 },
   };
   const GUN_TYPES = Object.keys(GUNS);
-  const LEVEL_GUN = ['ballista', 'cannon', 'turret'];   // the gun a streak earns: small, medium, big
+  // The ladder a streak climbs: one gun per level, bigger every step.
+  const LEVELS = [
+    { type: 'ballista', name: 'Small ballista', dmg: 15, range: 2.4, reload: 1.0, ammo: 30 },
+    { type: 'cannon', name: 'Medium cannon', dmg: 34, range: 2.4, reload: 1.8, ammo: 20 },
+    { type: 'turret', name: 'BIG turret', dmg: 10, range: 2.6, reload: 0.18, ammo: 180 },
+    { type: 'catapult', name: 'HUGE catapult', dmg: 95, range: 3.1, reload: 2.4, ammo: 26 },
+    { type: 'crystal', name: 'LEGENDARY crystal turret', dmg: 18, range: 3.3, reload: 0.15, ammo: 260 },
+  ];
+  const LEVEL_GUN = LEVELS.map(l => l.type);
   // What marches in each wave: a list of kinds, in spawn order.
   function waveList(wave, players, R) {
     R = R || RULES;
@@ -179,7 +189,7 @@
     const p = S.players.get(id); if (!p || !p.pending || S.phase === 'over') return 'none';
     const type = LEVEL_GUN[p.pending.level];
     if (!freeTile(S, x, z)) return 'taken';
-    const ammo = GUNS[type].levels[p.pending.level].ammo;
+    const ammo = LEVELS[p.pending.level].ammo;
     const g = { i: S.guns.length, owner: id, type, level: p.pending.level, x, z, cool: 0.2, yaw: 0, target: null, kills: 0, ammo, max: ammo, dead: false };
     S.guns.push(g); p.pending = null; p.guns++;
     S.events.push({ e: 'placed', id, gun: gunInfo(S, g) });
@@ -188,7 +198,7 @@
   function gunInfo(S, g) { const p = S.players.get(g.owner); return { i: g.i, owner: g.owner, name: p ? p.name : '', skin: p ? p.skin : 0, bot: p ? p.bot : false, type: g.type, level: g.level, x: g.x, z: g.z, ammo: g.ammo, max: g.max, dead: g.dead }; }
   // Bots pick a spot that covers a lot of road, with some randomness so they do not all pile onto one tile.
   function botSpot(S, level, type) {
-    const range = GUNS[type].levels[level].range; const cands = [];
+    const range = LEVELS[level].range; const cands = [];
     for (let x = 0; x < COLS; x++) for (let z = 0; z < ROWS; z++) if (freeTile(S, x, z)) cands.push({ x, z, s: coverage(x, z, range) + S.rand() * 3 });
     cands.sort((a, b) => b.s - a.s);
     return cands[Math.floor(S.rand() * Math.min(4, cands.length))] || null;
@@ -229,7 +239,7 @@
     // Guns pick the enemy furthest along the road in range and shoot.
     for (const g of S.guns) {
       if (g.dead) continue;
-      const def = GUNS[g.type], st = def.levels[g.level];
+      const def = GUNS[g.type], st = LEVELS[g.level];
       g.cool -= dt;
       let best = null, bestD = -1;
       for (const e of S.enemies) {
@@ -276,5 +286,5 @@
   function gunList(S) { return S.guns.map(g => gunInfo(S, g)); }
   function takeEvents(S) { const ev = S.events; S.events = []; return ev; }
 
-  return { COLS, ROWS, PATH, PATH_LEN, PATH_SET, DECOR, END, posAt, freeTile, coverage, RULES, ENEMY, GUNS, GUN_TYPES, LEVEL_GUN, QUIZ, waveList, create, addPlayer, removePlayer, setBots, startWave, endWave, answer, place, step, snapshot, roster, gunList, takeEvents };
+  return { COLS, ROWS, PATH, PATH_LEN, PATH_SET, DECOR, END, posAt, freeTile, coverage, RULES, ENEMY, GUNS, GUN_TYPES, LEVELS, LEVEL_GUN, QUIZ, waveList, create, addPlayer, removePlayer, setBots, startWave, endWave, answer, place, step, snapshot, roster, gunList, takeEvents };
 });

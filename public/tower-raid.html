@@ -140,7 +140,7 @@
       <span class="hint">bots fill the empty seats</span>
     </div>
     <div class="row"><button class="big" id="b-start">🏰 Start the siege</button></div>
-    <p class="hint" style="margin-top:12px">The gremlins march the moment a wave starts. Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Right again next wave = a bigger gun (ballista → cannon → turret). Wrong = no gun and the streak is gone.<br>Every gun carries a limited load of ammo and vanishes when it runs dry — keep placing new ones.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
+    <p class="hint" style="margin-top:12px">The gremlins march the moment a wave starts. Each wave: a quiz with <span id="qtnote">15</span> s to answer. Right = place a gun anywhere. Every right answer in a row makes the next gun bigger: ballista → cannon → turret → catapult → crystal turret. Wrong = no gun and the streak is gone.<br>Every gun carries a limited load of ammo and vanishes when it runs dry — keep placing new ones.<br>The tower has <span id="hpnote">10</span> attention points; each gremlin that gets through bites some off. Hold as many waves as you can.</p>
   </div>
 </div></div>
 
@@ -151,7 +151,7 @@
   <div id="h-quiz"><div class="q" id="hq-q"></div><div class="bar tbar"><i id="hq-time" style="width:100%"></i></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div><div id="hq-who"></div></div>
   <div id="h-board"></div>
   <div id="h-msg"></div>
-  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
+  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-pause">⏸ Pause</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
 </div></div>
 
 <!-- host results -->
@@ -188,7 +188,7 @@
     <ul>
       <li><span class="ic">👹</span><span>Gremlins march down the road to the Attention Tower. Every one that gets through bites it. When it's gone, the game is over.</span></li>
       <li><span class="ic">❓</span><span>Each wave starts with a quiz at the bottom of your screen. <b>Answer right</b> and you get a gun to <b>drag onto the board</b>, with your name on it.</span></li>
-      <li><span class="ic">🔥</span><span>Right again next wave = a <b>bigger gun</b> (ballista → cannon → turret). Wrong or too slow = no gun, streak lost.</span></li>
+      <li><span class="ic">🔥</span><span>Right again next wave = a <b>bigger gun</b>: ballista → cannon → turret → catapult → 💎 crystal turret. Wrong or too slow = no gun, streak lost.</span></li>
       <li><span class="ic">🪫</span><span>Guns carry limited ammo and vanish when empty, so keep answering and keep placing.</span></li>
       <li><span class="ic">👆</span><span>One finger turns the board, pinch to zoom, ⌖ resets the view.</span></li>
     </ul>
@@ -199,7 +199,7 @@
 <script src="/vendor/three.min.js"></script>
 <script src="/vendor/GLTFLoader.js"></script>
 <script src="/vendor/qr.js"></script>
-<script src="/js/tr-sim.js?v=6"></script>
+<script src="/js/tr-sim.js?v=7"></script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s);
@@ -209,8 +209,8 @@ function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.ad
 const ASSETS = '/assets/td/';
 const COLORS = [0xe5533d, 0x4a8fe7, 0x4fbb6c, 0xf3b53e, 0x8e6be8, 0xef8fb5, 0x2bb3c0, 0xa46a3c, 0x6c7a89, 0xd94fd0, 0x9ccc3d, 0xff7a3d];
 const hex = c => '#' + c.toString(16).padStart(6, '0');
-const LEVEL_NAME = ['Small', 'Medium', 'BIG'];
-const LEVEL_LABEL = ['🏹 Small ballista', '💣 Medium cannon', '🔩 BIG turret'];
+const LEVEL_LABEL = ['🏹 Small ballista', '💣 Medium cannon', '🔩 BIG turret', '🪨 HUGE catapult', '💎 LEGENDARY crystal turret'];
+const TOP_LEVEL = LEVEL_LABEL.length - 1;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ===================== LOADER ===================== */
@@ -245,9 +245,10 @@ function yawFor(name, wanted) {
   for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) if (key(OPENINGS[name].map(o => rotXZ(o, yaw))) === want) return yaw;
   return 0;
 }
-const TOWER_PARTS = { 0: ['tower-round-bottom-a'], 1: ['tower-round-bottom-b', 'tower-round-middle-a'], 2: ['tower-round-bottom-c', 'tower-round-middle-b', 'tower-round-top-a'] };
-const WEAPON = { ballista: 'weapon-ballista', cannon: 'weapon-cannon', turret: 'weapon-turret' };
-const AMMO = { ballista: 'weapon-ammo-arrow', cannon: 'weapon-ammo-cannonball', turret: 'weapon-ammo-bullet' };
+const TOWER_PARTS = { 0: ['tower-round-bottom-a'], 1: ['tower-round-bottom-b', 'tower-round-middle-a'], 2: ['tower-round-bottom-c', 'tower-round-middle-b', 'tower-round-top-a'], 3: ['tower-round-bottom-c', 'tower-round-middle-c', 'tower-round-middle-b', 'tower-round-top-b'], 4: ['tower-round-bottom-c', 'tower-round-middle-c', 'tower-round-middle-b', 'tower-round-top-c'] };
+const WEAPON = { ballista: 'weapon-ballista', cannon: 'weapon-cannon', turret: 'weapon-turret', catapult: 'weapon-catapult', crystal: 'weapon-turret' };
+const AMMO = { ballista: 'weapon-ammo-arrow', cannon: 'weapon-ammo-cannonball', turret: 'weapon-ammo-bullet', catapult: 'weapon-ammo-boulder', crystal: 'weapon-ammo-bullet' };
+const WEAPON_LIFT = { cannon: 0.15, catapult: 0.05 };
 const ENEMY_LOOK = { gremlin: { scale: 1.0, tint: null, anim: 'walk' }, runner: { scale: 0.8, tint: 0xc8ff70, anim: 'sprint' }, brute: { scale: 1.5, tint: 0xff7a7a, anim: 'walk' }, ufo: { scale: 0.9 } };
 const DECOR_MODEL = { tree: 'tile-tree', tree2: 'tile-tree-double', rock: 'tile-rock' };
 
@@ -374,7 +375,8 @@ class View {
     await this.inst('tower-round-base', 0, 0, 0, -0.2, g);
     let y = 0;
     for (const name of TOWER_PARTS[level]) { const o = await this.inst(name, 0, 0, 0, y, g); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y - 0.02; }
-    await this.inst(WEAPON[type], 0, 0, 0, y + (type === 'cannon' ? 0.15 : 0.02), g);
+    const w = await this.inst(WEAPON[type], 0, 0, 0, y + (WEAPON_LIFT[type] || 0.02), g);
+    if (type === 'crystal') this.crystalDress(w, g, y);
     if (gen !== this.ghostGen) return;
     g.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.6; o.material.depthWrite = false; o.material.__orig = o.material.color.clone(); o.castShadow = false; } });
     this.ghost.add(g); this.ghostGun = g;
@@ -387,7 +389,8 @@ class View {
     await this.inst('tower-round-base', 0, 0, 0, -0.2, group);
     let y = 0;
     for (const name of TOWER_PARTS[d.level]) { const o = await this.inst(name, 0, 0, 0, y, group); y += new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3()).y - 0.02; }
-    const w = await this.inst(WEAPON[d.type], 0, 0, 0, y + (d.type === 'cannon' ? 0.15 : 0.02), group);
+    const w = await this.inst(WEAPON[d.type], 0, 0, 0, y + (WEAPON_LIFT[d.type] || 0.02), group);
+    if (d.type === 'crystal') this.crystalDress(w, group, y);
     entry.weapon = w; entry.muzzleY = 0.2 + w.position.y + 0.3; entry.top = y;
     // Ammo pill: a bar with the shots left, redrawn only when the count changes.
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 72; entry.ammoCv = cv; entry.ammoTex = new THREE.CanvasTexture(cv); entry.ammoTex.minFilter = THREE.LinearFilter;
@@ -398,6 +401,12 @@ class View {
     const label = textSprite((mine ? '★ ' : '') + d.name.slice(0, 14), { fill: mine ? '#e5533d' : hex(COLORS[d.skin % COLORS.length]), size: 44, scale: mine ? 1.9 : 1.6 }); label.position.y = y + 1.12; group.add(label);
     // A puff so the new gun is easy to spot.
     const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .7 })); puff.position.set(d.x, 0.5, d.z); this.scene.add(puff); this.fx.push({ m: puff, t: 0, life: .5, r: 0.9, kind: 'boom' });
+  }
+  // The legendary gun: a turret scaled up, tinted cyan, ringed with crystals that spin.
+  async crystalDress(weapon, group, y) {
+    weapon.scale.setScalar(1.25); weapon.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.multiply(new THREE.Color(0x9fe8ff)); } });
+    const ring = new THREE.Group(); ring.position.y = y - 0.1; group.add(ring); group.userData.ring = ring;
+    for (let k = 0; k < 4; k++) { const c = await this.inst('detail-crystal', Math.cos(k * Math.PI / 2) * 0.42, Math.sin(k * Math.PI / 2) * 0.42, k, 0, ring); c.scale.setScalar(0.8); }
   }
   setGuns(list) { for (const d of list) if (!d.dead) this.addGun(d); }
   drawAmmo(t) {
@@ -521,6 +530,7 @@ class View {
     }
     for (let i = 0; i < this.guns.length; i++) {
       const t = this.guns[i]; if (!t || !t.weapon) continue; const y = this.gunYaw ? this.gunYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); }
+      if (t.group.userData.ring) t.group.userData.ring.rotation.y += dt * 1.5;
       if (t.low) {   // running dry: the pill throbs and the gun rattles
         const k = performance.now() / 1000; const g = 1.6 * (1 + 0.12 * Math.sin(k * 12)); t.pill.scale.set(g, g * 72 / 256, 1);
         t.weapon.rotation.z = Math.sin(k * 40) * 0.05; t.pill.material.opacity = 0.75 + 0.25 * Math.sin(k * 12);
@@ -621,7 +631,8 @@ function beginWave() {
 function preload() {
   const names = new Set(['dungeon/coin', 'dungeon/character-orc', 'kit/enemy-ufo-a']);
   for (const type of TR.GUN_TYPES) { names.add('kit/' + WEAPON[type]); names.add('kit/' + AMMO[type]); }
-  for (const lvl of [0, 1, 2]) for (const p of TOWER_PARTS[lvl]) names.add('kit/' + p);
+  for (const lvl of Object.keys(TOWER_PARTS)) for (const p of TOWER_PARTS[lvl]) names.add('kit/' + p);
+  names.add('kit/detail-crystal');
   return Promise.all([...names].map(loadGLB));
 }
 function renderQuiz() {
@@ -644,6 +655,7 @@ function renderBoard() {
 function hostSim() {
   const S = host.S, view = host.view; if (!S || !view) return;
   const now = performance.now(); let elapsed = Math.min(2, (now - (host.simT || now)) / 1000); host.simT = now;
+  if (host.paused) return;                       // the clock simply does not advance while paused
   if (host.running && S.phase === 'wave') {
     while (elapsed > 0) { const dt = Math.min(1 / 60, elapsed); elapsed -= dt; TR.step(S, dt); if (S.phase !== 'wave') break; }
     for (const ev of TR.takeEvents(S)) {
@@ -685,14 +697,23 @@ function hostTick(ts) {
     $('#h-time').textContent = 'next wave in ' + n; $('#b-next').style.display = '';
     if (n <= 3 && n > 0 && n !== host.lastCount) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); }
   }
-  view.frame(dt);
+  view.frame(host.paused ? 0 : dt);
 }
 setInterval(hostSim, 1000 / 60);
 $('#b-next').onclick = () => { host.betweenT = 0; };
+function setPaused(on) {
+  if (!host.running || host.paused === on) return;
+  host.paused = on; $('#b-pause').textContent = on ? '▶ Resume' : '⏸ Pause';
+  const el = $('#h-msg'); clearTimeout(bigMsg.t);
+  if (on) { el.textContent = '⏸ Paused'; el.classList.add('on'); } else el.classList.remove('on');
+  host.link.send({ t: 'pause', on });
+}
+$('#b-pause').onclick = () => setPaused(!host.paused);
+document.addEventListener('keydown', e => { if (e.key === ' ' && host.running && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); setPaused(!host.paused); } });
 $('#b-recenter').onclick = () => { const v = host.view; if (!v) return; v.cam.theta = 0.18; v.cam.phi = 0.78; v.cam.fit = 0; v.fitBoard(); };
 $('#b-abort').onclick = () => { if (confirm('End the game for everyone?')) finish(false, true); };
 function finish(won, aborted) {
-  const S = host.S; host.running = false; S.phase = 'over';
+  const S = host.S; if (host.paused) setPaused(false); host.running = false; S.phase = 'over';
   const survived = aborted ? Math.max(0, S.wave - 1) : S.survived;
   const list = TR.roster(S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
   host.link.send({ t: 'over', won, board: list, survived, aborted: !!aborted });
@@ -736,7 +757,7 @@ function playerReceive(m) {
     player.streak = m.streak; updateMe();
     const u = $('#pq-urgent');
     if (m.res === 'right') {
-      $('#pq-note').textContent = 'Right! Drag your ' + LEVEL_LABEL[m.level] + ' onto the board.'; u.className = 'urgent good'; u.textContent = m.streak > 1 ? '🔥 ' + m.streak + ' in a row — a ' + LEVEL_LABEL[m.level] + '!' : '✅ Right — you get a gun!';
+      $('#pq-note').textContent = 'Right! Drag your ' + LEVEL_LABEL[m.level] + ' onto the board.'; u.className = 'urgent good'; u.textContent = m.streak > 1 ? '🔥 ' + m.streak + ' in a row — ' + LEVEL_LABEL[m.level] + (m.level === TOP_LEVEL ? ' (max)' : '') + '!' : '✅ Right — you get a gun!';
       if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
       pMsg(m.streak > 1 ? '🔥 STREAK ' + m.streak + '!\n' + LEVEL_LABEL[m.level] + ' unlocked' : '✅ RIGHT!\nPlace your gun', 1600);
       setTimeout(() => { $('#p-quiz').classList.remove('on'); openPlace(m.level, m.streak); }, 900);
@@ -766,6 +787,7 @@ function playerReceive(m) {
   if (m.t === 'msg') { pMsg(m.m, 1800); return; }
   if (m.t === 'fx') { for (const f of m.s || []) v.shot(f[0], f[1], f[2], f[3]); for (const b of m.b || []) v.boom(b[0], b[1], b[2]); return; }
   if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950); return; }
+  if (m.t === 'pause') { player.paused = m.on; const el = $('#p-msg'); clearTimeout(pMsg.t); if (m.on) { el.textContent = '⏸ Paused by the host'; el.classList.add('on'); } else el.classList.remove('on'); return; }
   if (m.t === 's') { player.snap = m; player.ph = m.ph; return; }
   if (m.t === 'over') {
     player.ph = 'over'; $('#p-quiz').classList.remove('on'); closePlace();
@@ -779,9 +801,9 @@ function showQuiz(m) {
   player.answered = !!m.done;
   $('#pq-q').textContent = '❓ Wave ' + m.wave + ': ' + m.q;
   $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}">${esc(o)}</button>`).join('');
-  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = place a ' + LEVEL_LABEL[Math.min(2, player.streak)] + ' · ❌ Wrong = no gun, streak lost';
+  $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = place a ' + LEVEL_LABEL[Math.min(TOP_LEVEL, player.streak)] + ' · ❌ Wrong = no gun, streak lost';
   $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { player.answered = true; b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.link.send({ t: 'ans', i: +b.dataset.i }); }; });
-  const u = $('#pq-urgent'); u.className = 'urgent' + (m.done ? ' calm' : ''); u.textContent = player.streak > 0 ? '🔥 Streak ' + player.streak + ' — answer right for a ' + LEVEL_LABEL[Math.min(2, player.streak)] + '!' : '⚠️ Gremlins are already marching! Answer right to place a gun';
+  const u = $('#pq-urgent'); u.className = 'urgent' + (m.done ? ' calm' : ''); u.textContent = player.streak > 0 ? '🔥 Streak ' + player.streak + ' — answer right for a ' + LEVEL_LABEL[Math.min(TOP_LEVEL, player.streak)] + '!' : '⚠️ Gremlins are already marching! Answer right to place a gun';
   $('#pq-time').style.width = (100 * (m.left || player.quizTime) / player.quizTime) + '%';
   $('#p-quiz').classList.add('on');
 }
@@ -806,7 +828,7 @@ function placeAt(x, z) {
   $('#pl-hint').textContent = ok ? 'This spot covers ' + TR.coverage(x, z, gunRange()) + ' road points — tap Place' : TR.PATH_SET.has(key) ? '🚫 Not on the road — drag onto grass' : player.guns.some(g => g.x === x && g.z === z) ? '🚫 That spot has a gun already' : '🚫 Blocked — drag onto a free tile';
   if (ok && (!player.lastSel || player.lastSel !== key)) { player.lastSel = key; if (navigator.vibrate) navigator.vibrate(8); }
 }
-function gunRange() { return TR.GUNS[player.type].levels[player.pending ? player.pending.level : 0].range; }
+function gunRange() { return TR.LEVELS[player.pending ? player.pending.level : 0].range; }
 $('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#b-place').disabled = true; $('#pl-hint').textContent = 'Placing…'; player.link.send({ t: 'place', x: player.sel.x, z: player.sel.z }); };
 $('#b-onboard').onclick = () => { $('#p-onboard').classList.remove('on'); if ($('#onboard-skip').checked) { try { localStorage.setItem('tk-tr-onboard', '1'); } catch (e) {} } };
 $('#p-recenter').onclick = () => { const v = player.view; if (!v) return; v.cam.theta = v.cam.portrait ? Math.PI / 2 - 0.35 : -0.55; v.cam.phi = 0.95; v.cam.fit = 0; v.fitBoard(); };
@@ -825,13 +847,14 @@ function playerTick(ts) {
     $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
     if (s.ph === 'wave') $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';
     if (player.ph === 'over') {}
+    else if (player.paused) setBtn('', '⏸ Paused');
     else if (s.ph === 'between') setBtn('', '✅ Wave ' + s.w + ' held — next wave soon…');
     else if (player.pending) setBtn('hot', '📍 Place your gun now!');
     else if (s.ph === 'wave' && !player.answered && s.ql > 0) setBtn('hot', '❓ Answer the quiz — ' + s.ql + ' s');
     else if (s.ph === 'wave') setBtn('ok', '🌊 Wave ' + s.w + ' · 👹 ' + s.left + ' left');
     else setBtn('', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…');
   }
-  v.frame(dt);
+  v.frame(player.paused ? 0 : dt);
 }
 
 /* ===================== ENTRY ===================== */
