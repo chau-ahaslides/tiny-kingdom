@@ -92,11 +92,12 @@ h1 { margin:0; font-size:26px; letter-spacing:1px; }
 #lobby.side { left:auto; right:22px; top:90px; transform:none; width:330px; padding:16px 18px 16px; gap:9px; z-index:950; }   /* presenter: QR beside the warm-up, not over it */
 #lobby.side h2 { font-size:20px; }
 #lobby .how { font-size:14px; opacity:.85; margin:-4px 0 0; }
-#qrbox img { image-rendering:pixelated; border:6px solid #fff; border-radius:8px; }
-#joinurl { font-size:13px; opacity:.8; word-break:break-all; }
-#roomcode { font-size:26px; letter-spacing:5px; color:#a5620e; }
-#lobbynames { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; min-height:26px; font-size:14px; }
-#lobbynames .lname { background:rgba(255,255,255,.5); border:2px solid var(--ink); border-radius:8px; padding:2px 9px; }
+/* the room card is rendered by the aha-room SDK (room.mountLobby): QR, code, join URL, who is here */
+#roomcard { display:flex; flex-direction:column; align-items:center; gap:9px; font-size:14px; }
+#roomcard .aha-qr { image-rendering:pixelated; border:6px solid #fff; border-radius:8px; }
+#roomcard .aha-code { font-size:26px; letter-spacing:5px; color:#a5620e; }
+#roomcard .aha-url { font-size:13px; opacity:.8; word-break:break-all; }
+#roomcard .aha-who { min-height:26px; }
 #startbtn, #jbtn { font:bold 18px 'MedievalSharp', Georgia, serif; color:var(--ink); background:#ffd24a;
   border:3px solid var(--ink); border-radius:10px; padding:10px 26px; cursor:pointer; }
 #jname { font:bold 19px 'MedievalSharp', Georgia, serif; color:var(--ink); background:rgba(255,255,255,.65);
