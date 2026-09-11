@@ -97,6 +97,7 @@
   <a class="sub" href="#api-fast">Fast lanes</a>
   <a class="sub" href="#api-report">Reporting</a>
   <a href="#wire">Wire protocol</a>
+  <a href="#rooms">Rooms and codes</a>
   <a href="#transports">Transports</a>
   <a href="#embed">Embedding</a>
   <a href="#rules">Rules for games</a>
@@ -108,7 +109,7 @@
 
 <h1>aha-room SDK</h1>
 <p class="lede">One small library for scan-to-play rooms: a host-authoritative session, a replicated state document, and a transport you can swap, from today's relay to a plugin inside the presenter and audience apps.</p>
-<p class="meta"><b>Design draft v0.1</b> · 11 September 2026 · tiny-kingdom · status: proposal, nothing built yet</p>
+<p class="meta"><b>Design draft v0.2</b> · 11 September 2026 · tiny-kingdom · status: proposal, nothing built yet · v0.2: games no longer name themselves or touch codes; a rooms directory owns codes and reports conflicts</p>
 
 <h2 id="why">Why</h2>
 <p>Seven pages on this site run the same session: a big screen opens a room and shows a QR code, phones scan it, type a name, and start sending input; the big screen owns the game and tells the phones what to show. Each page carries its own copy of that plumbing. The copies have drifted: two of them do not handle a phone that scans before the big screen is up, one never backs off when reconnecting, and every one sanitises names its own way.</p>
@@ -127,6 +128,7 @@
   <div class="card"><h3>The host is authoritative</h3><p>One big screen owns the game. Phones send intent, never truth. There is no peer-to-peer and no conflict resolution, because there is nothing to resolve.</p></div>
   <div class="card"><h3>Identity, lobby and transport are separate</h3><p>Who you are, how you get in, and how bytes move are three pieces. Standalone, the SDK does all three. Embedded, the parent app supplies the first two and the third is a bridge.</p></div>
   <div class="card"><h3>State is a document; input is a stream</h3><p>Phase, question, timer, roster and scores live in a small versioned document the host replicates. Anything fast (positions, strokes, pictures) goes through opt-in helpers that a slide never needs.</p></div>
+  <div class="card"><h3>A game knows nothing about codes</h3><p>Room codes, join URLs and QR images are the SDK's. A game asks for a room and gets one; if it insists on bringing its own code, the SDK claims it and says clearly when another game already holds it.</p></div>
 </div>
 <div class="diagram">
 <svg viewBox="0 0 760 250" role="img" aria-label="Host and phones exchange messages through a transport; the host holds the state document and the game, phones hold a mirror of the document and their own view">
@@ -148,11 +150,12 @@
 </div>
 
 <h2 id="quick">Quick start</h2>
-<p>A game page loads one script and calls one of two entry points. Everything below the line is the SDK's business: the room code, the QR, sockets, tokens, reconnects, parsing.</p>
+<p>A game page loads one script and calls one of two entry points. Everything below the line is the SDK's business: the room code, the join URL, the QR, sockets, tokens, reconnects, parsing. The game does not say which game it is; the SDK knows from the page it is running on.</p>
 <h4>Big screen</h4>
 <pre><code><span class="k">import</span> { AhaRoom } <span class="k">from</span> <span class="s">'/js/aha-room.js'</span>;
 
-<span class="k">const</span> room = <span class="k">await</span> AhaRoom.host({ game: <span class="s">'cs'</span>, lobby: { qr: <span class="s">'#qrimg'</span>, code: <span class="s">'#code'</span>, url: <span class="s">'#joinurl'</span> } });
+<span class="k">const</span> room = <span class="k">await</span> AhaRoom.host();     <span class="c">// mints a room for this page</span>
+room.mountLobby(<span class="s">'#card'</span>);                 <span class="c">// QR, code, join URL, live count — or render room.code / room.joinUrl / room.qr() yourself</span>
 
 room.on(<span class="s">'join'</span>,  ({ id, name, rejoin }) =&gt; addPainter(id, name));
 room.on(<span class="s">'leave'</span>, ({ id }) =&gt; liftBrush(id));
@@ -160,8 +163,19 @@ room.on(<span class="s">'msg'</span>,   (m) =&gt; { <span class="k">if</span> (m
 
 room.state.set({ phase: <span class="s">'painting'</span>, palette, scale: <span class="s">'Lydian'</span> });   <span class="c">// replicated to every phone</span>
 room.state.setFor(id, { streak: 3 });                               <span class="c">// this phone only</span></code></pre>
+<h4>Bringing your own code</h4>
+<p>A game may mint its own code, for a vanity room or because a parent app derived one from a presentation. The SDK claims it with the directory and refuses, loudly, if the code is live for another game or another page.</p>
+<pre><code><span class="k">try</span> {
+  room = <span class="k">await</span> AhaRoom.host({ code: <span class="s">'P8F3K-S12'</span> });
+} <span class="k">catch</span> (e) {
+  <span class="k">if</span> (e <span class="k">instanceof</span> AhaRoom.RoomConflict) {
+    <span class="c">// e.code === 'P8F3K-S12', e.heldBy === '/survival-quiz' (the page that holds it), e.since</span>
+    room = <span class="k">await</span> AhaRoom.host();          <span class="c">// fall back to a minted code, or surface the clash</span>
+  } <span class="k">else</span> <span class="k">throw</span> e;
+}</code></pre>
+<p>Reopening a room from the <em>same</em> page is not a conflict: the big screen that reloads gets its room back and phones re-register. A conflict is only ever another page, or another live big screen on the same page, holding that code.</p>
 <h4>Phone</h4>
-<pre><code><span class="k">const</span> me = AhaRoom.join({ game: <span class="s">'cs'</span>, askName: showNameForm });   <span class="c">// code comes from the URL</span>
+<pre><code><span class="k">const</span> me = AhaRoom.join({ askName: showNameForm });   <span class="c">// the code comes from the URL the QR opened</span>
 
 me.on(<span class="s">'welcome'</span>, ({ id, name, rejoined }) =&gt; showSheet());
 me.on(<span class="s">'state'</span>,   (doc, mine) =&gt; render(doc.phase, doc.palette, mine.streak));
@@ -175,8 +189,10 @@ me.input(<span class="s">'stroke'</span>, { every: 50 })   <span class="c">// ba
 <h3 id="api-session">Session</h3>
 <div class="tbl"><table>
   <tr><th>Call</th><th>Returns</th><th>Notes</th></tr>
-  <tr><td><code>AhaRoom.host(opts)</code></td><td><code>Promise&lt;Room&gt;</code></td><td>Creates a room unless the transport provides one. <code>opts.game</code> is the short prefix used in join URLs (<code>/cs/CODE</code>). <code>opts.lobby</code> names the elements to fill; omit it when embedded.</td></tr>
-  <tr><td><code>AhaRoom.join(opts)</code></td><td><code>Me</code></td><td>Reads the code from <code>?join=</code> or <code>opts.code</code>. Calls <code>opts.askName()</code> once, then remembers the name and a reconnect token per room code. A reload rejoins silently.</td></tr>
+  <tr><td><code>AhaRoom.host(opts?)</code></td><td><code>Promise&lt;Room&gt;</code></td><td>Asks the rooms directory for a room bound to this page. With <code>opts.code</code> it claims that code instead and rejects with <code>AhaRoom.RoomConflict</code> (<code>code</code>, <code>heldBy</code> page, <code>since</code>) if another game or another live big screen holds it. No other options: the SDK identifies the game by <code>location.pathname</code>.</td></tr>
+  <tr><td><code>room.code</code> · <code>room.joinUrl</code> · <code>room.qr()</code></td><td>string · string · data URL</td><td>For games that draw their own lobby. All three are <code>null</code> when the transport provides the room and there is nothing to scan.</td></tr>
+  <tr><td><code>room.mountLobby(sel)</code></td><td>—</td><td>Renders the default lobby card (QR, code, join URL, live player count) into the element; renders nothing when embedded. Most games should use this and style the card.</td></tr>
+  <tr><td><code>AhaRoom.join(opts?)</code></td><td><code>Me</code></td><td>Reads the code from the URL the QR opened (<code>?join=</code>). Calls <code>opts.askName()</code> once, then remembers the name and a reconnect token per room. A reload rejoins silently. The game never sees the code.</td></tr>
   <tr><td><code>room.send(m)</code> · <code>room.sendTo(id, m)</code></td><td>—</td><td>Any JSON object. Arrives on phones as <code>'msg'</code>. Whether <code>sendTo</code> is private depends on the transport (see capabilities).</td></tr>
   <tr><td><code>me.send(m)</code></td><td>—</td><td>Arrives on the host as <code>'msg'</code> with <code>m.id</code> set by the SDK. A game can never spoof another player's id.</td></tr>
   <tr><td><code>room.players</code></td><td><code>Map&lt;id, {name, online}&gt;</code></td><td>Kept across disconnects, so a phone that comes back gets its seat, not a new one.</td></tr>
@@ -256,6 +272,19 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 </table></div>
 <div class="card"><b>Limits.</b> One message under 64 KB; the document under 16 KB; a phone sends at most 20 messages a second (the input helper enforces this by batching); the host sends the document at most once per animation frame. Frames are the exception and are governed by their own throttle: 0.7 s plus 30 ms per phone, capped at 2.5 s.</div>
 
+<h2 id="rooms">Rooms and codes</h2>
+<p>Today each page mints a four-character code at random, the relay names its Durable Object by that code alone, and the worker carries one hand-written redirect per game (<code>/sq/</code>, <code>/tr/</code>, <code>/cs/</code>…). Three things go wrong with that as games multiply: two rooms can draw the same code and silently share a relay, even across games; a page can register a prefix another page already uses and nobody finds out until a phone 404s; and every page has to know its own prefix, which is exactly the kind of thing a game should not know.</p>
+<p>v0.2 replaces all of it with a small <b>rooms directory</b>, a single Durable Object in the worker, and one join route.</p>
+<div class="tbl"><table>
+  <tr><th>Endpoint</th><th>Body</th><th>Response</th></tr>
+  <tr><td><code>POST /api/room</code></td><td><code>{ page: '/color-and-sound' }</code></td><td><code>201 { code, joinUrl }</code>: a fresh code, checked against every live room before it is handed out.</td></tr>
+  <tr><td><code>POST /api/room</code></td><td><code>{ page, code: 'P8F3K-S12' }</code></td><td><code>201</code> if free, or held by this page with no live big screen; <code>409 { conflict: { code, heldBy, since } }</code> if another page, or a live big screen on this page, holds it. The SDK turns the 409 into <code>RoomConflict</code>.</td></tr>
+  <tr><td><code>GET /j/CODE</code></td><td>—</td><td><code>302</code> to the page that opened the room, with <code>?join=CODE</code>; <code>404</code> page saying the room has ended if the code is unknown or expired.</td></tr>
+  <tr><td><code>/ws/CODE</code></td><td>—</td><td>Unchanged for phones and hosts; the worker resolves the code through the directory and names the relay <code>page + ':' + code</code>, so a stale code from another game can never reach the wrong room.</td></tr>
+</table></div>
+<p>The directory keeps <code>{ code → page, createdAt, lastSeen, hostLive }</code>, hears a heartbeat from each live host, and expires rooms after a few idle hours, so codes recycle and the four-character space stays roomy. Codes are 4 to 32 characters from a confusable-free alphabet (no <code>0 O 1 I L</code>), so vanity and presentation-derived codes fit the same route. The old per-game prefixes stay as aliases for QR codes already printed.</p>
+<p>What this buys: a game is identified by its page path, a room by a code the directory guarantees unique, the join URL is the only thing a phone needs, and adding a game to the site adds nothing to the worker.</p>
+
 <h2 id="transports">Transports</h2>
 <p>A transport moves bytes and knows who is on the other end. It is the only place a socket, a room code, or a parent window is ever touched. The game never sees it.</p>
 <pre><code><span class="k">interface</span> Transport {
@@ -271,7 +300,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <p>The SDK reads <code>caps</code> and adapts: no lobby UI when the transport provides identity and a room; <code>setFor</code> tagged rather than private when there is no unicast; fast-lane helpers refuse to start when <code>fastLanes</code> is false, so a game finds out at development time, not in a room.</p>
 <div class="tbl"><table>
   <tr><th>Transport</th><th>Status</th><th>Capabilities</th><th>Notes</th></tr>
-  <tr><td><code>relay</code></td><td><span class="pill">today</span></td><td>unicast, fast lanes, 1 MB messages</td><td>The <code>Room</code> Durable Object in <code>src/worker.js</code>, unchanged. Room by 4-letter code from <code>POST /api/room</code>, or by any string when embedded (see below).</td></tr>
+  <tr><td><code>relay</code></td><td><span class="pill">today</span></td><td>unicast, fast lanes, 1 MB messages</td><td>The <code>Room</code> Durable Object in <code>src/worker.js</code>, unchanged, plus the rooms directory that mints and checks codes and answers <code>/j/CODE</code>.</td></tr>
   <tr><td><code>memory</code></td><td><span class="pill">phase 1</span></td><td>everything</td><td>Host and players in one page. Used by tests and by every page's solo mode, so solo and room mode run the same code path.</td></tr>
   <tr><td><code>embed</code></td><td><span class="pill">phase 1</span></td><td>as relay, plus identity and room from the parent</td><td>The relay transport with identity and room supplied by the parent app over URL or postMessage. Data never touches the parent.</td></tr>
   <tr><td><code>bridge</code></td><td><span class="pill later">phase 3</span></td><td>no unicast, no fast lanes, small messages</td><td>The parent forwards messages over the presentation's own realtime channel. The document survives it by design; fast lanes do not, and stay on the relay.</td></tr>
@@ -281,13 +310,13 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <p>The audience app already mounts a game per active slide and remounts on slide change; the presenter app already knows every participant's id and name. Embedding a room game means giving both apps an iframe and telling the SDK what it no longer has to do. Two steps, in this order.</p>
 
 <h3>Step 1 · Hybrid: identity from the parent, data over the relay</h3>
-<p>The presenter app embeds the big-screen page; the audience app embeds the phone page. Both derive the room from the presentation and slide, so there is no code to exchange and no QR to show. Bytes still flow directly between the iframes and the relay: nothing crosses the AhaSlides channel, the game is unchanged, and the only new part is <code>report()</code>.</p>
+<p>The presenter app embeds the big-screen page; the audience app embeds the phone page. The presenter app derives a code from the presentation and slide and passes it down; the SDK on the big screen claims it through the directory, exactly as a game bringing its own code would, so a clash with another game is reported rather than silently shared. There is no QR to show. Bytes still flow directly between the iframes and the relay: nothing crosses the AhaSlides channel, the game is unchanged, and the only new part is <code>report()</code>.</p>
 <pre><code><span class="c">presenter app, big screen</span>
-&lt;iframe src="https://tiny-kingdom…/color-and-sound?host=1&amp;embed=1&amp;room=P8f3k-s12"&gt;
+&lt;iframe src="https://tiny-kingdom…/color-and-sound?host=1&amp;embed=1&amp;room=P8F3K-S12"&gt;
 
 <span class="c">audience app, phone</span>
-&lt;iframe src="https://tiny-kingdom…/color-and-sound?join=P8f3k-s12&amp;embed=1&amp;name=Chau&amp;token=a91…"&gt;</code></pre>
-<p>The relay names rooms by string, so <code>presentationId-slideId</code> is a valid room. The worker's join route gains a second form for these longer names. The token is the participant id, so a participant who reloads or switches tabs keeps their seat, exactly as today.</p>
+&lt;iframe src="https://tiny-kingdom…/color-and-sound?join=P8F3K-S12&amp;embed=1&amp;name=Chau&amp;token=a91…"&gt;</code></pre>
+<p>The game code sees none of this: the <code>embed</code> transport reads <code>room</code>, <code>name</code> and <code>token</code> from the URL (or from a postMessage, for tokens that should not appear in a URL) and reports <code>providesRoom</code> and <code>providesIdentity</code>, so <code>mountLobby</code> renders nothing and <code>askName</code> is never called. The token is the participant id, so a participant who reloads or switches tabs keeps their seat, exactly as today.</p>
 <h4>postMessage between iframe and parent</h4>
 <div class="tbl"><table>
   <tr><th>Message</th><th>Direction</th><th>Meaning</th></tr>
@@ -308,7 +337,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 </ul>
 
 <h2 id="rules">Rules for game authors</h2>
-<div class="card warn"><b>The one rule that keeps the swap possible:</b> a game never touches a socket, a room code, localStorage, or <code>window.parent</code>. It talks to <code>room</code> and <code>me</code>, and nothing else. Everything the SDK cannot do through that surface is a gap in the SDK, to be fixed there.</div>
+<div class="card warn"><b>The one rule that keeps the swap possible:</b> a game never touches a socket, a room code, a join URL, a QR, localStorage, or <code>window.parent</code>. It talks to <code>room</code> and <code>me</code>, and nothing else. The only code a game may ever hold is one it chose to bring, and then the SDK tells it whether it got it. Everything the SDK cannot do through that surface is a gap in the SDK, to be fixed there.</div>
 <ul>
   <li>Render from the document, not from the sequence of patches. A phone may skip patches and land on a snapshot.</li>
   <li>Deadlines are host timestamps. Never ship a countdown.</li>
@@ -331,7 +360,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 
 <h2 id="roadmap">Roadmap</h2>
 <ol>
-  <li><b>Phase 1 — core.</b> <code>aha-room.js</code>: session, state document, time, reporting stub; <code>relay</code>, <code>memory</code> and <code>embed</code> transports; the longer room-name route in the worker. Move Color &amp; Sound and Gremlin Siege. About 250 lines of SDK and one page of docs.</li>
+  <li><b>Phase 1 — core.</b> <code>aha-room.js</code>: session, state document, time, reporting stub, default lobby card; <code>relay</code>, <code>memory</code> and <code>embed</code> transports; the rooms directory and <code>/j/CODE</code> in the worker, with the old prefixes kept as aliases. Move Color &amp; Sound and Gremlin Siege. About 250 lines of SDK, 60 in the worker, and one page of docs.</li>
   <li><b>Phase 2 — fast lanes.</b> <code>stream</code>, <code>frame</code>, <code>input</code>. Move the other four pages and delete the copies.</li>
   <li><b>Phase 3 — bridge.</b> When the presenter app has a plugin host, the bridge transport and the report shapes it expects. No game changes.</li>
 </ol>
@@ -339,8 +368,9 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <h2 id="open">Open questions</h2>
 <ul>
   <li><b>Where do reports land?</b> Presentation results, a leaderboard, or both. Decides the report shapes in phase 1.</li>
-  <li><b>Room naming for embeds.</b> <code>presentationId-slideId</code> is derivable by both apps but guessable. If rooms need to be unguessable, the presenter app mints them and passes them down.</li>
-  <li><b>Who owns the big screen when the presenter's tab reloads?</b> Today the relay replaces the host and phones re-register. Inside a presentation, the new host should also receive a snapshot of its own document, which means the host persists it (localStorage, per room) or the relay keeps the last snapshot. The second is cleaner and small.</li>
+  <li><b>Guessable embed codes.</b> A code derived from <code>presentationId-slideId</code> lets both apps agree without talking, but anyone who knows the ids can join. If that matters, the presenter app mints a random code and passes it down; the directory does not care which.</li>
+  <li><b>Who owns the big screen when the presenter's tab reloads?</b> Today the relay replaces the host and phones re-register. Inside a presentation, the new host should also receive a snapshot of its own document, which means the host persists it (localStorage, per room) or the directory keeps the last snapshot next to the room record. The second is cleaner and small.</li>
+  <li><b>Two big screens on purpose.</b> A rehearsal and a live show on the same page would want different rooms, which minted codes give for free; a brought code is refused for the second screen. Is that the right default, or should a page be able to hand a room over explicitly?</li>
   <li><b>Package form.</b> One ES module on this site is enough for phase 1. Publishing to the org registry only matters when the audience app imports it directly rather than embedding a page.</li>
 </ul>
 
