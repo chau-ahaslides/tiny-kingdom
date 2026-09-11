@@ -99,6 +99,7 @@
   <a class="sub" href="#ex-solo">Solo and tests</a>
   <a href="#api">API</a>
   <a class="sub" href="#api-session">Session</a>
+  <a class="sub" href="#api-presence">Presence</a>
   <a class="sub" href="#api-state">State document</a>
   <a class="sub" href="#api-time">Time</a>
   <a class="sub" href="#api-fast">Fast lanes</a>
@@ -116,7 +117,7 @@
 
 <h1>aha-room SDK</h1>
 <p class="lede">One small library for scan-to-play rooms: a host-authoritative session, a replicated state document, and a transport you can swap, from today's relay to a plugin inside the presenter and audience apps.</p>
-<p class="meta"><b>Design draft v0.3</b> · 11 September 2026 · tiny-kingdom · status: proposal, nothing built yet · v0.2: games no longer name themselves or touch codes; a rooms directory owns codes and reports conflicts · v0.3: worked examples for six game shapes</p>
+<p class="meta"><b>Design draft v0.4</b> · 11 September 2026 · tiny-kingdom · status: proposal, nothing built yet · v0.2: games no longer name themselves or touch codes; a rooms directory owns codes and reports conflicts · v0.3: worked examples for six game shapes · v0.4: presence built in, roster from the parent when embedded</p>
 
 <h2 id="why">Why</h2>
 <p>Seven pages on this site run the same session: a big screen opens a room and shows a QR code, phones scan it, type a name, and start sending input; the big screen owns the game and tells the phones what to show. Each page carries its own copy of that plumbing. The copies have drifted: two of them do not handle a phone that scans before the big screen is up, one never backs off when reconnecting, and every one sanitises names its own way.</p>
@@ -370,7 +371,7 @@ assert.equal(room.players.get(a.id).online, <span class="k">false</span>);</code
   <tr><td><code>opts.transport</code> (both)</td><td>—</td><td>Overrides the transport. The default picks <code>embed</code> when the URL says so, else <code>relay</code>. Pass <code>AhaRoom.memory()</code> for solo mode and tests; a <code>join</code> on a memory transport may also carry <code>name</code> and a <code>bot</code> brain.</td></tr>
   <tr><td><code>room.send(m)</code> · <code>room.sendTo(id, m)</code></td><td>—</td><td>Any JSON object. Arrives on phones as <code>'msg'</code>. Whether <code>sendTo</code> is private depends on the transport (see capabilities).</td></tr>
   <tr><td><code>me.send(m)</code></td><td>—</td><td>Arrives on the host as <code>'msg'</code> with <code>m.id</code> set by the SDK. A game can never spoof another player's id.</td></tr>
-  <tr><td><code>room.players</code></td><td><code>Map&lt;id, {name, online}&gt;</code></td><td>Kept across disconnects, so a phone that comes back gets its seat, not a new one.</td></tr>
+  <tr><td><code>room.players</code></td><td><code>Map&lt;id, {name, online, seat, since}&gt;</code></td><td>Everyone who has ever joined this room, kept across disconnects, so a phone that comes back gets its seat, not a new one. See Presence.</td></tr>
   <tr><td><code>room.close()</code> · <code>me.close()</code></td><td>—</td><td>Stops reconnecting. Phones see <code>'host-left'</code>.</td></tr>
 </table></div>
 <h4>Events</h4>
@@ -385,6 +386,25 @@ assert.equal(room.players.get(a.id).online, <span class="k">false</span>);</code
   <tr><td>phone</td><td><code>msg</code></td><td>the host's object</td></tr>
   <tr><td>phone</td><td><code>status</code></td><td><code>'ok' | 'waiting-for-host' | 'reconnecting' | 'host-left'</code></td></tr>
 </table></div>
+
+<h3 id="api-presence">Presence</h3>
+<p>Who is in the room is a built-in of the session, not something each game reconstructs from <code>join</code> and <code>leave</code>. The big screen shows names arriving as people scan; phones see how many are painting; a quiz waits for enough people. All of that reads from one place.</p>
+<div class="tbl"><table>
+  <tr><th>Call</th><th>What it gives</th></tr>
+  <tr><td><code>room.players</code></td><td>The map above. <code>online</code> flips with <code>join</code> and <code>leave</code>; <code>seat</code> is a small stable index in first-join order, so a game can give each player a consistent colour or avatar without a table of its own; <code>since</code> is host time of first join.</td></tr>
+  <tr><td><code>room.on('players', list)</code></td><td>The roster as an array, sorted by seat, fired <em>coalesced</em>: a burst of forty scans re-renders a handful of times, not forty. This is what the default lobby card and any custom lobby render from.</td></tr>
+  <tr><td><code>room.count()</code></td><td><code>{ total, online }</code>, for the corner of a screen.</td></tr>
+  <tr><td><code>doc._players</code> · <code>me.on('players', p)</code></td><td>Phones get presence for free. The SDK keeps a reserved slice in the document, <code>{ total, online, names }</code>, where <code>names</code> is capped at 40 and sorted by seat. A phone can show "12 painting" or the names arriving without a line of game code. The cap matters: in a room of 500, replicating every name to every phone on every join would be the biggest message stream in the system.</td></tr>
+  <tr><td><code>join</code> with <code>rejoin</code></td><td>The big screen can toast "Chau joined" only for genuinely new players and stay quiet when a phone reconnects. The SDK makes the distinction reliable; the game decides what to show.</td></tr>
+</table></div>
+<pre><code><span class="c">// big screen: names appear as people scan, a toast for each new one</span>
+room.on(<span class="s">'players'</span>, list =&gt; lobbyNames.replaceChildren(...list.map(p =&gt; nameChip(p.name, p.seat, p.online))));
+room.on(<span class="s">'join'</span>, ({ name, rejoin }) =&gt; { <span class="k">if</span> (!rejoin) toast(name + <span class="s">' joined'</span>); });
+startBtn.disabled = room.count().online &lt; 2;
+
+<span class="c">// phone: "12 painting"</span>
+me.on(<span class="s">'players'</span>, p =&gt; tag.textContent = p.online + <span class="s">' painting'</span>);</code></pre>
+<p>Presence survives a big-screen reload: the relay keeps the roster and replays it to the new host, so <code>room.players</code> is rebuilt before the game's first frame. That is why a game must render presence from here and never from a counter of its own, which would restart at zero.</p>
 
 <h3 id="api-state">State document</h3>
 <p>The document is a plain JSON object owned by the host. It is meant for what a slide needs: phase, the current question, when the timer ends, the roster, scores. Keep it under 16 KB so any transport carries it in one message.</p>
@@ -439,7 +459,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
   <tr><td><code>_welcome</code></td><td>host → phone</td><td><code>id, name, rejoined, v, doc, mine, now</code></td><td>You are in. Includes the snapshot so a phone renders after one message.</td></tr>
   <tr><td><code>_join</code> · <code>_leave</code></td><td>relay → host</td><td><code>id, name, rejoin</code></td><td>Roster changes. Produced by the transport, not the game.</td></tr>
   <tr><td><code>_snap</code></td><td>host → phone</td><td><code>v, doc, mine, now</code></td><td>Full document. Sent on join, on resync, and after any gap.</td></tr>
-  <tr><td><code>_patch</code></td><td>host → phones</td><td><code>v, p</code> (and <code>to</code> for a private slice)</td><td>Shallow merge into the document at version <code>v</code>.</td></tr>
+  <tr><td><code>_patch</code></td><td>host → phones</td><td><code>v, p</code> (and <code>to</code> for a private slice)</td><td>Shallow merge into the document at version <code>v</code>. Presence travels as an ordinary patch to the reserved <code>_players</code> key, coalesced with whatever else changed that frame.</td></tr>
   <tr><td><code>_resync</code></td><td>phone → host</td><td><code>v</code></td><td>I hold version <code>v</code> and saw a gap; send a snapshot.</td></tr>
   <tr><td><code>_ping</code> · <code>_pong</code></td><td>both</td><td><code>t0, now</code></td><td>Clock offset and liveness.</td></tr>
   <tr><td><code>_nohost</code> · <code>_hostgone</code></td><td>relay → phone</td><td>—</td><td>The big screen is not here yet, or left.</td></tr>
@@ -464,7 +484,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <h2 id="transports">Transports</h2>
 <p>A transport moves bytes and knows who is on the other end. It is the only place a socket, a room code, or a parent window is ever touched. The game never sees it.</p>
 <pre><code><span class="k">interface</span> Transport {
-  caps: { unicast: boolean; providesIdentity: boolean; providesRoom: boolean;
+  caps: { unicast: boolean; providesIdentity: boolean; providesRoom: boolean; providesRoster: boolean;
           maxBytes: number; maxRate: number; fastLanes: boolean };
   connect(role: <span class="s">'host'</span> | <span class="s">'player'</span>, opts: { room?: string; identity?: { id, name, token } }): Promise&lt;void&gt;;
   send(obj: object, to?: string): void;
@@ -478,7 +498,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
   <tr><th>Transport</th><th>Status</th><th>Capabilities</th><th>Notes</th></tr>
   <tr><td><code>relay</code></td><td><span class="pill">today</span></td><td>unicast, fast lanes, 1 MB messages</td><td>The <code>Room</code> Durable Object in <code>src/worker.js</code>, unchanged, plus the rooms directory that mints and checks codes and answers <code>/j/CODE</code>.</td></tr>
   <tr><td><code>memory</code></td><td><span class="pill">phase 1</span></td><td>everything</td><td>Host and players in one page. Used by tests and by every page's solo mode, so solo and room mode run the same code path. Test hooks: <code>settle()</code> delivers everything queued, <code>drop(me)</code> simulates a lost phone, <code>latency(ms)</code> delays delivery.</td></tr>
-  <tr><td><code>embed</code></td><td><span class="pill">phase 1</span></td><td>as relay, plus identity and room from the parent</td><td>The relay transport with identity and room supplied by the parent app over URL or postMessage. Data never touches the parent.</td></tr>
+  <tr><td><code>embed</code></td><td><span class="pill">phase 1</span></td><td>as relay, plus identity, room and roster from the parent</td><td>The relay transport with identity, room and the participant roster supplied by the parent app over URL or postMessage. Data never touches the parent.</td></tr>
   <tr><td><code>bridge</code></td><td><span class="pill later">phase 3</span></td><td>no unicast, no fast lanes, small messages</td><td>The parent forwards messages over the presentation's own realtime channel. The document survives it by design; fast lanes do not, and stay on the relay.</td></tr>
 </table></div>
 
@@ -493,11 +513,19 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <span class="c">audience app, phone</span>
 &lt;iframe src="https://tiny-kingdom…/color-and-sound?join=P8F3K-S12&amp;embed=1&amp;name=Chau&amp;token=a91…"&gt;</code></pre>
 <p>The game code sees none of this: the <code>embed</code> transport reads <code>room</code>, <code>name</code> and <code>token</code> from the URL (or from a postMessage, for tokens that should not appear in a URL) and reports <code>providesRoom</code> and <code>providesIdentity</code>, so <code>mountLobby</code> renders nothing and <code>askName</code> is never called. The token is the participant id, so a participant who reloads or switches tabs keeps their seat, exactly as today.</p>
+<h4>The audience is already there</h4>
+<p>Inside a presentation, people joined before the game loaded, and the lobby lives in the parent app. Two things follow.</p>
+<ul>
+  <li><b>The host arrives after the players.</b> Phone iframes may reach the relay before the presenter's iframe exists. The relay already handles this: phones wait, and when the host connects it receives a <code>join</code> for everyone present. The game sees the same events in the same order as a standalone room.</li>
+  <li><b>The roster comes from the parent, not from connections.</b> A quiz slide wants to show "24 in the room" the moment it loads, including people who have not opened the slide yet, and a leaderboard wants names for participants who never sent a message. The parent posts the roster on load and on every change; the transport reports <code>providesRoster</code>; <code>room.players</code> is populated before any phone connects, with <code>online</code> telling the game who has actually opened the slide. So <code>room.count()</code> reads <code>{ total: 24, online: 18 }</code> while people are still arriving, and the game can wait for a threshold or start regardless. <code>join</code> and <code>leave</code> keep meaning connected and disconnected, so a game written against the standalone relay behaves the same.</li>
+</ul>
+<p>The two paths must agree on identity: the id the parent lists in the roster is the id it gives that participant's iframe, and that id is the reconnect token. A phone that connects later lands on its existing seat rather than a new one.</p>
 <h4>postMessage between iframe and parent</h4>
 <div class="tbl"><table>
   <tr><th>Message</th><th>Direction</th><th>Meaning</th></tr>
   <tr><td><code>{ aha: 'ready' }</code></td><td>iframe → parent</td><td>The SDK is up. The parent may now send identity if it did not put it in the URL.</td></tr>
   <tr><td><code>{ aha: 'identity', id, name, token, room }</code></td><td>parent → iframe</td><td>Alternative to URL parameters, for tokens that should not appear in a URL.</td></tr>
+  <tr><td><code>{ aha: 'roster', players: [{ id, name }] }</code></td><td>parent → iframe (host)</td><td>Everyone in the presentation, on load and on every change. Becomes <code>room.players</code> with <code>online</code> false until that participant's iframe connects.</td></tr>
   <tr><td><code>{ aha: 'slide', active: true | false }</code></td><td>parent → iframe</td><td>The slide came into or left view. The game pauses its sound and timers when inactive.</td></tr>
   <tr><td><code>{ aha: 'report', … }</code></td><td>iframe → parent</td><td>Scores, answers, done. Shapes from the reporting section.</td></tr>
   <tr><td><code>{ aha: 'size', h }</code></td><td>iframe → parent</td><td>Preferred height, for phones where the iframe should not scroll.</td></tr>
@@ -521,6 +549,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
   <li>Anything a phone must not know yet stays on the host. Reveal by writing it into the document.</li>
   <li>Sanitise nothing yourself. Names arrive clean, ids are stamped by the transport, numbers are still numbers and must be clamped by the game as today.</li>
   <li>Design for a phone that reloads mid-game. With a reserved seat and a snapshot on rejoin, that should be invisible.</li>
+  <li>Render presence from <code>room.players</code> or the <code>_players</code> slice, never from a counter of your own. Do not treat "no <code>join</code> yet" as "no players": when embedded, the roster is full before anyone connects.</li>
 </ul>
 
 <h2 id="migration">Migration</h2>
