@@ -2,64 +2,63 @@
    Needs tr-config.js, tr-sim.js, tr-view.js and tr-audio.js loaded first. */
 'use strict';
 /* ===================== ROOM LINK ===================== */
-const WS_BASE = () => CONFIG.ws || (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/';
+// The session (room code, QR, sockets, reconnects, identity) is the aha-room SDK (/sdk): this file talks to `room` and `me` only.
+// The SDK is a module script, so it runs after this classic one: wait for it before opening or joining a room.
+const sdk = () => new Promise((res, rej) => { const ready = () => window.AhaRoom ? res(window.AhaRoom) : rej(new Error('aha-room.js did not load')); if (window.AhaRoom || document.readyState !== 'loading') ready(); else document.addEventListener('DOMContentLoaded', ready, { once: true }); });
+const sdkOpts = (AhaRoom, opts) => Object.assign(opts, CONFIG.api ? { transport: AhaRoom.relay({ origin: CONFIG.api }) } : {});   // CONFIG.api: the relay lives on another origin
 const emit = (name, data) => GremlinSiege.emit(name, data);
 const T = CONFIG.text;
-function link(url, onMsg, onState) {
-  let ws = null, retries = 0, closed = false;
-  const connect = () => {
-    const me = ws = new WebSocket(url);
-    me.onopen = () => { retries = 0; if (onState) onState('up'); };
-    me.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMsg(m); };
-    me.onclose = () => { if (me !== ws || closed) return; retries++; if (onState) onState('down'); setTimeout(() => { if (me === ws && !closed) connect(); }, Math.min(5000, 800 * retries)); };
-  };
-  connect();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && ws && ws.readyState > 1 && !closed) connect(); });
-  setInterval(() => { if (ws && ws.readyState === 1) { try { ws.send('{"t":"ping"}'); } catch (e) {} } }, 20000);
-  return { send: (m) => { if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(m)); } catch (e) {} } }, close: () => { closed = true; try { ws.close(); } catch (e) {} } };
-}
-async function openRoom() { const res = await fetch((CONFIG.api || '') + '/api/room', { method: 'POST' }); return (await res.json()).code; }
 
 /* ===================== HOST (big screen: runs the rules, streams the state) ===================== */
-const host = { link: null, code: '', view: null, S: null, total: CONFIG.host.partySize, lastSnap: 0, running: false, answers: new Map(), fx: { s: [], b: [] } };
+const host = { room: null, code: '', view: null, S: null, total: CONFIG.host.partySize, lastSnap: 0, running: false, answers: new Map(), fx: { s: [], b: [] } };
 async function startHost() {
   show('s-hostlobby');
-  try { host.code = await openRoom(); } catch (e) { toast('Could not open a room — this page has to be served by the game server.'); return; }
-  const joinUrl = (CONFIG.host.joinBase || location.origin) + '/tr/' + host.code;
+  let room;
+  try { const AhaRoom = await sdk(); room = host.room = await AhaRoom.host(sdkOpts(AhaRoom, {})); host.code = room.code; } catch (e) { toast('Could not open a room — this page has to be served by the game server.'); return; }
+  const joinUrl = room.joinUrl || '';
   $('#code').textContent = host.code.split('').join(' '); $('#joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
-  if (CONFIG.host.showQr) { const qr = qrcode(0, 'M'); qr.addData(joinUrl); qr.make(); $('#qr').innerHTML = qr.createImgTag(5, 8); }
+  if (CONFIG.host.showQr) room.qr().then(d => { if (d) $('#qr').innerHTML = '<img src="' + d + '" width="176" height="176" alt="QR code to join">'; });
   host.S = TR.create({ rules: CONFIG.rules, quiz: CONFIG.quiz }); TR.setBots(host.S, host.total); emit('room', { code: host.code, joinUrl }); $('#hpnote').textContent = TR.RULES.towerHp; $('#qtnote').textContent = TR.RULES.quizTime;
-  host.link = link(WS_BASE() + host.code + '?role=host', hostReceive, st => { if (st === 'down') toast('Room link lost — reconnecting…'); });
+  room.on('join', hostJoin); room.on('leave', hostLeave); room.on('players', hostPlayers); room.on('msg', hostReceive);
+  room.on('status', s => { if (s === 'reconnecting') toast('Room link lost — reconnecting…'); });
   host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.64, y: 0.64, yBias: -0.12 } }); await host.view.buildMap();
   renderRoster();
 }
 function helloFor(p) { const S = host.S; return { t: 'hello', name: p.name, skin: p.skin, ph: S.phase, wave: S.wave, quizTime: S.rules.quizTime, placeTime: S.rules.placeTime, between: S.rules.between, towerHp: S.tower.max, streak: p.streak, kills: p.kills, alive: S.guns.filter(g => !g.dead && g.owner === p.id).length, pending: p.pending }; }
+function hostJoin(m) {
+  const S = host.S; if (!S) return;
+  const p = TR.addPlayer(S, m.id, m.name, false); if (S.phase === 'lobby') TR.setBots(S, host.total);
+  host.room.sendTo(m.id, helloFor(p));
+  host.room.sendTo(m.id, { t: 'guns', list: TR.gunList(S) });
+  if (S.phase === 'wave' && S.quiz) host.room.sendTo(m.id, { t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, done: p.answered, left: Math.ceil(S.quizLeft) });
+  sendRoster(); renderRoster(); if (!m.rejoin) toast(p.name + ' joined'); emit('join', { id: m.id, name: p.name, rejoin: !!m.rejoin });
+}
+function hostLeave(m) { const S = host.S; if (!S) return; TR.removePlayer(S, m.id); if (S.phase === 'lobby') TR.setBots(S, host.total); sendRoster(); renderRoster(); emit('leave', { id: m.id }); }
+// The roster as the SDK holds it. When the big screen's link reconnects the relay replays who is here with no join
+// events, so anyone present that the rules do not know yet is seated from this list.
+function hostPlayers(list) {
+  const S = host.S; if (!S) return;
+  const missing = list.filter(pl => pl.online && !S.players.has(pl.id)); if (!missing.length) return;
+  for (const pl of missing) TR.addPlayer(S, pl.id, pl.name, false);
+  if (S.phase === 'lobby') TR.setBots(S, host.total); sendRoster(); renderRoster();
+}
 function hostReceive(m) {
   const S = host.S; if (!S) return;
-  if (m.t === 'join') {
-    const p = TR.addPlayer(S, m.id, m.name, false); if (S.phase === 'lobby') TR.setBots(S, host.total);
-    host.link.send(Object.assign({ to: m.id }, helloFor(p)));
-    host.link.send({ to: m.id, t: 'guns', list: TR.gunList(S) });
-    if (S.phase === 'wave' && S.quiz) host.link.send({ to: m.id, t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, done: p.answered, left: Math.ceil(S.quizLeft) });
-    sendRoster(); renderRoster(); if (!m.rejoin) toast(p.name + ' joined'); emit('join', { id: m.id, name: p.name, rejoin: !!m.rejoin });
-    return;
-  }
-  if (m.t === 'leave') { TR.removePlayer(S, m.id); if (S.phase === 'lobby') TR.setBots(S, host.total); sendRoster(); renderRoster(); emit('leave', { id: m.id }); return; }
   if (m.t === 'ans') {
     const res = TR.answer(S, m.id, m.i); const p = S.players.get(m.id);
-    host.link.send({ to: m.id, t: 'ans', res, correct: S.quiz ? S.quiz.answer : -1, level: p && p.pending ? p.pending.level : 0, streak: p ? p.streak : 0 });
+    host.room.sendTo(m.id, { t: 'ans', res, correct: S.quiz ? S.quiz.answer : -1, level: p && p.pending ? p.pending.level : 0, streak: p ? p.streak : 0 });
     if (res === 'right' || res === 'wrong' || res === 'god') { host.answers.set(m.id, m.i); renderQuiz(); SFX.play('answer', { pitch: 1.2 }); emit('answer', { id: m.id, name: p ? p.name : '', option: m.i, result: res, streak: p ? p.streak : 0, wave: S.wave }); noteAnswer(p, res); }
     return;
   }
   if (m.t === 'place') {
     const res = TR.place(S, m.id, m.x, m.z);
-    host.link.send({ to: m.id, t: 'placed', res });
+    host.room.sendTo(m.id, { t: 'placed', res });
     return;
   }
 }
-function sendRoster() { if (host.link) host.link.send({ t: 'roster', list: TR.roster(host.S) }); }
+function sendRoster() { if (host.room) host.room.send({ t: 'roster', list: TR.roster(host.S) }); }
 // A one-line note of what someone just did, for the phones' activity feed. `who` is left out for room-wide news.
-function activity(text, who) { if (host.link) host.link.send({ t: 'act', m: text, who: who || null }); }
+function activity(text, who) { if (host.room) host.room.send({ t: 'act', m: text, who: who || null }); }
 function answerTally() { const S = host.S; const total = [...S.players.values()].filter(r => !r.gone).length; const right = [...host.answers.values()].filter(i => i === S.quiz.answer).length; return { n: host.answers.size, total, right }; }
 function renderRoster() {
   const list = TR.roster(host.S);
@@ -86,7 +85,7 @@ function beginWave() { TR.startWave(host.S); onWave(); }
 function onWave() {
   const S = host.S; host.answers.clear(); host.lastCount = 0;
   const count = S.queue.filter(q => q.wave === S.wave).length;
-  host.link.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, left: S.rules.quizTime });
+  host.room.send({ t: 'quiz', q: S.quiz.q, opts: S.quiz.opts, wave: S.wave, left: S.rules.quizTime });
   sendRoster();
   bigMsg('Wave ' + S.wave + ' — ' + count + ' ' + T.enemies + ' marching!', 2000); SFX.play('wave'); SFX.play('quiz');
   emit('wave', { wave: S.wave, enemies: count, quiz: { q: S.quiz.q, opts: S.quiz.opts } });
@@ -131,21 +130,21 @@ function hostSim() {
     for (const ev of TR.takeEvents(S)) {
       if (ev.e === 'shot') { view.shot(ev.gun, ev.target, ev.dur, ev.splash); host.fx.s.push([ev.gun, ev.target, +ev.dur.toFixed(2), ev.splash]); const g = S.guns[ev.gun]; if (g) SFX.play(g.type === 'ballista' ? 'arrow' : g.type === 'turret' || g.type === 'crystal' ? 'turret' : 'cannon', { pitch: 0.85 + Math.random() * 0.3 }); }
       else if (ev.e === 'boom') { view.boom(ev.x, ev.z, ev.r); host.fx.b.push([+ev.x.toFixed(2), +ev.z.toFixed(2), ev.r]); SFX.play('boom', { pitch: 0.9 + Math.random() * 0.2, vol: Math.min(1.3, ev.r) }); }
-      else if (ev.e === 'die') { SFX.play('kill', { pitch: 0.9 + Math.random() * 0.2 }); const p = S.players.get(ev.owner); if (p && !p.bot) host.link.send({ to: ev.owner, t: 'kill', n: ev.kills }); }
-      else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); activity('👹 A ' + T.enemy + ' got through — tower ' + Math.max(0, S.tower.hp) + '/' + S.tower.max); SFX.play('bite'); SFX.play('alarm'); emit('bite', { hp: Math.max(0, S.tower.hp), max: S.tower.max, kind: ev.kind }); host.link.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
-      else if (ev.e === 'placed') { view.addGun(ev.gun); host.link.send({ t: 'gun', g: ev.gun }); SFX.play('place'); emit('placed', ev.gun); }
-      else if (ev.e === 'placeEnd') { host.link.send({ t: 'placeEnd' }); }
-      else if (ev.e === 'god') { const p = S.players.get(ev.id); godFeast(p ? p.name : '?', ev.streak, ev.refilled, ev.guns); host.link.send({ t: 'god', id: ev.id, name: p ? p.name : '?', streak: ev.streak, n: ev.refilled, guns: ev.guns }); emit('god', { id: ev.id, name: p ? p.name : '', streak: ev.streak, refilled: ev.refilled }); }
-      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); emit('gunDown', { gun: ev.gun, owner: ev.owner }); host.link.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) { toast('🪫 ' + p.name + "'s gun is out of ammo"); activity('🪫 ' + p.name + "'s gun ran dry", ev.owner); } }
+      else if (ev.e === 'die') { SFX.play('kill', { pitch: 0.9 + Math.random() * 0.2 }); const p = S.players.get(ev.owner); if (p && !p.bot) host.room.sendTo(ev.owner, { t: 'kill', n: ev.kills }); }
+      else if (ev.e === 'reach') { view.hitKeep(); view.biteText('−' + ev.bite); activity('👹 A ' + T.enemy + ' got through — tower ' + Math.max(0, S.tower.hp) + '/' + S.tower.max); SFX.play('bite'); SFX.play('alarm'); emit('bite', { hp: Math.max(0, S.tower.hp), max: S.tower.max, kind: ev.kind }); host.room.send({ t: 'bite', hp: Math.max(0, S.tower.hp), max: S.tower.max, bite: ev.bite, kind: ev.kind }); }
+      else if (ev.e === 'placed') { view.addGun(ev.gun); host.room.send({ t: 'gun', g: ev.gun }); SFX.play('place'); emit('placed', ev.gun); }
+      else if (ev.e === 'placeEnd') { host.room.send({ t: 'placeEnd' }); }
+      else if (ev.e === 'god') { const p = S.players.get(ev.id); godFeast(p ? p.name : '?', ev.streak, ev.refilled, ev.guns); host.room.send({ t: 'god', id: ev.id, name: p ? p.name : '?', streak: ev.streak, n: ev.refilled, guns: ev.guns }); emit('god', { id: ev.id, name: p ? p.name : '', streak: ev.streak, refilled: ev.refilled }); }
+      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); emit('gunDown', { gun: ev.gun, owner: ev.owner }); host.room.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) { toast('🪫 ' + p.name + "'s gun is out of ammo"); activity('🪫 ' + p.name + "'s gun ran dry", ev.owner); } }
       else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); SFX.play('answer', { pitch: 0.8 + Math.random() * 0.5 }); const p = S.players.get(ev.id); noteAnswer(p, ev.i === S.quiz.answer ? (p.streak >= S.rules.godStreak ? 'god' : 'right') : 'wrong'); }
-      else if (ev.e === 'quizEnd') { renderQuiz(); SFX.play('tick'); host.link.send({ t: 'quizEnd', correct: S.quiz.answer }); const t = answerTally(); activity('⏰ Quiz over — ' + t.right + ' of ' + t.total + ' got a gun'); }
+      else if (ev.e === 'quizEnd') { renderQuiz(); SFX.play('tick'); host.room.send({ t: 'quizEnd', correct: S.quiz.answer }); const t = answerTally(); activity('⏰ Quiz over — ' + t.right + ' of ' + t.total + ' got a gun'); }
       else if (ev.e === 'waveEnd') { SFX.play('clear'); emit('waveEnd', { wave: ev.wave, hp: Math.max(0, S.tower.hp), max: S.tower.max, board: TR.roster(S) }); if (S.phase === 'final') { $('#h-quiz').classList.remove('on'); bigMsg('Last wave held — clear the road!', 2500); sendRoster(); } }
       else if (ev.e === 'wave') onWave();
       else if (ev.e === 'die' && ev.owner) { const p = S.players.get(ev.owner); if (p && p.kills % 5 === 0) activity('🎯 ' + p.name + ' has shot ' + p.kills + ' ' + T.enemies, ev.owner); }
       else if (ev.e === 'over') finish(ev.won);
     }
     const snap = TR.snapshot(S); host.snap = snap;
-    if (now - host.lastSnap > 100) { host.lastSnap = now; host.link.send(snap); if (host.fx.s.length || host.fx.b.length) { host.link.send({ t: 'fx', s: host.fx.s, b: host.fx.b }); host.fx = { s: [], b: [] }; } }
+    if (now - host.lastSnap > 100) { host.lastSnap = now; host.room.send(snap); if (host.fx.s.length || host.fx.b.length) { host.room.send({ t: 'fx', s: host.fx.s, b: host.fx.b }); host.fx = { s: [], b: [] }; } }
   }
 }
 function hostTick(ts) {
@@ -164,7 +163,7 @@ function hostTick(ts) {
     const watching = S.quizLeft <= 0 && S.placeLeft <= 0; const n = Math.max(0, Math.ceil(S.cycleLeft));
     phaseStrip($('#h-phases'), [S.quizLeft, S.placeLeft, watching ? S.cycleLeft : 0], [S.rules.quizTime, S.rules.placeTime, S.rules.between], S.phase);
     $('#b-next').style.display = watching ? '' : 'none';
-    if (watching && n <= 3 && n > 0 && n !== host.lastCount && S.wave < S.rules.maxWaves) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.link.send({ t: 'count', n, wave: S.wave + 1 }); SFX.play(n === 1 ? 'go' : 'tick'); }
+    if (watching && n <= 3 && n > 0 && n !== host.lastCount && S.wave < S.rules.maxWaves) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.room.send({ t: 'count', n, wave: S.wave + 1 }); SFX.play(n === 1 ? 'go' : 'tick'); }
   } else if (host.running && S.phase === 'final') { phaseStrip($('#h-phases'), [0, 0, 0], [S.rules.quizTime, S.rules.placeTime, S.rules.between], 'final'); $('#b-next').style.display = 'none'; }
   view.frame(host.paused ? 0 : dt);
 }
@@ -175,7 +174,7 @@ function setPaused(on) {
   host.paused = on; $('#b-pause').textContent = on ? '▶ Resume' : '⏸ Pause'; SFX.play('pause', { pitch: on ? 1 : 1.4 }); emit('pause', { on });
   const el = $('#h-msg'); clearTimeout(bigMsg.t);
   if (on) { el.textContent = '⏸ Paused'; el.classList.add('on'); } else el.classList.remove('on');
-  host.link.send({ t: 'pause', on });
+  host.room.send({ t: 'pause', on });
 }
 $('#b-pause').onclick = () => setPaused(!host.paused);
 function soundButtons() { $('#b-sound').textContent = SFX.on ? '🔊' : '🔇'; $('#b-music').style.opacity = SFX.music ? 1 : .45; $('#p-sound').textContent = SFX.on ? '🔊' : '🔇'; }
@@ -192,7 +191,7 @@ function finish(won, aborted) {
   const fallen = !won && !aborted;
   const survived = aborted ? Math.max(0, S.wave - 1) : S.survived;
   const list = TR.roster(S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
-  host.link.send({ t: 'over', won, board: list, survived, aborted: !!aborted }); emit('over', { won, survived, aborted: !!aborted, wave: S.wave, board: list });
+  host.room.send({ t: 'over', won, board: list, survived, aborted: !!aborted }); emit('over', { won, survived, aborted: !!aborted, wave: S.wave, board: list });
   $('#ov-title').textContent = won ? '🏆 Legendary! The tower held every wave' : '💥 The ' + T.tower + ' has fallen';
   $('#ov-text').textContent = won ? 'All ' + S.rules.maxWaves + ' waves held. The Gremlins give up.' : (aborted ? 'The game was ended early after ' + survived + ' wave' + (survived === 1 ? '' : 's') + '.' : 'The defence held for ' + survived + ' wave' + (survived === 1 ? '' : 's') + ' and fell in wave ' + S.wave + '. The ' + T.enemies + ' have the room.');
   $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)} <span class="hint">🔫${r.guns} placed · best streak ${r.best}</span></td><td>${r.kills} kills</td></tr>`).join('');
@@ -202,23 +201,40 @@ function finish(won, aborted) {
 $('#b-again').onclick = () => location.href = location.pathname;
 
 /* ===================== PLAYER (phone) ===================== */
-const player = { link: null, code: '', id: null, name: '', view: null, ph: 'lobby', roster: [], answered: false, snap: null, quizTime: 15, pending: null, sel: null, type: 'ballista', guns: [], streak: 0, kills: 0, gunsN: 0 };
-function joinGame(code, name) {
-  player.code = code; player.name = name;
-  let token = ''; try { token = localStorage.getItem('tk-tr-tok-' + code) || ''; if (!token) { token = Math.random().toString(36).slice(2, 12); localStorage.setItem('tk-tr-tok-' + code, token); } } catch (e) {}
-  show('s-play'); $('#p-name').textContent = name;
+const player = { me: null, code: '', id: null, name: '', view: null, ph: 'lobby', roster: [], answered: false, snap: null, quizTime: 15, pending: null, sel: null, type: 'ballista', guns: [], streak: 0, kills: 0, gunsN: 0 };
+// `name` is the one from the URL or the embedding page, if any. The SDK asks for a name (the join card) only when it
+// has none for this room, so a reload rejoins silently; the phone enters the game as soon as the name is settled.
+async function joinGame(code, name) {
+  player.code = code;
+  let AhaRoom; try { AhaRoom = await sdk(); } catch (e) { toast('Could not join — this page has to be served by the game server.'); return; }
+  let asked = false;
+  const askName = () => new Promise(res => {
+    asked = true; show('s-join'); $('#j-code').textContent = code; let done = false;
+    const go = () => { if (done) return; done = true; const n = $('#in-name').value.trim().slice(0, 16) || 'Defender'; enterPlay(n); res(n); };
+    $('#b-go').onclick = go; $('#in-name').onkeydown = e => { if (e.key === 'Enter') go(); };
+    setTimeout(() => $('#in-name').focus(), 50);
+  });
+  const me = player.me = AhaRoom.join(sdkOpts(AhaRoom, { code, name: name || '', askName }));
+  if (!asked) enterPlay(name || '');
+  me.on('welcome', w => { player.id = w.id; player.name = w.name; $('#p-name').textContent = w.name; player.view.me = w.id; emit('welcome', { id: w.id }); });
+  me.on('status', s => {
+    if (s === 'waiting-for-host') pMsg('The big screen is not open yet…', 4000);
+    else if (s === 'host-left') { pMsg('Big screen disconnected', 5000); setBtn('', 'Waiting…'); }
+    else if (s === 'reconnecting') toast('Reconnecting…');
+  });
+  me.on('msg', playerReceive);
+}
+function enterPlay(name) {
+  player.name = name;
+  show('s-play'); if (name) $('#p-name').textContent = name;
   let seen = !CONFIG.player.onboarding; try { seen = seen || localStorage.getItem('tk-tr-onboard') === ONBOARD_VERSION; } catch (e) {}
   if (!seen) openOnboarding();
-  emit('joined', { code, name });
+  emit('joined', { code: player.code, name });
   player.view = new View($('#gl'), { lite: true, orbit: true, margins: { x: 0.96, y: 0.72, yBias: -0.12 } }); player.view.buildMap().then(() => { player.mapReady = true; });
-  player.link = link(WS_BASE() + code + '?role=player&name=' + encodeURIComponent(name) + '&token=' + encodeURIComponent(token), playerReceive, st => { if (st === 'down') toast('Reconnecting…'); });
   playerTick();
 }
 function playerReceive(m) {
   const v = player.view;
-  if (m.t === 'welcome') { player.id = m.id; v.me = m.id; emit('welcome', { id: m.id }); return; }
-  if (m.t === 'nohost') { pMsg('The big screen is not open yet…', 4000); return; }
-  if (m.t === 'hostgone') { pMsg('Big screen disconnected', 5000); setBtn('', 'Waiting…'); return; }
   if (m.t === 'hello') {
     player.quizTime = m.quizTime || 15; player.placeTime = m.placeTime || 5; player.between = m.between || 5; player.ph = m.ph; player.streak = m.streak || 0; player.kills = m.kills || 0; player.gunsN = m.alive || 0; updateMe();
     if (m.pending) openPlace(m.pending.level, player.streak);
@@ -303,7 +319,7 @@ function showQuiz(m) {
   $('#pq-q').textContent = '❓ Wave ' + m.wave + ': ' + m.q;
   $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}">${esc(o)}</button>`).join('');
   $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = place a ' + LEVEL_LABEL[Math.min(TOP_LEVEL, player.streak)] + ' · ❌ Wrong = no gun, streak lost';
-  $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { player.answered = true; b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.link.send({ t: 'ans', i: +b.dataset.i }); }; });
+  $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { player.answered = true; b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.me.send({ t: 'ans', i: +b.dataset.i }); }; });
   const u = $('#pq-urgent'); u.className = 'urgent' + (m.done ? ' calm' : ''); u.textContent = player.streak > 0 ? '🔥 Streak ' + player.streak + ' — answer right for a ' + LEVEL_LABEL[Math.min(TOP_LEVEL, player.streak)] + '!' : '⚠️ Gremlins are already marching! Answer right to place a gun';
   $('#pq-time').style.width = (100 * (m.left || player.quizTime) / player.quizTime) + '%';
   $('#p-quiz').classList.add('on');
@@ -330,7 +346,7 @@ function placeAt(x, z) {
   if (ok && (!player.lastSel || player.lastSel !== key)) { player.lastSel = key; if (navigator.vibrate) navigator.vibrate(8); }
 }
 function gunRange() { return TR.LEVELS[player.pending ? player.pending.level : 0].range; }
-$('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#b-place').disabled = true; $('#pl-hint').textContent = 'Placing…'; player.link.send({ t: 'place', x: player.sel.x, z: player.sel.z }); };
+$('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#b-place').disabled = true; $('#pl-hint').textContent = 'Placing…'; player.me.send({ t: 'place', x: player.sel.x, z: player.sel.z }); };
 // Onboarding: one idea per step, Next to move on, the last step confirms. Remembered per version, so a reworked guide shows once more.
 const ONBOARD_VERSION = 'v2';
 const ONBOARD_STEPS = () => [
@@ -397,19 +413,12 @@ function playerTick(ts) {
 
 /* ===================== ENTRY ===================== */
 $('#b-host').onclick = () => { startHost(); hostTick(); };
-$('#b-join').onclick = () => { const c = $('#in-code').value.trim().toUpperCase(); if (/^[A-Z0-9]{4,8}$/.test(c)) askName(c); else toast('Enter the 4-letter room code'); };
+$('#b-join').onclick = () => { const c = $('#in-code').value.trim().toUpperCase(); if (/^[A-Z0-9]{4,8}$/.test(c)) joinGame(c, (CONFIG.player.name || '').trim().slice(0, 16)); else toast('Enter the 4-letter room code'); };
 $('#in-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('#b-join').click(); });
-function askName(code) {
-  show('s-join'); $('#j-code').textContent = code;
-  try { $('#in-name').value = CONFIG.player.name || (CONFIG.player.rememberName && localStorage.getItem('tk-name')) || ''; } catch (e) {}
-  const go = () => { const n = $('#in-name').value.trim().slice(0, 16) || 'Defender'; if (CONFIG.player.rememberName) { try { localStorage.setItem('tk-name', n); } catch (e) {} } joinGame(code, n); };
-  $('#b-go').onclick = go; $('#in-name').onkeydown = e => { if (e.key === 'Enter') go(); };
-  setTimeout(() => $('#in-name').focus(), 50);
-}
 // ------------------------------------------------------------ the GremlinSiege API (see tr-config.js for events and settings)
 Object.assign(GremlinSiege, {
   host() { startHost(); hostTick(); },
-  join(code, name) { code = String(code || '').toUpperCase(); if (!/^[A-Z0-9]{4,8}$/.test(code)) return false; if (name) joinGame(code, String(name).slice(0, 16)); else askName(code); return true; },
+  join(code, name) { code = String(code || '').toUpperCase(); if (!/^[A-Z0-9]{4,8}$/.test(code)) return false; joinGame(code, name ? String(name).slice(0, 16) : ''); return true; },
   start() { if (host.S && host.S.phase === 'lobby') $('#b-start').click(); },
   pause(on) { setPaused(on === undefined ? !host.paused : !!on); },
   nextWave() { if (host.S && host.S.phase === 'wave') host.S.cycleLeft = 0; },
@@ -422,7 +431,7 @@ Object.assign(GremlinSiege, {
   trApplyConfig();
   const q = new URLSearchParams(location.search);
   const join = (q.get('join') || '').toUpperCase(); const name = (CONFIG.player.name || '').trim();
-  if (/^[A-Z0-9]{4,8}$/.test(join)) { if (name) joinGame(join, name.slice(0, 16)); else askName(join); }
+  if (/^[A-Z0-9]{4,8}$/.test(join)) joinGame(join, name.slice(0, 16));
   else if (q.has('host')) { startHost(); hostTick(); if (CONFIG.host.autoStart) GremlinSiege.on((n) => { if (n === 'room') setTimeout(() => GremlinSiege.start(), 500); }); }
   else show('s-home');
   emit('ready', { config: CONFIG });
