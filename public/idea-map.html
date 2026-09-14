@@ -153,7 +153,7 @@ button.icon{width:38px;padding:0;font-size:18px}
 <div class="sheet" id="sheet" hidden>
   <div class="row"><button id="zoomOut">−</button><button id="zoomIn">+</button><button id="expand">Show all</button></div>
   <div class="row"><button id="explore">Explore: on</button><button id="style">Style: mixed</button></div>
-  <div class="row"><button id="sample">Sample: 200</button><button id="stress">+60 ideas</button></div>
+  <div class="row"><button id="sample">Sample: 200</button><button id="stress">+60 ideas</button><button id="newmap">New map</button></div>
   <div class="t">Node move <span id="vMove"></span></div><input type="range" id="sMove" min="200" max="3000" step="50">
   <div class="t">Line dash <span id="vDash"></span></div><input type="range" id="sDash" min="0" max="1500" step="50">
   <div class="t">Wipe delay after dash <span id="vGap"></span></div><input type="range" id="sGap" min="0" max="1500" step="50">
@@ -228,7 +228,7 @@ function buildImbalanced(){nodes={};nextId=1;rootId=mk('Hackathon: new slide typ
   small.forEach(sp=>seed(sp,rootId));
 }
 const seed=(spec,parent)=>{const id=mk(spec[0],parent);(spec[1]||[]).forEach(c=>seed(typeof c==='string'?[c]:c,id));return id};
-if(isHost||isClient)buildFresh();else buildBalanced();
+if(isClient)buildFresh();else buildBalanced();   // a room opens over whatever map is on screen; New map starts blank
 // ---------- undo ----------
 const undoStack=[];
 const pushUndo=()=>{undoStack.push(JSON.stringify({nodes,nextId}));if(undoStack.length>60)undoStack.shift();$('#undo').disabled=false};
@@ -250,7 +250,7 @@ function applyDoc(doc){if(!Array.isArray(doc.map)||!doc.map.length)return;const 
   for(const id in nodes){const p=nodes[id].parent;if(p&&nodes[p])nodes[p].children.push(id);else nodes[id].parent=null}
   rootId=doc.map[0][0];nextId=maxId+1;if(!nodes[rootId])return;
   if(sel&&!nodes[sel])sel=null;
-  let go=null;for(const id of myAdds)if(nodes[id]){sel=id;go=id;let p=nodes[id].parent;while(p){nodes[p].collapsed=false;p=nodes[p].parent}myAdds.delete(id)}   // my idea landed: show me
+  let go=null;for(const id of myAdds)if(nodes[id]){sel=id;go=id;let p=nodes[id].parent;if(p)nodes[p].page=Math.floor(nodes[p].children.indexOf(id)/PAGE);while(p){nodes[p].collapsed=false;p=nodes[p].parent}myAdds.delete(id)}   // my idea landed: open its branch, turn to its page, show me
   if(first){refresh();fit();return}
   transition(()=>{},go)}
 let toastT=0;function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),2400)}
@@ -542,7 +542,8 @@ ed.addEventListener('input',placeEditor);ed.addEventListener('blur',commitEdit);
 // bar & chrome
 $('#add').onclick=()=>{if(isClient)openCompose();else if(sel)addChild(sel)};
 $('#like').onclick=()=>{if(!me||!sel||sel===rootId)return;me.send({t:'like',n:sel});liked.has(sel)?liked.delete(sel):liked.add(sel);updateBar()};
-$('#host').onclick=()=>{location.search='?host=1'};
+$('#host').onclick=()=>{if(room)return;history.replaceState(null,'',location.pathname+'?host=1');initHost()};   // the room opens over this map, in place
+$('#newmap').onclick=()=>{pushUndo();buildFresh();sel=null;cancelMerge();$('#sheet').hidden=true;refresh();fit();select(rootId)};
 $('#rename').onclick=()=>sel&&edit(sel);
 $('#merge').onclick=()=>sel&&startMerge(sel);
 $('#del').onclick=()=>sel&&remove(sel);
@@ -608,7 +609,7 @@ async function initHost(){
   room.on('leave',()=>render());
   room.on('msg',guard(hostMsg));
   publish();
-  $('#hintText').textContent='Select the centre and Rename it to your question. Phones scan the code to add ideas and like them.';$('#hintCancel').textContent='OK';$('#hint').hidden=false;
+  $('#hintText').textContent='Phones scan the code to add ideas to this map and like them. Rename the centre to your question, or start blank with New map under ⋯.';$('#hintCancel').textContent='OK';$('#hint').hidden=false;
   window.__im={room};
 }
 // ---------- phone ----------

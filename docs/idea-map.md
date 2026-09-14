@@ -8,8 +8,8 @@ touches a socket, a room code, a QR or a join URL.
 
 ## Who does what
 
-- **The big screen owns the map.** It starts with one idea in the centre ("Our idea map"): select
-  it and Rename it to the question. Everything the editor can do alone (add, rename, move, merge,
+- **The big screen owns the map.** A room opens over whatever map is on screen: the 200-idea sample
+  by default, or a blank one from "New map" (rename the centre to the question). Everything the editor can do alone (add, rename, move, merge,
   delete, undo, explore mode, paging) still works on the big screen while the room is open.
 - **Phones send intent.** A phone sees the same map (pan, pinch, tap to open branches), taps a
   branch to pick where its idea goes, types it, and sends. It can also like an idea. Phones never
