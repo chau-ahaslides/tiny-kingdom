@@ -170,7 +170,7 @@
   <tr><td>Transports: <code>relay</code>, <code>memory</code>, <code>embed</code></td><td>same file</td><td><span class="pill">built</span> — embed is untested against a real parent app</td></tr>
   <tr><td>Rooms directory, <code>/j/CODE</code>, relay roster replay with online flags</td><td><code>src/worker.js</code></td><td><span class="pill">built</span></td></tr>
   <tr><td>Tests on the memory transport</td><td><code>test/aha-room.test.js</code></td><td><span class="pill">built</span> — 12 cases: snapshot, coalescing, private slices, resync after loss, presence, host-after-players, input batching, ticks, clock</td></tr>
-  <tr><td>Pages on the SDK</td><td>Color &amp; Sound, Survival Quiz, Survival Brawl, Brawl Quiz, Gremlin Siege, Marshmallow</td><td><span class="pill">built</span> — none of them touches a socket, a code, a QR or a join URL; the only localStorage left is game settings and Gremlin Siege's onboarding flag. Each removed 35 to 60 lines net.</td></tr>
+  <tr><td>Pages on the SDK</td><td>Color &amp; Sound, Idea Map, Survival Quiz, Survival Brawl, Brawl Quiz, Gremlin Siege, Marshmallow</td><td><span class="pill">built</span> — none of them touches a socket, a code, a QR or a join URL; the only localStorage left is game settings and Gremlin Siege's onboarding flag. Each removed 35 to 60 lines net.</td></tr>
   <tr><td>Marshmallow Live</td><td><code>public/marshmallow-live.html</code></td><td><span class="pill later">next</span> — its session runs through the physics object on <code>/mws/</code>, whose welcome carries a colour; needs a socket-path option on the relay transport first</td></tr>
   <tr><td>Bridge transport, report shapes agreed with the presenter app, bots on the memory transport, a host-side keepalive for empty lobbies</td><td>—</td><td><span class="pill later">later</span></td></tr>
 </table></div>
@@ -603,6 +603,7 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <div class="tbl"><table>
   <tr><th>Page</th><th>What moves to the SDK</th><th>What stays</th></tr>
   <tr><td>Color &amp; Sound</td><td>host and join plumbing, palette and scale into the document, strokes through <code>input</code>, sheet through <code>frame</code></td><td>the engine</td></tr>
+  <tr><td>Idea Map</td><td>host and join plumbing, the tree as the document (rows in tree order), ideas and likes as intent, per-phone replies with <code>sendTo</code></td><td>the editor: layout, explore mode, paging</td></tr>
   <tr><td>Gremlin Siege</td><td>its <code>emit</code> style maps one-to-one onto events; phase strip and countdowns become <code>endsAt</code> in the document; quiz offers become private slices</td><td>simulation, view, audio</td></tr>
   <tr><td>Survival Quiz, Survival Brawl, Brawl Quiz</td><td>plumbing; the 10 Hz snapshot through <code>tick</code>; phase and banner into the document</td><td>fighters, quiz pool</td></tr>
   <tr><td>Marshmallow, Marshmallow Live</td><td>plumbing and lobby only</td><td>the physics room, as its own transport-bound feature</td></tr>

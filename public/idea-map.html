@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Idea map</title>
+<style>
+:root{
+  --bg:#12172A; --ink:#F4F6FA; --muted:#9AA5B8; --panel:#1F2740; --line:#2D3856;
+  --shadow:0 6px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#12172A!important;color:var(--ink);
+  font-family:"Avenir Next","Segoe UI",Inter,system-ui,sans-serif;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab;display:block;user-select:none;-webkit-user-select:none}
+#map.panning{cursor:grabbing}
+
+/* nodes */
+.n{cursor:pointer}
+.n .hit,.pager .hit{fill:transparent}
+.n text{pointer-events:none;fill:var(--ink)}
+.n.d1 text{fill:#fff}.n.d0 text{fill:#12172A}
+.n.d0 text{font-weight:700;font-size:30px}
+.n.d1 text{font-weight:700;font-size:19px}
+.n.d2 text{font-weight:600;font-size:16px}
+.n.d3 text{font-weight:500;font-size:15px}
+.n .box{stroke:transparent;stroke-width:0}
+.n.sel .box{stroke:#fff;stroke-width:2.5;stroke-dasharray:none}
+.n.sel .bg{opacity:1}
+.n .bg{opacity:0;transition:opacity .12s}
+.n.target .bg,.n.target .box{opacity:1;stroke:#fff;stroke-width:2.5;stroke-dasharray:5 4}
+.n.dragging{opacity:.55}
+.n .dot{display:none}
+.badge circle{fill:var(--bg)}.badge .tap{fill:transparent}.badge.open circle:not(.tap){fill:var(--bg)}.badge{cursor:pointer}
+.pager{cursor:pointer}.pager text{fill:var(--muted);pointer-events:none}.pager.d1 text{fill:rgba(255,255,255,.7)}.pager .ul{stroke-dasharray:6 5}.pager .box{fill-opacity:.35}.pager:hover text{fill:#fff}
+.badge text{font-size:11px;font-weight:700;pointer-events:none}
+.link{fill:none;stroke-linecap:round}
+/* semantic zoom: hide deep labels when zoomed out */
+svg[data-lod="1"] .n.d3 text,svg[data-lod="1"] .n.d3 .ul,svg[data-lod="1"] .pager.d3 text,svg[data-lod="1"] .pager.d3 .ul{display:none}
+svg[data-lod="1"] .n.d3 .dot{display:block}
+svg[data-lod="2"] .n.d3 text,svg[data-lod="2"] .n.d3 .ul,svg[data-lod="2"] .n.d2 text,svg[data-lod="2"] .n.d2 .ul,svg[data-lod="2"] .pager text,svg[data-lod="2"] .pager .ul{display:none}
+svg[data-lod="2"] .n.d3 .dot,svg[data-lod="2"] .n.d2 .dot{display:block}
+svg[data-lod="2"] .badge{display:none}
+
+/* chrome */
+.top{position:absolute;top:0;left:0;right:0;padding:max(10px,env(safe-area-inset-top)) 10px 0;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;gap:8px;flex-wrap:wrap}
+.top>*{pointer-events:auto}
+.title{background:var(--panel);border-radius:14px;padding:10px 14px;box-shadow:var(--shadow);line-height:1.15}
+.title b{font-size:16px;display:block}
+.title span{font-size:12px;color:var(--muted)}
+.ctl{display:flex;gap:4px;background:var(--panel);border-radius:14px;padding:5px;box-shadow:var(--shadow);flex-wrap:wrap;justify-content:flex-end;max-width:100%}
+@media (max-width:640px){.title b{font-size:14px}button{padding:7px 9px;font-size:13px;min-height:36px}button.icon{width:36px;font-size:17px}}
+.sheet{position:absolute;right:10px;top:max(64px,calc(env(safe-area-inset-top) + 58px));background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:10px;width:min(320px,calc(100vw - 20px))}
+.sheet[hidden]{display:none}
+.sheet .row{display:flex;gap:6px;margin-bottom:6px}
+.sheet .row button{flex:1;background:#2A3450;font-weight:600}
+.sheet .t{font-size:12px;color:var(--muted);padding:8px 4px 2px}
+.sheet input[type=range]{width:100%;margin:0 0 4px;accent-color:#4D8BFF}
+.title{padding:8px 12px}.title b{font-size:15px}.title span{font-size:11px}
+.ctl{padding:4px}
+
+button{font:inherit;border:0;background:transparent;color:var(--ink);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:600;cursor:pointer;min-height:38px}
+button:hover{background:#2A3450}
+button:focus-visible{outline:2px solid #fff;outline-offset:1px}
+button:disabled{opacity:.35;cursor:default}
+button.icon{width:38px;padding:0;font-size:18px}
+
+.bar{position:absolute;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translate(-50%,0);background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:5px;display:flex;gap:2px;max-width:calc(100vw - 20px);overflow-x:auto;transition:transform .18s,opacity .18s}
+.bar button{padding:8px 10px;font-size:14px}
+.bar[hidden]{display:flex;opacity:0;transform:translate(-50%,20px);pointer-events:none}
+.bar button{white-space:nowrap}
+.bar button.danger{color:#FF7A66}
+.bar .name{align-self:center;padding:0 10px 0 6px;color:var(--muted);font-size:13px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.hint{position:absolute;left:50%;top:max(70px,calc(env(safe-area-inset-top) + 66px));transform:translateX(-50%);background:#fff;color:#12172A;padding:10px 12px 10px 16px;border-radius:14px;font-size:14px;display:flex;gap:10px;align-items:center;box-shadow:var(--shadow)}
+.hint[hidden]{display:none}
+.hint button{color:#12172A;background:rgba(18,23,42,.1);padding:6px 10px;min-height:0}
+
+.menu{position:absolute;background:var(--panel);border-radius:14px;box-shadow:var(--shadow);padding:6px;display:flex;flex-direction:column;min-width:200px}
+.menu[hidden]{display:none}
+.menu button{text-align:left}
+.menu .t{font-size:12px;color:var(--muted);padding:6px 10px 2px}
+.menu input[type=range]{width:100%;margin:2px 0 8px;accent-color:#4D8BFF}
+
+#editor{position:absolute;border:2px solid #fff;border-radius:8px;padding:2px 6px;font:inherit;font-weight:500;background:var(--panel);color:var(--ink);outline:0;box-shadow:var(--shadow)}
+#editor[hidden]{display:none}
+
+.keys{position:absolute;right:12px;bottom:max(14px,env(safe-area-inset-bottom));font-size:12px;color:var(--muted);display:none;max-width:260px;text-align:right;line-height:1.4}
+@media (hover:hover) and (pointer:fine){.keys{display:block}}
+.keys[hidden]{display:none!important}
+#tag{display:block;margin-top:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* room: the big screen's lobby card, the phone's name form, compose panel, toast */
+.card{position:absolute;right:10px;top:max(64px,calc(env(safe-area-inset-top) + 58px));z-index:5;background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:10px 12px 9px;text-align:center;cursor:pointer;font-size:12.5px;color:var(--ink)}
+.card[hidden]{display:none}
+.card img{display:block;width:124px;height:124px;margin:0 auto 6px;image-rendering:pixelated;border-radius:8px;background:#fff;padding:4px}
+.card.big img{width:300px;height:300px}
+.card b{display:block;font-weight:700;font-size:17px;letter-spacing:.14em}
+.card.big b{font-size:26px}
+.card .aha-url,.card .aha-who{color:var(--muted);font-size:11.5px}
+.card .aha-who{margin-top:5px;max-width:200px;line-height:1.35}
+.card.big .aha-who{max-width:300px}
+.join{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(18,23,42,.94);padding:20px}
+.join[hidden]{display:none}
+.join h2{margin:0;font-size:21px;font-weight:700}
+.join input{font:inherit;font-size:18px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);width:min(280px,80vw);text-align:center}
+.join button{background:#4D8BFF;color:#fff;font-size:16px;padding:10px 22px}
+.join .st{font-size:13px;color:var(--muted);text-align:center;max-width:30ch;line-height:1.4}
+.compose{position:absolute;left:10px;right:10px;bottom:max(12px,env(safe-area-inset-bottom));z-index:5;background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:8px;display:flex;flex-direction:column;gap:6px}
+.compose[hidden]{display:none}
+.compose .t{font-size:12px;color:var(--muted);padding:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.compose .row{display:flex;gap:6px}
+.compose input{flex:1;font:inherit;font-size:16px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:#141A30;color:var(--ink);min-width:0}
+.compose button{background:#4D8BFF;color:#fff}
+.compose button.ghost{background:transparent;color:var(--muted)}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:max(72px,calc(env(safe-area-inset-bottom) + 66px));z-index:5;background:#fff;color:#12172A;border-radius:12px;padding:8px 14px;font-size:14px;box-shadow:var(--shadow);opacity:0;transition:opacity .2s;pointer-events:none;max-width:calc(100vw - 40px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast.show{opacity:1}
+/* an idea that just arrived from a phone flares for a moment */
+.n.fresh .box,.n.fresh .bg{animation:fresh 1.8s ease-out}
+.n.fresh .bg{opacity:1}
+@keyframes fresh{0%{stroke:#fff;stroke-width:6;filter:brightness(1.9)}70%{stroke:#fff;stroke-width:2}100%{stroke-width:0;filter:none}}
+.bar button.on{background:#2A3450;color:#FF5C9A}
+</style>
+</head>
+<body>
+<svg id="map" xmlns="http://www.w3.org/2000/svg"><g id="view"><g id="links"></g><g id="nodes"></g></g></svg>
+
+<div class="top">
+  <div class="title"><b id="title">Idea map</b><span id="count"></span><span id="tag" hidden></span></div>
+  <div class="ctl">
+    <button id="undo" class="icon" title="Undo" aria-label="Undo">↶</button>
+    <button id="fit" class="icon" title="Fit to screen" aria-label="Fit to screen">⤢</button>
+    <button id="more" class="icon" title="More" aria-label="More">⋯</button>
+    <button id="host" title="Open a room: phones scan a code and add ideas to this map">📱 Host a room</button>
+  </div>
+</div>
+
+<div class="card" id="card" hidden title="Click to enlarge"></div>
+<div class="join" id="join" hidden>
+  <h2>💡 Join the idea map</h2>
+  <input id="jname" maxlength="16" placeholder="Your name" autocomplete="off">
+  <button id="jbtn">Join</button>
+  <div class="st" id="jst"></div>
+</div>
+<div class="compose" id="compose" hidden>
+  <div class="t" id="composeT"></div>
+  <div class="row"><input id="composeIn" maxlength="80" placeholder="Your idea" autocomplete="off" enterkeyhint="send"><button id="composeSend">Send</button><button id="composeCancel" class="ghost" aria-label="Cancel">✕</button></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="row"><button id="zoomOut">−</button><button id="zoomIn">+</button><button id="expand">Show all</button></div>
+  <div class="row"><button id="explore">Explore: on</button><button id="style">Style: mixed</button></div>
+  <div class="row"><button id="sample">Sample: 200</button><button id="stress">+60 ideas</button></div>
+  <div class="t">Node move <span id="vMove"></span></div><input type="range" id="sMove" min="200" max="3000" step="50">
+  <div class="t">Line dash <span id="vDash"></span></div><input type="range" id="sDash" min="0" max="1500" step="50">
+  <div class="t">Wipe delay after dash <span id="vGap"></span></div><input type="range" id="sGap" min="0" max="1500" step="50">
+  <div class="t">Text morph <span id="vMorph"></span></div><input type="range" id="sMorph" min="100" max="2000" step="50">
+</div>
+
+<div class="hint" id="hint" hidden><span id="hintText"></span><button id="hintCancel">Cancel</button></div>
+
+<div class="bar" id="bar" hidden>
+  <button id="add">＋ Idea</button>
+  <button id="like" hidden>♡ Like</button>
+  <button id="rename">Rename</button>
+  <button id="merge">Merge</button>
+    <button id="del" class="danger">Delete</button>
+</div>
+
+<div class="menu" id="menu" hidden>
+  <div class="t" id="menuTitle"></div>
+  <button id="mMove">Move under it</button>
+  <button id="mMerge">Merge into it</button>
+  <button id="mCancel">Cancel</button>
+</div>
+
+<input id="editor" hidden aria-label="Idea text" autocomplete="off">
+<div class="keys">Tab adds a child, Enter adds a sibling, double-click renames. Drag an idea onto another to move or merge it.</div>
+
+<script type="module">
+import { AhaRoom } from '/js/aha-room.js';
+// ---------- room mode ----------
+// ?host=1 opens a room on the big screen; the QR opens ?join=CODE on a phone. The big
+// screen owns the map: phones send intent (an idea under a branch, a like) and get the
+// map back as a small document. Nothing here touches a socket or a code: that is the SDK's.
+const qs=new URLSearchParams(location.search);
+const isClient=!!qs.get('join'),isHost=!isClient&&qs.get('host')==='1';
+let room=null,me=null;
+const MAX_NODES=350;               // keeps the replicated document well under the SDK's 16 KB
+// ---------- error reporting ----------
+function report(err){const m=err&&err.stack?err.stack.split('\n').slice(0,3).join(' | '):String(err);document.querySelector('#hintText').textContent='Error: '+m;document.querySelector('#hint').hidden=false}
+function guard(fn){return function(e){try{return fn.call(this,e)}catch(err){report(err);throw err}}}
+// ---------- data ----------
+const B=['#4D8BFF','#FF6B54','#2ECC93','#C96BE0','#FFA93A','#2BC4DB','#9B85FF','#FF5C9A'];
+let nodes={},rootId,nextId=1;
+const PAGE=5,isP=id=>id.startsWith('pg:');
+const mk=(label,parent)=>{const id='n'+(nextId++);nodes[id]={id,label,children:[],parent,collapsed:false,merged:[],page:0,likes:0,by:''};if(parent)nodes[parent].children.push(id);return id};
+function buildFresh(){nodes={};nextId=1;rootId=mk('Our idea map')}
+function buildBalanced(){nodes={};nextId=1;
+rootId=mk('Better remote onboarding');
+const T=[
+ ['Before day one',['welcome','laptop','buddy','calendar','Slack','paperwork','intro video','team roster','first-day agenda']],
+ ['First week',['live session','icebreaker','first task','check-in','shadowing','pairing','demo','Q&A wall','office tour']],
+ ['Tools & access',['SSO','starter repo','access form','docs hub','VPN','password manager','CI login','staging env','design files']],
+ ['Culture & belonging',['rituals','async norms','show-and-tell','user manual','coffee roulette','values talk','team story','inside jokes','celebrations']],
+ ['Manager playbook',['30/60/90','weekly 1:1','feedback','milestone review','expectations','career chat','delegation','recognition','escalation path']],
+ ['Measuring success',['time to merge','day-14 survey','retention','buddy score','blockers','ramp curve','manager rating','exit reasons','cohort compare']],
+ ['Learning paths',['product tour','codebase map','customer personas','domain glossary','recorded talks','reading list','certifications','sandbox tasks','quiz']],
+ ['Remote logistics',['home office budget','time zones','core hours','meeting etiquette','equipment return','local meetups','travel policy','ergonomics','security basics']]];
+const V=['plan','template','owner','checklist','deadline','example','FAQ','metric','risk'];
+let seq=0;
+T.forEach(([b,items],bi)=>{const bid=mk(b,rootId);
+  items.forEach((it,i)=>{const l2=mk(it[0].toUpperCase()+it.slice(1),bid);
+    const kids=(bi+i)%3;            // 0,1,2 children at level 3
+    for(let k=0;k<kids;k++){const l3=mk(it+' '+V[(i+k)%V.length],l2);
+      if((bi*7+i*3+k)%4===0)mk(V[(k+2)%V.length]+' detail '+(++seq),l3)}});});
+// top up to exactly 200 ideas
+{const l3=Object.values(nodes).filter(n=>n.parent&&nodes[n.parent].parent&&nodes[nodes[n.parent].parent].parent);let i=0;while(Object.keys(nodes).length<200){mk('Follow-up '+(++seq),l3[(i++*5)%l3.length].id)}}
+}
+function buildImbalanced(){nodes={};nextId=1;rootId=mk('Hackathon: new slide types');
+  const heavy=mk('Ideas from the crowd',rootId);
+  const crowd=['Live mind map','Word cloud v2','Emoji reactions','Bracket vote','Timeline slide','Hot seat Q&A','Photo wall','Bingo','Map pins','Spin the wheel','Ranking grid','Two truths one lie','Draw together','Sound board','Countdown race','Sticky notes','Kudos wall','Fill the blank','Pick a side','Story chain','Karaoke lyrics','Team trivia','Mood meter','Wish list','Anonymous confessions','Icebreaker roulette','Prediction market','Heat map click','Match pairs','Speed intros','Pitch scoring','Retro board','Would you rather','Guess the number','Live poll remix','AI summary slide','Breakout picker','Music vote','Applause meter','Question ladder'];
+  crowd.forEach((c,i)=>{const id=mk(c,heavy);if(i%5===0){const k=mk('Why it works',id);mk('Needs presenter setup',id);if(i%10===0)mk('Prototype notes',k)}});
+  const small=[['Judging criteria',['Novelty','Live energy','Works on phone']],['Logistics',['Room booking','Snacks',['Demo order',['Random draw']]]],['Prizes',['Team lunch']],['Tech setup',['Test accounts','Wi-Fi fallback','Screen mirroring']]];
+  small.forEach(sp=>seed(sp,rootId));
+}
+const seed=(spec,parent)=>{const id=mk(spec[0],parent);(spec[1]||[]).forEach(c=>seed(typeof c==='string'?[c]:c,id));return id};
+if(isHost||isClient)buildFresh();else buildBalanced();
+// ---------- undo ----------
+const undoStack=[];
+const pushUndo=()=>{undoStack.push(JSON.stringify({nodes,nextId}));if(undoStack.length>60)undoStack.shift();$('#undo').disabled=false};
+const undo=()=>{const s=undoStack.pop();if(!s)return;({nodes,nextId}=JSON.parse(s));if(!nodes[sel])sel=null;refresh();$('#undo').disabled=!undoStack.length};
+
+// ---------- the map as a document ----------
+// The host replicates the tree as rows [id, parent, label, likes, merged] in tree order;
+// what is open, paged or selected is each screen's own. Sent only when the rows changed.
+function compact(){const out=[];const walk=id=>{const n=nodes[id];out.push([id,n.parent||'',n.label,n.likes||0,n.merged.length]);n.children.forEach(walk)};walk(rootId);return out}
+let lastPub='';
+function publish(){if(!room)return;const c=compact(),j=JSON.stringify(c);if(j===lastPub)return;lastPub=j;room.state.set({map:c});
+  try{sessionStorage.setItem('idea-map:'+room.code,JSON.stringify({nodes,nextId,rootId}))}catch(e){}}   // a reloaded big screen gets its map back
+let lastMap='';const myAdds=new Set(),liked=new Set();
+function applyDoc(doc){if(!Array.isArray(doc.map)||!doc.map.length)return;const j=JSON.stringify(doc.map);if(j===lastMap)return;const first=!lastMap;lastMap=j;
+  const old=nodes;nodes={};let maxId=0;
+  for(const row of doc.map){if(!Array.isArray(row)||typeof row[0]!=='string')continue;const [id,parent,label,likes,mc]=row,o=old[id];
+    nodes[id]={id,label:String(label||''),children:[],parent:parent||null,collapsed:o?o.collapsed:false,merged:new Array(Math.max(0,mc|0)).fill(''),page:o?o.page:0,side:o?o.side:undefined,likes:likes|0,by:''};
+    const m=/^n(\d+)$/.exec(id);if(m)maxId=Math.max(maxId,+m[1])}
+  for(const id in nodes){const p=nodes[id].parent;if(p&&nodes[p])nodes[p].children.push(id);else nodes[id].parent=null}
+  rootId=doc.map[0][0];nextId=maxId+1;if(!nodes[rootId])return;
+  if(sel&&!nodes[sel])sel=null;
+  let go=null;for(const id of myAdds)if(nodes[id]){sel=id;go=id;let p=nodes[id].parent;while(p){nodes[p].collapsed=false;p=nodes[p].parent}myAdds.delete(id)}   // my idea landed: show me
+  if(first){refresh();fit();return}
+  transition(()=>{},go)}
+let toastT=0;function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),2400)}
+const fresh={};
+
+// ---------- layout ----------
+const $=q=>document.querySelector(q);
+const svg=$('#map'),view=$('#view'),gLinks=$('#links'),gNodes=$('#nodes');
+const FAM='"Avenir Next","Segoe UI",Inter,system-ui,sans-serif';
+let K=1;const uiScale=()=>{K=Math.min(2.4,Math.max(1,svg.clientWidth/1100))};
+const FONT=()=>[`700 ${Math.round(30*K)}px`,`700 ${Math.round(19*K)}px`,'600 16px','500 15px'];
+const mctx=document.createElement('canvas').getContext('2d');
+const dd=d=>Math.min(d,3);
+const textW=(s,d)=>{mctx.font=FONT()[dd(d)]+' '+FAM;return mctx.measureText(s).width};
+const disp=n=>n.label.length>36?n.label.slice(0,35)+'…':n.label;
+// the selected idea shows its whole label, wrapped; everything else is truncated to one line
+const lineH=d=>Math.round(FSpx(d)*1.3);
+function wrap(label,d){const max=d<=1?320*K:240;const words=label.split(/\s+/),out=[];let cur='';
+  for(const w of words){const t=cur?cur+' '+w:w;if(textW(t,d)<=max||!cur)cur=t;else{out.push(cur);cur=w}}if(cur)out.push(cur);return out}
+const linesOf=(n,d)=>n.id===sel?wrap(n.label,d):[disp(n)];
+const nodeH=(n,d)=>rowH(d)+(linesOf(n,d).length-1)*lineH(d);
+let STYLE='mixed';   // 'mixed' | 'text' | 'pills'
+const kind=d=>d===0?'pill':STYLE==='pills'?'pill':STYLE==='text'?'text':(d<=1?'pill':'text');
+const FSpx=d=>[30*K,19*K,16,15][dd(d)];
+const tOff=d=>Math.round(FSpx(d)*0.38), ulOff=d=>tOff(d)+6;      // text baseline / underline offsets from the row centre
+const rowH=d=>d===0?76*K:d===1?48*K:kind(d)==='pill'?(d===2?40:36):(d===2?34:30);
+const GX=[90,60,40,34],GY=[16,10,6,4];
+const padW=d=>kind(d)==='pill'?(d===0?64*K:d===1?40*K:26):12;
+const nodeW=(n,d)=>Math.max(...linesOf(n,d).map(t=>textW(t,d)))+padW(d)+(n.merged.length?18:0)+(n.likes?26:0);
+const anchorY=(l)=>kind(l.d)==='text'?l.y+((l.nl||1)-1)*lineH(l.d)/2+ulOff(l.d):l.y;
+const paged=n=>n.children.length>PAGE;
+const pages=n=>Math.ceil(n.children.length/PAGE);
+const vis=n=>{if(n.collapsed)return[];if(!paged(n))return n.children;n.page=Math.min(n.page||0,pages(n)-1);return n.children.slice(n.page*PAGE,(n.page+1)*PAGE)};
+const PH=30;
+let L={};
+function layout(){
+  L={};uiScale();
+  const H=(id,d)=>{const n=nodes[id];const lines=linesOf(n,d),rh=nodeH(n,d);let h=rh;
+    const v=vis(n);if(v.length){const gap=GY[dd(d+1)];let s=v.reduce((a,c)=>a+H(c,d+1),0)+gap*(v.length-1);if(paged(n))s+=(PAGE+2-v.length)*(rowH(d+1)+gap);h=Math.max(h,s)}
+    L[id]={h,d,w:nodeW(n,d),rh,nl:lines.length,lines};return h};
+  H(rootId,0);
+  const r=nodes[rootId],rl=L[rootId];
+  Object.assign(rl,{x0:-rl.w/2,x1:rl.w/2,y:0,side:0,color:'#FFFFFF'});
+  // split first-level branches across two sides by subtree height
+  const right=[],left=[];let hr=0,hl=0;
+  // a branch keeps its side for good once assigned; only new branches get balanced in
+  vis(r).forEach(c=>{const n=nodes[c];if(n.side===undefined)n.side=hr<=hl?1:-1;if(n.side>0){right.push(c);hr+=L[c].h}else{left.push(c);hl+=L[c].h}});
+  const place=(id,pid,d,side,y0,color)=>{const n=nodes[id],p=L[pid],l=L[id],g=GX[dd(d)];
+    l.y=y0+l.h/2;l.side=side;l.color=color;
+    if(side>0){l.x0=p.x1+g;l.x1=l.x0+l.w}else{l.x1=p.x0-g;l.x0=l.x1-l.w}
+    const v=vis(n);if(v.length){const gap=GY[dd(d+1)];let tot=v.reduce((a,c)=>a+L[c].h,0)+gap*(v.length-1);const pg=paged(n);if(pg)tot+=(PAGE+2-v.length)*(rowH(d+1)+gap);
+      let y=y0+(l.h-tot)/2;const gx=GX[dd(d+1)];if(pg)l.blk={y0:y-2,y1:y+tot+2,off:(PAGE+1)*(rowH(d+1)+gap)};
+      const pill=(key,label,dir)=>{const rh=rowH(d+1),w=textW(label,d+1)+padW(d+1);L[key]={d:d+1,h:rh,w,y:y+rh/2,side,color,label,dir,x0:side>0?l.x1+gx:l.x0-gx-w,x1:side>0?l.x1+gx+w:l.x0-gx};y+=rh+gap};
+      if(pg){if(n.page>0)pill('pg:'+id+':t'+n.page,`◂ Ideas ${(n.page-1)*PAGE+1}–${n.page*PAGE}`,-1);else y+=rowH(d+1)+gap}
+      v.forEach(c=>{place(c,id,d+1,side,y,color);y+=L[c].h+gap});
+      if(pg){y+=(PAGE-v.length)*(rowH(d+1)+gap);const last=n.page>=pages(n)-1;if(!last)pill('pg:'+id+':b'+n.page,`Ideas ${(n.page+1)*PAGE+1}–${Math.min(n.children.length,(n.page+2)*PAGE)} of ${n.children.length} ▸`,1)}}};
+  const column=(list,side)=>{const tot=list.reduce((a,c)=>a+L[c].h,0)+GY[1]*(list.length-1);let y=-tot/2;
+    list.forEach(c=>{place(c,rootId,1,side,y,B[r.children.indexOf(c)%B.length]);y+=L[c].h+GY[1]})};
+  column(right,1);column(left,-1);
+}
+const descendants=id=>nodes[id].children.reduce((a,c)=>a+1+descendants(c),0);
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// ---------- render ----------
+let sel=null,mergeFrom=null;
+let clipCtx=null;
+// marker text; while morphing from an idea, a wipe sweeps across the row: old text vanishes behind it, new text appears in its wake
+function mtext(l,x,y,anchor,style,base){const t=(txt,fill)=>`<text x="${x}" y="${y}" text-anchor="${anchor}" dominant-baseline="${base}" style="${style}${fill?`;fill:${fill}`:''}">${esc(txt)}</text>`;
+  if(!l.morph)return t(l.label);const k=l.morph.k,cid='mc'+Math.abs(l.x0|0)+'_'+Math.abs(l.y|0)+(l.y<0?'n':'p');
+  const left=l.x0-8,wide=l.w+16,edge=left+wide*k,dir=l.side>0,top=l.y-l.h/2;   // wipe runs outward from the parent
+  const oldRect=dir?`x="${edge}" width="${Math.max(0,left+wide-edge)}"`:`x="${left}" width="${Math.max(0,wide-wide*k)}"`;
+  const newRect=dir?`x="${left}" width="${Math.max(0,edge-left)}"`:`x="${left+wide-wide*k}" width="${Math.max(0,wide*k)}"`;
+  return `<defs><clipPath id="${cid}o" clipPathUnits="userSpaceOnUse"><rect ${oldRect} y="${top}" height="${l.h}"/></clipPath><clipPath id="${cid}n" clipPathUnits="userSpaceOnUse"><rect ${newRect} y="${top}" height="${l.h}"/></clipPath></defs>`+
+    `<g clip-path="url(#${cid}o)">${t(l.morph.old,'#F4F6FA')}</g><g clip-path="url(#${cid}n)">${t(l.label)}</g>`}
+const under=(id,pid)=>isP(id)?id.split(':')[1]===pid:isDesc(id,pid);
+function render(){
+  let links='',ns='',linksC='',nsC='';
+  const push=(id,lk,nd)=>{if(clipCtx&&under(id,clipCtx.pid)){linksC+=lk;nsC+=nd}else{links+=lk;ns+=nd}};
+  for(const id in L){if(isP(id)){const l=L[id],pid=id.split(':')[1],p=L[pid],cy=l.y;if(!p)continue;
+      const sx=l.side>0?p.x1:p.x0,sy=anchorY(p),ex=l.side>0?l.x0:l.x1,ey=anchorY(l),cx=(sx+ex)/2;
+      push(id,`<path class="link" d="M${sx} ${sy} C${cx} ${sy} ${cx} ${ey} ${ex} ${ey}" stroke="${l.color}" stroke-width="${l.d===1?3.5:l.d===2?2.4:1.6}" stroke-dasharray="${l.morph?`4 ${(4*l.morph.dash).toFixed(2)}`:"4 4"}" opacity="${l.op??1}"/>`,
+      (kind(l.d)==='pill'?`<g class="pager d1" data-pg="${pid}" data-dir="${l.dir}" opacity="${l.op??1}"><rect class="box" x="${l.x0}" y="${cy-l.h/2}" width="${l.w}" height="${l.h}" rx="${l.h/2}" fill="${l.color}"${l.morph?` style="fill-opacity:${(1-0.65*l.morph.k).toFixed(3)}"`:''}/>${mtext(l,l.x0+l.w/2,cy,'middle',`font-size:${Math.round(FSpx(l.d))}px;font-weight:${l.d<=1?700:600}`,'central')}</g>`
+      :`<g class="pager d${dd(l.d)}" data-pg="${pid}" data-dir="${l.dir}" opacity="${l.op??1}"><rect class="hit" x="${l.x0-4}" y="${cy-l.h/2}" width="${l.w+8}" height="${l.h}"/>${mtext(l,l.x0+6,cy+tOff(l.d),'start',`font-size:${Math.round(FSpx(l.d))}px;font-weight:${l.d<=2?600:500}`,'auto')}<line class="ul" x1="${l.x0}" x2="${l.x1}" y1="${cy+ulOff(l.d)}" y2="${cy+ulOff(l.d)}" stroke="${l.color}" stroke-width="${l.d===1?3.5:l.d===2?2.4:1.6}" stroke-linecap="round"${l.morph?` style="stroke-dasharray:6 ${(5*l.morph.dash).toFixed(2)}"`:''}/></g>`));continue}
+    const n=nodes[id],l=L[id],d=l.d;if(l.hidden||(d>0&&!L[n.parent]))continue;const cls=`n d${dd(d)}${id===sel?' sel':''}${fresh[id]>Date.now()?' fresh':''}`;
+    const h=l.rh||rowH(d),lh=lineH(d),n0=l.nl||1;
+    let lk='';
+    if(d>0){const p=L[n.parent];const sx=l.side>0?p.x1:p.x0,sy=anchorY(p),ex=l.side>0?l.x0:l.x1,ey=anchorY(l),cx=(sx+ex)/2;
+      lk=`<path class="link" d="M${sx} ${sy} C${cx} ${sy} ${cx} ${ey} ${ex} ${ey}" stroke="${l.color}" stroke-width="${d===1?3.5:d===2?2.4:1.6}" opacity="${l.op??1}"/>`}
+    let body='';
+    const label=(l.lines||[disp(n)]).map((t,i)=>i?`<tspan x="${kind(d)==='pill'?l.x0+l.w/2:l.x0+6}" dy="${lh}">${esc(t)}</tspan>`:esc(t)).join('')+(n.merged.length?`<tspan fill="${d===0?'#5B6478':d===1?'rgba(255,255,255,.75)':'#9AA5B8'}" font-size="11">  +${n.merged.length}</tspan>`:'')+(n.likes?`<tspan fill="${d===0?'#C2415F':'#FF5C9A'}" font-size="11">  ♥${n.likes}</tspan>`:'');
+    if(kind(d)==='pill'){body=`<rect class="box" x="${l.x0}" y="${l.y-h/2}" width="${l.w}" height="${h}" rx="${h/2}" fill="${l.color}" fill-opacity="${d<=1?1:d===2?.85:.55}"/>
+      <text x="${l.x0+l.w/2}" y="${l.y-(n0-1)*lh/2}" text-anchor="middle" dominant-baseline="central" style="font-size:${Math.round(FSpx(d))}px${d>=2?';fill:#fff':''}">${label}</text>`}
+    else{body=`<rect class="bg" x="${l.x0-4}" y="${l.y-h/2}" width="${l.w+8}" height="${h}" rx="8" fill="${l.color}" fill-opacity=".14"/>
+      <rect class="hit" x="${l.x0-4}" y="${l.y-h/2}" width="${l.w+8}" height="${h}"/>
+      <text x="${l.x0+6}" y="${l.y-(n0-1)*lh/2+tOff(d)}" style="font-size:${Math.round(FSpx(d))}px${d===1?';font-weight:700;fill:#F4F6FA':''}">${label}</text>
+      <line class="ul" x1="${l.x0}" x2="${l.x1}" y1="${anchorY(l)}" y2="${anchorY(l)}" stroke="${l.color}" stroke-width="${d===1?3.5:d===2?2.4:1.6}" stroke-linecap="round"/>
+      <circle class="dot" cx="${l.side>0?l.x0:l.x1}" cy="${anchorY(l)}" r="${d===2?4:3}" fill="${l.color}"/>`}
+    if(n.children.length&&d>0){const cx=l.side>0?l.x1+15:l.x0-15,cy=anchorY(l);
+      body+=n.collapsed
+        ?`<g class="badge" data-toggle="${id}"><circle class="tap" cx="${cx}" cy="${cy}" r="18"/><circle cx="${cx}" cy="${cy}" r="11" stroke="${l.color}" stroke-width="2"/><text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" fill="${l.color}">${descendants(id)}</text></g>`
+        :''}
+    push(id,lk,`<g class="${cls}" data-id="${id}" opacity="${l.op??1}">${body}</g>`)}
+  if(clipCtx&&L[clipCtx.pid]){const c=clipCtx,p=L[c.pid],x=c.side>0?p.x1:p.x0-6000;
+    const defs=`<defs><clipPath id="pgclip"><rect x="${x}" y="${c.y0}" width="6000" height="${c.y1-c.y0}"/></clipPath></defs>`;
+    links=defs+links+`<g clip-path="url(#pgclip)">${linksC}</g>`;ns+=`<g clip-path="url(#pgclip)">${nsC}</g>`}
+  gLinks.innerHTML=links;gNodes.innerHTML=ns;
+  $('#count').textContent=`${Object.keys(nodes).length} ideas`+(room?` · ${room.count().online} phones`:'');
+  $('#title').textContent=nodes[rootId].label;
+  updateBar();
+}
+function refresh(){if(animating){cancelAnimationFrame(animating);animating=null}clipCtx=null;publish();layout();render()}
+function updateBar(){const bar=$('#bar'),n=sel&&nodes[sel];
+  if(isClient){bar.hidden=!$('#compose').hidden;$('#add').textContent=n&&sel!==rootId?`＋ Idea under “${disp(n).slice(0,18)}${disp(n).length>18?'…':''}”`:'＋ Idea';
+    const lk=$('#like');lk.disabled=!n||sel===rootId;lk.textContent=n&&liked.has(sel)?'♥ Liked':'♡ Like';lk.classList.toggle('on',!!n&&liked.has(sel));return}
+  bar.hidden=!n||!!mergeFrom;if(!n)return;
+  $('#del').disabled=sel===rootId;$('#merge').disabled=sel===rootId;
+  $('#add').textContent=n.by?`＋ Idea · by ${n.by}`:'＋ Idea';
+  }
+
+// ---------- viewport ----------
+let tx=0,ty=0,s=1;
+const W=()=>svg.clientWidth,Hh=()=>svg.clientHeight;
+function apply(){view.setAttribute('transform',`translate(${tx} ${ty}) scale(${s})`);svg.dataset.lod=16*s<4.5?2:15*s<6?1:0;if(!$('#editor').hidden)placeEditor()}
+function zoomAt(px,py,f){const ns=Math.min(3,Math.max(0.08,s*f));tx=px-(px-tx)*ns/s;ty=py-(py-ty)*ns/s;s=ns;apply()}
+function bbox(){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const id in L){const l=L[id],h=l.rh||rowH(l.d);x0=Math.min(x0,l.x0-30);x1=Math.max(x1,l.x1+30);y0=Math.min(y0,l.y-h/2);y1=Math.max(y1,l.y+h/2)}return{x0,y0,x1,y1}}
+const MIN_READABLE=0.6;
+function fitScale(){const b=bbox(),pad=40;return Math.min(1.4,(W()-pad*2)/(b.x1-b.x0),(Hh()-pad*2-120)/(b.y1-b.y0))}
+function fit(readable=true){
+  if(readable){ // collapse from the deepest level up until every visible label is readable
+    for(let depth=3;depth>=1&&fitScale()<MIN_READABLE;depth--){
+      let changed=false;for(const id in L){if(isP(id))continue;if(L[id].d===depth&&nodes[id].children.length&&!nodes[id].collapsed){nodes[id].collapsed=true;changed=true}}
+      if(changed){layout();render()}}
+  }
+  const b=bbox();s=fitScale();tx=W()/2-s*(b.x0+b.x1)/2;ty=Hh()/2-s*(b.y0+b.y1)/2+20;apply()}
+function expandAll(){for(const id in nodes)nodes[id].collapsed=false;refresh();fit(false)}
+function ensureVisible(id){const l=L[id];const px=tx+s*(l.x0+l.x1)/2,py=ty+s*l.y;const m=60;
+  if(px<m)tx+=m-px;if(px>W()-m)tx-=px-(W()-m);if(py<m+60)ty+=m+60-py;if(py>Hh()-m-80)ty-=py-(Hh()-m-80);apply()}
+const toWorld=(px,py)=>({x:(px-tx)/s,y:(py-ty)/s});
+function hit(px,py,exclude){const w=toWorld(px,py);let best=null;
+  for(const id in L){if(isP(id)||id===exclude||isDesc(id,exclude))continue;const l=L[id],h=l.rh||rowH(l.d);
+    if(w.x>=l.x0-8&&w.x<=l.x1+8&&w.y>=l.y-h/2-2&&w.y<=l.y+h/2+2){best=id;break}}return best}
+const isDesc=(id,anc)=>{if(!anc)return false;let p=nodes[id].parent;while(p){if(p===anc)return true;p=nodes[p].parent}return false};
+
+// ---------- gestures ----------
+const ptrs=new Map();let g=null,lastTap={t:0,id:null},dragTarget=null;
+svg.addEventListener('pointerdown',guard(e=>{
+  if(!$('#editor').hidden){commitEdit();return}
+  hideMenu();$('#sheet').hidden=true;vpAnim=false;svg.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];g={type:'pinch',d0:Math.hypot(a.x-b.x,a.y-b.y),mx:(a.x+b.x)/2,my:(a.y+b.y)/2,s0:s,tx0:tx,ty0:ty};return}
+  const pg=e.target.closest('[data-pg]');if(pg){g={type:'page',id:pg.dataset.pg,dir:+pg.dataset.dir};return}
+  const t=e.target.closest('[data-toggle]');if(t){g={type:'toggle',id:t.dataset.toggle};return}
+  const nid=e.target.closest('.n')?.dataset.id;
+  g={type:nid?'node':'pan',id:nid,x0:e.clientX,y0:e.clientY,tx0:tx,ty0:ty,moved:false};
+  if(!nid)svg.classList.add('panning');
+}));
+svg.addEventListener('pointermove',guard(e=>{
+  if(!g||!ptrs.has(e.pointerId))return;ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(g.type==='pinch'){if(ptrs.size<2)return;const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    s=Math.min(3,Math.max(0.08,g.s0*d/g.d0));const wx=(g.mx-g.tx0)/g.s0,wy=(g.my-g.ty0)/g.s0;tx=mx-wx*s;ty=my-wy*s;apply();return}
+  if(g.type==='toggle'||g.type==='page')return;
+  const dx=e.clientX-g.x0,dy=e.clientY-g.y0;
+  if(!g.moved&&Math.hypot(dx,dy)<8)return;g.moved=true;
+  if(g.type==='node'&&isClient){g.type='pan';svg.classList.add('panning')}   // phones never move ideas, they add them
+  if(g.type==='pan'){tx=g.tx0+dx;ty=g.ty0+dy;apply();return}
+  if(g.id===rootId)return;
+  const el=gNodes.querySelector(`[data-id="${g.id}"]`);el.classList.add('dragging');el.setAttribute('transform',`translate(${dx/s} ${dy/s})`);
+  const t=hit(e.clientX,e.clientY,g.id);
+  if(t!==dragTarget){dragTarget&&gNodes.querySelector(`[data-id="${dragTarget}"]`)?.classList.remove('target');dragTarget=t;t&&gNodes.querySelector(`[data-id="${t}"]`).classList.add('target')}
+}));
+const endPtr=guard(e=>{
+  ptrs.delete(e.pointerId);svg.classList.remove('panning');if(!g)return;
+  if(g.type==='pinch'){if(ptrs.size===1){const p=[...ptrs.values()][0];g={type:'pan',x0:p.x,y0:p.y,tx0:tx,ty0:ty,moved:true}}else g=null;return}
+  const gg=g;g=null;if(ptrs.size)return;
+  if(gg.type==='toggle'){toggle(gg.id);return}
+  if(gg.type==='page'){const n=nodes[gg.id];transition(()=>{n.page=Math.max(0,Math.min(pages(n)-1,n.page+gg.dir))},null,{pid:gg.id,dir:gg.dir});return}
+  const now=Date.now(),dbl=now-lastTap.t<320&&lastTap.id===gg.id;
+  if(gg.type==='node'){
+    if(gg.moved){const el=gNodes.querySelector(`[data-id="${gg.id}"]`);el.classList.remove('dragging');el.removeAttribute('transform');
+      if(dragTarget){const t=dragTarget;gNodes.querySelector(`[data-id="${t}"]`).classList.remove('target');dragTarget=null;showMenu(gg.id,t,e.clientX,e.clientY)}return}
+    if(mergeFrom){if(gg.id!==mergeFrom&&!isDesc(gg.id,mergeFrom))doMerge(mergeFrom,gg.id);else cancelMerge();return}
+        if(nodes[gg.id].children.length&&gg.id!==rootId){toggle(gg.id)}else if(gg.id===rootId&&explore){focus(gg.id)}else{sel=gg.id;transition(()=>{},gg.id)}lastTap={t:now,id:gg.id};   // tap: open/close a branch, or select a leaf
+  }else{if(!gg.moved){if(dbl&&lastTap.id===null){fit(true);lastTap={t:0};return}sel=null;transition(()=>{},null);lastTap={t:now,id:null}}}
+});
+svg.addEventListener('pointerup',endPtr);svg.addEventListener('pointercancel',endPtr);
+svg.addEventListener('wheel',e=>{e.preventDefault();vpAnim=false;
+  if(e.ctrlKey||e.metaKey||(e.deltaX===0&&e.deltaMode===0&&Math.abs(e.deltaY)>=40)||e.deltaMode===1)zoomAt(e.clientX,e.clientY,Math.exp(-e.deltaY*(e.deltaMode===1?0.05:0.002)));
+  else{tx-=e.deltaX;ty-=e.deltaY;apply()}},{passive:false});
+
+// ---------- explore mode: one branch open at a time, animated ----------
+let explore=true,animating=null,vpAnim=true;const ANIM={move:400,dash:400,gap:100,morph:400};
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const ease=t=>1-Math.pow(1-t,3);const easeIO=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+function transition(mutate,focusId,slide,toFit){
+  if(animating)cancelAnimationFrame(animating);
+  const prev={},prevFull={};for(const id in L){prev[id]={x0:L[id].x0,x1:L[id].x1,y:L[id].y};prevFull[id]={...L[id]}}
+  mutate();publish();layout();
+  const next={};for(const id in L)next[id]={x0:L[id].x0,x1:L[id].x1,y:L[id].y};
+  const from={};for(const id in next){let a=id;if(!prev[a])a=isP(id)?id.split(':')[1]:nodes[id].parent;while(a&&!prev[a])a=nodes[a].parent;from[id]=prev[a]||next[id]}
+  const outs={};clipCtx=null;
+  if(slide){const pid=slide.pid,blk=L[pid].blk,off=slide.dir*blk.off;clipCtx={pid,side:L[pid].side,y0:Math.min(blk.y0,L[pid].y-rowH(L[pid].d)/2),y1:Math.max(blk.y1,L[pid].y+rowH(L[pid].d)/2)};
+    // one rigid column: outgoing + incoming shift together by exactly one block, so nothing can cross
+    for(const id in next)if(!prev[id]&&under(id,pid))from[id]={x0:next[id].x0,x1:next[id].x1,y:next[id].y+off,late:true};
+    const pl=L[pid];slide.edgeX=pl.side>0?pl.x1:pl.x0;slide.edgeY=slide.dir>0?blk.y0:blk.y1;slide.entryY=slide.dir>0?blk.y1:blk.y0;slide.off=off;slide.side=pl.side;
+    for(const id in prev)if(!next[id]&&under(id,pid))outs[id]={a:prev[id],h:prevFull[id].h||PH}
+    const n=nodes[pid],v=vis(n),oldPage=n.page-slide.dir;
+    const oldIds=Object.keys(outs).filter(id=>!isP(id)&&nodes[id].parent===pid).sort((u,v)=>prev[u].y-prev[v].y);
+    // exit-side marker: the last old idea to leave turns into it instead of fading
+    const exitKey='pg:'+pid+':'+(slide.dir>0?'t':'b')+n.page,lastOld=slide.dir>0?oldIds[oldIds.length-1]:oldIds[0];
+    if(next[exitKey]&&lastOld){outs[lastOld].toMarker=exitKey;from[exitKey].fromIdea=lastOld}
+    // entry-side marker: grows out of the nearest idea on the new page
+    const entryKey='pg:'+pid+':'+(slide.dir>0?'b':'t')+n.page,src=slide.dir>0?v[v.length-1]:v[0];
+    if(next[entryKey]&&from[entryKey].late&&src&&next[src])from[entryKey].morph=next[src];
+    // the old markers simply fade out while riding along
+    for(const id in outs)if(isP(id))outs[id].marker=true}
+  // viewport target: the tapped idea sits in the centre of the screen, at a readable zoom
+  let s1=s,tx1=tx,ty1=ty;
+  if(focusId&&L[focusId]){const l=L[focusId];s1=Math.max(0.6,Math.min(1.6,s));tx1=W()/2-s1*(l.x0+l.x1)/2;ty1=Hh()/2-s1*l.y-10}
+  else if(toFit){const b=bbox();s1=fitScale();tx1=W()/2-s1*(b.x0+b.x1)/2;ty1=Hh()/2-s1*(b.y0+b.y1)/2+20}   // the whole map stays on the big screen as it grows
+  const MOVE=slide?ANIM.move:ANIM.move*0.4,DASH=slide?ANIM.dash:0,GAP=slide?ANIM.gap:0,MORPH=slide?ANIM.morph:0;vpAnim=true;const s0=s,tx0=tx,ty0=ty,t0=performance.now(),dur=reduced?0:MOVE+Math.max(DASH,GAP+MORPH);
+  const step=guard(now=>{const el=now-t0,raw=dur?Math.min(1,el/dur):1;
+    const mv=dur?Math.min(1,el/MOVE):1,dp=dur&&DASH?Math.max(0,Math.min(1,(el-MOVE)/DASH)):(el>=MOVE?1:0),tm=dur&&MORPH?Math.max(0,Math.min(1,(el-MOVE-GAP)/MORPH)):(el>=MOVE+GAP?1:0);   // wipe starts GAP ms after the dash begins   // move, then solid→dash, then text wipe
+    const t=slide?easeIO(mv):ease(mv);
+    const mpos={};
+    for(const id in outs){const {a,h}=outs[id];const y=a.y-slide.off*t;            // rides the column
+      if(outs[id].toMarker){const b=next[outs[id].toMarker],k=easeIO(Math.max(0,Math.min(1,(mv-0.25)/0.6)));   // peel off the column and settle into the marker slot (done at 85% of the move)
+        const pos={x0:a.x0+(b.x0-a.x0)*k,x1:a.x1+(b.x1-a.x1)*k,y:y+(b.y-y)*k};
+        mpos[outs[id].toMarker]={pos,old:disp(nodes[id]),k:easeIO(tm),dash:easeIO(dp)};   // line settles first, then the text swaps
+        L[id]={...prevFull[id],...pos,hidden:true};continue}   // kept for its children's connectors, not drawn itself
+      if(outs[id].marker){L[id]={...prevFull[id],x0:a.x0,x1:a.x1,y,op:1-Math.max(0,Math.min(1,mv/0.35))};continue}
+      const dist=slide.dir>0?(y-h/2)-slide.edgeY:slide.edgeY-(y+h/2);              // gap to the edge it will leave through
+      const f=Math.max(Math.max(0,Math.min(1,1-dist/(h*1.6))),Math.max(0,Math.min(1,(mv-0.55)/0.25))); // fold near the edge, and always gone by ~80% of the move
+      const dx=f*(slide.edgeX-(slide.side>0?a.x0:a.x1));                             // drift toward the parent while fading
+      L[id]={...prevFull[id],x0:a.x0+dx,x1:a.x1+dx,y,op:1-f}}
+    for(const id in next){const a=from[id],b=next[id],l=L[id];if(!l)continue;l.x0=a.x0+(b.x0-a.x0)*t;l.x1=a.x1+(b.x1-a.x1)*t;l.y=a.y+(b.y-a.y)*t;l.op=1;
+      if(a.late&&slide){const h=l.h||PH,inside=slide.dir>0?slide.entryY-(l.y-h/2):(l.y+h/2)-slide.entryY;l.op=Math.max(0,Math.min(1,inside/(h*1.6)))}  // idea and its line fade in as it enters the block
+      if(isP(id)){l.w=l.x1-l.x0;
+        if(a.fromIdea&&mpos[id]){const m=mpos[id];Object.assign(l,m.pos);l.w=l.x1-l.x0;l.op=1;l.morph={old:m.old,k:m.k,dash:m.dash}}   // crossfades in exactly where the old idea settles
+        else if(a.late){const u=easeIO(Math.max(0,Math.min(1,(mv-0.65)/0.35)));if(a.morph){const m=a.morph;l.x0=m.x0+(b.x0-m.x0)*u;l.x1=m.x1+(b.x1-m.x1)*u;l.y=m.y+(b.y-m.y)*u;l.w=l.x1-l.x0}l.op=u}}}
+    if(vpAnim){s=s0+(s1-s0)*t;tx=tx0+(tx1-tx0)*t;ty=ty0+(ty1-ty0)*t}render();apply();
+    if(raw<1)animating=requestAnimationFrame(step);else{animating=null;for(const id in outs)delete L[id];clipCtx=null;render()}});
+  animating=requestAnimationFrame(step);
+}
+const depthBelow=(id,anc)=>{let d=0,p=id;while(p&&p!==anc){p=nodes[p].parent;d++}return d};
+function focus(id){
+  sel=id;
+  transition(()=>{
+    if(id===rootId){for(const nid in nodes)if(nid!==rootId)nodes[nid].collapsed=true;nodes[rootId].collapsed=false;return}   // centre: fold everything back to branches
+    nodes[id].collapsed=false;                                             // open the tapped idea…
+    nodes[id].children.forEach(c=>{if(nodes[c].children.length)nodes[c].collapsed=true})   // …its children only; siblings stay as they are
+  },id);
+}
+
+// ---------- actions ----------
+function select(id){sel=id;layout();render()}
+function toggle(id){const n=nodes[id];if(n.collapsed){focus(id);return}sel=id;transition(()=>{n.collapsed=true},id)}
+function addChild(pid){pushUndo();const p=nodes[pid];p.collapsed=false;const id=mk('',pid);p.page=pages(p)-1;refresh();select(id);ensureVisible(id);edit(id,true)}
+function addSibling(id){const p=nodes[id].parent;if(!p)return addChild(id);pushUndo();const idx=nodes[p].children.indexOf(id);const nid=mk('',p);nodes[p].children.pop();nodes[p].children.splice(idx+1,0,nid);nodes[p].page=Math.floor((idx+1)/PAGE);refresh();select(nid);ensureVisible(nid);edit(nid,true)}
+function remove(id){if(id===rootId)return;pushUndo();const p=nodes[id].parent;const rm=x=>{nodes[x].children.forEach(rm);delete nodes[x]};rm(id);nodes[p].children=nodes[p].children.filter(c=>c!==id);refresh();select(p)}
+function detach(id){const p=nodes[id].parent;nodes[p].children=nodes[p].children.filter(c=>c!==id)}
+function move(id,to){if(id===rootId||to===id||isDesc(to,id))return;pushUndo();detach(id);nodes[id].parent=to;nodes[to].children.push(id);nodes[to].collapsed=false;nodes[to].page=pages(nodes[to])-1;refresh();select(id);ensureVisible(id)}
+function doMerge(from,into){if(from===rootId||into===from||isDesc(into,from))return;pushUndo();const a=nodes[from],b=nodes[into];
+  detach(from);a.children.forEach(c=>{nodes[c].parent=into;b.children.push(c)});b.merged.push(a.label,...a.merged);b.collapsed=false;b.page=pages(b)-1;delete nodes[from];mergeFrom=null;$('#hint').hidden=true;refresh();select(into);ensureVisible(into)}
+function startMerge(id){mergeFrom=id;$('#hintText').textContent=`Tap the idea to merge "${nodes[id].label}" into`;$('#hint').hidden=false;updateBar()}
+function cancelMerge(){mergeFrom=null;$('#hint').hidden=true;updateBar()}
+
+// drop menu (after dragging one idea onto another)
+let menuCtx=null;
+function showMenu(from,to,px,py){menuCtx={from,to};const m=$('#menu');$('#menuTitle').textContent=`"${nodes[from].label}" → "${nodes[to].label}"`;m.hidden=false;
+  m.style.left=Math.min(px,W()-m.offsetWidth-8)+'px';m.style.top=Math.min(py,Hh()-m.offsetHeight-8)+'px'}
+function hideMenu(){$('#menu').hidden=true;menuCtx=null}
+$('#mMove').onclick=()=>{const c=menuCtx;hideMenu();move(c.from,c.to)};
+$('#mMerge').onclick=()=>{const c=menuCtx;hideMenu();doMerge(c.from,c.to)};
+$('#mCancel').onclick=hideMenu;
+
+// inline editor
+const ed=$('#editor');let editCtx=null;
+function placeEditor(){const l=L[editCtx.id],d=l.d,h=l.rh||rowH(d);const fs=FSpx(d);
+  const px=tx+s*(l.x0-4),py=ty+s*(l.y-h/2);const f=Math.max(16,fs*s);ed.style.fontSize=f+'px';ed.style.left=px+'px';ed.style.top=py+'px';
+  ed.style.width=Math.max(160,s*(l.w+8),f*0.6*ed.value.length+40)+'px';ed.style.height=Math.max(36,s*h)+'px'}
+function edit(id,isNew=false){editCtx={id,isNew,old:nodes[id].label};ed.value=nodes[id].label;ed.hidden=false;placeEditor();ed.focus();ed.select()}
+function commitEdit(){if(!editCtx)return;const c=editCtx;editCtx=null;ed.hidden=true;const v=ed.value.trim();
+  if(!v){if(c.isNew){remove(c.id);undoStack.pop();$('#undo').disabled=!undoStack.length}else nodes[c.id].label=c.old}
+  else{if(!c.isNew&&v!==c.old)pushUndo();nodes[c.id].label=v}refresh();select(c.id)}
+ed.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const id=editCtx.id,wasNew=editCtx.isNew;commitEdit();if(wasNew&&nodes[id]&&nodes[id].label)addSibling(id)}
+  else if(e.key==='Tab'){e.preventDefault();const id=editCtx.id;commitEdit();if(nodes[id])addChild(id)}
+  else if(e.key==='Escape'){if(editCtx.isNew)ed.value='';commitEdit()}else{placeEditor()}});
+ed.addEventListener('input',placeEditor);ed.addEventListener('blur',commitEdit);
+
+// bar & chrome
+$('#add').onclick=()=>{if(isClient)openCompose();else if(sel)addChild(sel)};
+$('#like').onclick=()=>{if(!me||!sel||sel===rootId)return;me.send({t:'like',n:sel});liked.has(sel)?liked.delete(sel):liked.add(sel);updateBar()};
+$('#host').onclick=()=>{location.search='?host=1'};
+$('#rename').onclick=()=>sel&&edit(sel);
+$('#merge').onclick=()=>sel&&startMerge(sel);
+$('#del').onclick=()=>sel&&remove(sel);
+$('#hintCancel').onclick=cancelMerge;
+$('#explore').onclick=()=>{explore=!explore;$('#explore').textContent='Explore: '+(explore?'on':'off')};
+$('#style').onclick=()=>{STYLE=STYLE==='mixed'?'text':STYLE==='text'?'pills':'mixed';$('#style').textContent='Style: '+STYLE;transition(()=>{},sel||null)};
+$('#more').onclick=()=>{$('#sheet').hidden=!$('#sheet').hidden};
+const bindRange=(id,key,lab)=>{const r=$(id);r.value=ANIM[key];$(lab).textContent=ANIM[key]+' ms';r.oninput=()=>{ANIM[key]=+r.value;$(lab).textContent=r.value+' ms'}};
+bindRange('#sMove','move','#vMove');bindRange('#sDash','dash','#vDash');bindRange('#sGap','gap','#vGap');bindRange('#sMorph','morph','#vMorph');
+$('#undo').onclick=undo;$('#fit').onclick=()=>fit(true);$('#expand').onclick=expandAll;
+let sampleKind='balanced';$('#sample').onclick=()=>{sampleKind=sampleKind==='balanced'?'imbalanced':'balanced';(sampleKind==='balanced'?buildBalanced:buildImbalanced)();$('#sample').textContent=sampleKind==='balanced'?'Sample: 200':'Sample: lopsided';undoStack.length=0;$('#undo').disabled=true;sel=null;cancelMerge();refresh();fit()};
+$('#zoomIn').onclick=()=>zoomAt(W()/2,Hh()/2,1.3);$('#zoomOut').onclick=()=>zoomAt(W()/2,Hh()/2,1/1.3);
+$('#stress').onclick=()=>{pushUndo();const words=['Async standups','Pair review','Mentor rota','Doc templates','Demo day','Welcome kit','Tooling audit','Feedback loop','Wiki cleanup','Office hours','Peer awards','Reading list','Sandbox env','Shadowing','Team lunch','Goal tracker','Retro notes','Skill matrix','FAQ bot','Roadmap tour'];
+  // add to ideas that are currently on screen so the effect is visible; land on the page that holds the new ones
+  let pool=Object.keys(L).filter(id=>!isP(id)&&id!==rootId&&L[id].d<3);if(!pool.length)pool=Object.keys(nodes).filter(id=>id!==rootId);
+  const touched=new Set();for(let i=0;i<60;i++){const p=pool[Math.floor(Math.random()*pool.length)];mk(words[Math.floor(Math.random()*words.length)]+' '+(i+1),p);touched.add(p)}
+  transition(()=>{touched.forEach(p=>{const n=nodes[p];if(!n.collapsed)n.page=pages(n)-1})},sel||null)};
+
+document.addEventListener('keydown',e=>{if(!ed.hidden||e.target.tagName==='INPUT')return;
+  if(e.key==='Escape'){mergeFrom?cancelMerge():select(null);return}
+  if(!sel)return;
+  if(e.key==='Tab'){e.preventDefault();addChild(sel)}
+  else if(e.key==='Enter'){e.preventDefault();addSibling(sel)}
+  else if(e.key==='F2'){edit(sel)}
+  else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();remove(sel)}
+  else if(e.key===' '){e.preventDefault();toggle(sel)}
+  else if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo()}});
+window.addEventListener('resize',()=>{refresh();apply()});
+
+refresh();fit();$('#undo').disabled=true;
+// surface any runtime error on screen so it can be reported
+window.addEventListener('error',e=>{report(e.error||e.message)});
+
+// ---------- big screen ----------
+const nameOf=id=>{const p=room&&room.players.get(id);return p&&p.name?p.name:'someone'};
+const lastAdd=new Map(),likedBy=new Map();   // phone id → last add time; node id → phones that like it
+function hostMsg(m){
+  if(m.t==='add'){
+    const to=typeof m.to==='string'&&nodes[m.to]?m.to:rootId;
+    const label=String(m.label||'').replace(/\s+/g,' ').trim().slice(0,80);if(!label)return;
+    const now=Date.now();if(now-(lastAdd.get(m.id)||0)<600){room.sendTo(m.id,{t:'err',why:'One at a time — try again'});return}lastAdd.set(m.id,now);   // a phone cannot flood the map
+    if(Object.keys(nodes).length>=MAX_NODES){room.sendTo(m.id,{t:'err',why:'The map is full'});return}
+    pushUndo();const id=mk(label,to);nodes[id].by=nameOf(m.id);fresh[id]=now+2200;
+    transition(()=>{let p=to;while(p){nodes[p].collapsed=false;p=nodes[p].parent}nodes[to].page=pages(nodes[to])-1},null,null,true);   // open the branch it landed in and keep the whole map in view
+    toast(`${nodes[id].by}: ${label}`);room.sendTo(m.id,{t:'added',id});return}
+  if(m.t==='like'){const n=typeof m.n==='string'&&nodes[m.n];if(!n||m.n===rootId)return;
+    let s=likedBy.get(m.n);if(!s)likedBy.set(m.n,s=new Set());s.has(m.id)?s.delete(m.id):s.add(m.id);n.likes=s.size;
+    transition(()=>{},null)}
+}
+async function initHost(){
+  $('#host').hidden=true;
+  const card=$('#card');card.hidden=false;card.innerHTML='<div class="aha-who">opening a room…</div>';
+  // a reloaded big screen reclaims its room, so phones already in it just reconnect; the SDK refuses only if another page took the code meanwhile
+  let code=null;try{code=sessionStorage.getItem('idea-map:code')||null}catch(e){}
+  try{room=await AhaRoom.host(code?{code}:{})}
+  catch(e){if(code&&e instanceof AhaRoom.RoomConflict){try{room=await AhaRoom.host()}catch(e2){}}
+    if(!room){card.innerHTML='<div class="aha-who">'+(e instanceof AhaRoom.RoomConflict?'that room code belongs to '+e.heldBy:'could not open a room — reload')+'</div>';return}}
+  try{sessionStorage.setItem('idea-map:code',room.code)}catch(e){}
+  room.mountLobby(card);card.onclick=()=>card.classList.toggle('big');
+  try{const saved=JSON.parse(sessionStorage.getItem('idea-map:'+room.code)||'null');if(saved&&saved.nodes&&saved.nodes[saved.rootId]){({nodes,nextId,rootId}=saved);sel=null;refresh();fit()}}catch(e){}
+  room.on('join',({name,rejoin})=>{if(!rejoin)toast(name+' joined');render()});
+  room.on('players',()=>render());
+  room.on('leave',()=>render());
+  room.on('msg',guard(hostMsg));
+  publish();
+  $('#hintText').textContent='Select the centre and Rename it to your question. Phones scan the code to add ideas and like them.';$('#hintCancel').textContent='OK';$('#hint').hidden=false;
+  window.__im={room};
+}
+// ---------- phone ----------
+function setTag(t){const el=$('#tag');el.textContent=t;el.hidden=!t}
+function openCompose(){const to=sel&&nodes[sel]?sel:rootId;$('#composeT').textContent=to===rootId?'A new idea for the map':`A new idea under “${nodes[to].label}”`;$('#compose').hidden=false;$('#composeIn').value='';updateBar();setTimeout(()=>$('#composeIn').focus(),50)}
+function closeCompose(){$('#compose').hidden=true;updateBar()}
+let lastSent='';
+function sendIdea(){const v=$('#composeIn').value.replace(/\s+/g,' ').trim();if(!v||!me)return;lastSent=v;me.send({t:'add',to:sel&&nodes[sel]?sel:rootId,label:v});closeCompose();toast('Sent — watch the big screen')}
+$('#composeSend').onclick=sendIdea;$('#composeCancel').onclick=closeCompose;
+$('#composeIn').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendIdea()}else if(e.key==='Escape')closeCompose()});
+function initClient(){
+  for(const id of ['undo','more','host','rename','merge','del'])$('#'+id).hidden=true;
+  $('#like').hidden=false;$('.keys').hidden=true;explore=true;
+  const jb=$('#join'),st=$('#jst'),jname=$('#jname');
+  // the SDK asks for a name only when it has none saved for this room; a reload rejoins silently
+  const askName=()=>new Promise(res=>{jb.hidden=false;const go=()=>{st.textContent='joining…';res((jname.value||'').trim())};$('#jbtn').onclick=go;jname.addEventListener('keydown',e=>{if(e.key==='Enter')go()})});
+  setTag('joining…');
+  me=AhaRoom.join({askName});
+  const here=()=>setTag(`${me.name} · tap a branch, then add your idea`);
+  me.on('welcome',()=>{jb.hidden=true;here();updateBar()});
+  me.on('status',s=>{if(s==='waiting-for-host')setTag('waiting for the big screen…');else if(s==='host-left')setTag('the big screen closed — waiting…');else if(s==='reconnecting')setTag('⚠ reconnecting…');else if(s==='ok'&&me.name)here()});
+  me.on('state',guard(applyDoc));
+  me.on('msg',m=>{if(m.t==='added'&&typeof m.id==='string')myAdds.add(m.id);else if(m.t==='err'){toast(String(m.why||'not now'));openCompose();$('#composeIn').value=lastSent}});   // refused: the text comes back to try again
+  updateBar();
+  window.__im={me};
+}
+if(isHost)initHost();else if(isClient)initClient();
+</script>
+</body>
+</html>
