@@ -52,10 +52,11 @@ figure, the way a line in Kandinsky's paintings is read, and played when it is l
 
 The phrase starts on the next grid slot, so strokes from several phones fall into the same time.
 Each note keeps the voice, weight and brightness of the pigment that made it (in Mix, the pigment
-each dab actually chose), and lights that pigment's swatch on the dock while it sounds: a melody
-runs across the swatches note by note, a chord lights its colours together. Bloom notes, drips
-and the Play sweep light their swatches the same way. Phones in a room send only pointer input,
-so the phrase plays on the big screen.
+each dab actually chose). While a note sounds, the mark that made it lights up on the sheet: a
+melody's glow walks along the stroke note by note, a chord's whole stroke lights at once, a tap
+flashes where it landed. Bloom notes, drips and the Play sweep light their marks the same way.
+The glow is drawn over the paint on the screen, never into the painting. Phones in a room send
+only pointer input, so the phrase plays and lights on the big screen.
 
 ## White
 
