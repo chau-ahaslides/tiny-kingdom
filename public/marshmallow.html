@@ -13170,7 +13170,7 @@ window.CANNON=module.exports;})();</script>
 <div class="screen center on" id="s-home">
   <div style="font-size:64px;line-height:1">🍡</div>
   <h1>Marshmallow Challenge</h1>
-  <p>Build the tallest free-standing tower out of 20 sticks of spaghetti, a metre of tape and one marshmallow. The marshmallow goes on top. Eighteen minutes, then hands off.</p>
+  <p>Build the tallest free-standing tower out of 20 sticks of spaghetti and one marshmallow. Sticks glue themselves wherever an end touches; the marshmallow goes on top. Eighteen minutes, then hands off.</p>
   <button class="big" id="b-host" style="margin-top:28px">Host on a big screen</button>
   <button class="big soft" id="b-joinscreen">Join on my phone</button>
   <button class="link" id="b-solo">Practise alone on this device</button>
@@ -13218,18 +13218,17 @@ window.CANNON=module.exports;})();</script>
 <div class="screen center" id="s-lobby">
   <div style="font-size:56px">🍝</div>
   <h2>You're in</h2>
-  <p>The host starts the clock. Everyone works on the same table. Drag sticks by any point; press a glue ball onto them to join them. Joints bend if you push them and hold when you let go. Gravity is real.</p>
+  <p>The host starts the clock. Everyone works on the same table. Drag sticks by any point; let go with an end touching another stick and they glue themselves. Joints bend if you push them, hold when you let go, and yank apart if you pull hard. Gravity is real.</p>
   <div class="players" id="lobbyplayers"></div>
 </div>
 
 <div class="screen" id="s-build">
   <div class="view" id="playerview">
     <div class="phud"><div class="clock" id="pclock">18:00</div><div class="live" id="plive">0<small> cm</small></div><div class="inv" id="pinv"></div></div>
-    <div class="hint" id="hint">Add a stick and a glue ball. Press the ball onto stick ends to join them</div>
+    <div class="hint" id="hint">Add sticks. Let go with an end touching another stick and they glue themselves</div>
     <div class="bar">
       <button class="spag" id="b-add">+ Stick</button>
       <button class="spag" id="b-addhalf">+ Half</button>
-      <button id="b-glue">+ Glue</button>
       <button id="b-marsh" aria-label="Take out the marshmallow">🍡</button>
       <div class="modes">
         <button class="tool on" data-mode="move" aria-label="Move pieces"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4"/></svg></button>
@@ -13250,12 +13249,13 @@ window.CANNON=module.exports;})();</script>
 
 <script>
 /* ===================== PHYSICS CORE (runs on the host) =====================
-   Units: cm, grams, seconds. Sticks are thin boxes. Tape = glue balls pinned to sticks.
+   Units: cm, grams, seconds. Sticks are thin boxes. There is no tape to handle: a stick end let go near another
+   stick (or the marshmallow) is pinned there, and an overloaded or yanked joint tears.
    A hand = kinematic body + point constraint to the grabbed spot on a stick. */
 // note: cannon maxForce is an impulse per step, so force limits are passed as F * DT
 const PH = {
   STICK_LEN: 25, STICK_R: 0.3, STICK_MASS: 1.2, MARSH: 4.2, MARSH_MASS: 7,
-  TAPE_COST: 5, TAPE_TOTAL: 100, STICKS: 20, SNAP: 0.8, GLUE_R: 1.3, GLUE_MASS: 1.5, PIN_F: 3e5, BREAK: 3, STICK_HR: 0.15, HAND_F: 8e4, RIP: 9, YAW_DAMP: 0.5, ROT_MAX: 2.5e4, ROT_STIFF: 2e5, TABLE: { w: 110, d: 80 },
+  STICKS: 20, SNAP: 0.8, STICK_SNAP: 2, PIN_F: 3e5, BREAK: 3, STICK_HR: 0.15, HAND_F: 8e4, RIP: 9, YAW_DAMP: 0.5, ROT_MAX: 2.5e4, ROT_STIFF: 2e5, TABLE: { w: 110, d: 80 },   // SNAP / STICK_SNAP: how close an end has to be to glue to the marshmallow / another stick
   DT: 1 / 120, GRAV: -981
 };
 function makeWorld(CANNON) {
@@ -13267,9 +13267,9 @@ function makeWorld(CANNON) {
   world.defaultContactMaterial.restitution = 0.0;
   world.defaultContactMaterial.contactEquationStiffness = 5e6;
   world.defaultContactMaterial.contactEquationRelaxation = 3;
-  const table = new CANNON.Body({ type: CANNON.Body.STATIC, collisionFilterGroup: 1, collisionFilterMask: 1 | 2 | 4, shape: new CANNON.Box(new CANNON.Vec3(PH.TABLE.w / 2 + 5, 2, PH.TABLE.d / 2 + 5)) });
+  const table = new CANNON.Body({ type: CANNON.Body.STATIC, collisionFilterGroup: 1, collisionFilterMask: 1 | 2, shape: new CANNON.Box(new CANNON.Vec3(PH.TABLE.w / 2 + 5, 2, PH.TABLE.d / 2 + 5)) });
   table.position.set(0, -2, 0); world.addBody(table);
-  const sim = { world, table, bodies: new Map(), hands: new Map(), events: [], nextId: 1, tape: PH.TAPE_TOTAL, bag: PH.STICKS, marshInBag: true, log: [], seq: 0, CANNON };
+  const sim = { world, table, bodies: new Map(), hands: new Map(), events: [], nextId: 1, bag: PH.STICKS, marshInBag: true, log: [], seq: 0, CANNON };
   return sim;
 }
 /* thin rods have a near-zero inertia about their own axis, which makes lock constraints mushy;
@@ -13284,7 +13284,7 @@ function fattenInertia(body) {
 function weldedWith(sim, id) {
   const seen = new Set([id]); const q = [id];
   while (q.length) { const c = q.pop(); const rec = sim.bodies.get(c); if (!rec) continue;
-    const nb = [...(rec.links ? rec.links.map(l => l.id) : []), ...[...sim.bodies.values()].filter(b => b.links && linked(b, c)).map(b => b.id)];
+    const nb = [...rec.links.map(l => l.id), ...[...sim.bodies.values()].filter(b => linked(b, c)).map(b => b.id)];
     for (const o of nb) if (!seen.has(o)) { seen.add(o); q.push(o); } }
   seen.delete(id); return [...seen].map(i => sim.bodies.get(i)).filter(Boolean);
 }
@@ -13294,22 +13294,23 @@ function pin(sim, A, B, worldPt, maxForce, stiff) {
   c.equations.forEach(e => e.setSpookParams(stiff, 3, PH.DT)); c.collideConnected = false; sim.world.addConstraint(c); return c;
 }
 function frame(sim, w) { const C = sim.CANNON; const u = new C.Vec3(1, 0, 0), v = new C.Vec3(0, 0, 1); return [w, w.vadd(u.scale(3)), w.vadd(v.scale(3))]; }
-/* tear the most-stretched glue link touching this piece */
+/* tear the most-stretched joint touching this piece */
 function ripOne(sim, r) {
   let best = null;
   const cand = (anchor, l) => { const o = sim.bodies.get(l.id); if (!o) return; const gap = anchor.body.pointToWorldFrame(l.cs[0].pivotA).distanceTo(o.body.pointToWorldFrame(l.cs[0].pivotB)); if (!best || gap > best.gap) best = { anchor, l, gap }; };
-  if (r.links) for (const l of r.links) cand(r, l);
-  for (const b of sim.bodies.values()) if (b.links) for (const l of b.links) if (l.id === r.id) cand(b, l);
+  for (const l of r.links) cand(r, l);
+  for (const b of sim.bodies.values()) for (const l of b.links) if (l.id === r.id) cand(b, l);
   if (!best) return false;
   best.l.cs.forEach(x => sim.world.removeConstraint(x)); if (best.l.rot) sim.world.removeConstraint(best.l.rot);
   best.anchor.links = best.anchor.links.filter(x => x !== best.l); sim.events.push('tore'); wakeAll(sim); sim.seq++; return true;
 }
 /* other hands re-grip at the current orientation (no spring memory) */
 function regrip(sim, except) {
-  for (const [k, o] of sim.hands) { if (k === except || !o.rot) continue; const pr = sim.bodies.get(o.stick); o.rot.forEach(c => sim.world.removeConstraint(c)); o.rot = pr && pr.links ? frame(sim, o.body.position.clone()).slice(1).map(w => pin(sim, { body: o.body }, pr, w, 3e3, 1e7)) : null; }
+  for (const [k, o] of sim.hands) { if (k === except || !o.rot) continue; const pr = sim.bodies.get(o.stick); o.rot.forEach(c => sim.world.removeConstraint(c)); o.rot = pr && pr.kind === 'marsh' ? frame(sim, o.body.position.clone()).slice(1).map(w => pin(sim, { body: o.body }, pr, w, 3e3, 1e7)) : null; }
 }
 function isHeld(sim, id) { for (const h of sim.hands.values()) if (h.stick === id) return true; return false; }
-function anchored(sim, id) { for (const b of sim.bodies.values()) if (b.links && linked(b, id)) return true; return false; }
+/* part of a joint, on either side of it */
+function jointed(sim, id) { const r = sim.bodies.get(id); if (r && r.links.length) return true; for (const b of sim.bodies.values()) if (linked(b, id)) return true; return false; }
 function wakeAll(sim) { for (const r of sim.bodies.values()) r.body.wakeUp(); }
 function idn(sim) { return 's' + (sim.nextId++); }
 function addStick(sim, len, pos, quat) {
@@ -13318,7 +13319,7 @@ function addStick(sim, len, pos, quat) {
   body.position.copy(pos); if (quat) body.quaternion.copy(quat);
   fattenInertia(body);
   sim.world.addBody(body);
-  const id = idn(sim); const rec = { id, kind: 'stick', len, body }; sim.bodies.set(id, rec); body.userData = rec; sim.seq++;
+  const id = idn(sim); const rec = { id, kind: 'stick', len, body, links: [] }; sim.bodies.set(id, rec); body.userData = rec; sim.seq++;
   return rec;
 }
 function spawnStick(sim, len = PH.STICK_LEN) {
@@ -13342,9 +13343,8 @@ function spawnMarsh(sim) {
 }
 function removeBody(sim, id, toBag = true) {
   const rec = sim.bodies.get(id); if (!rec) return { ok: false, msg: 'Nothing there.' };
-  if (rec.kind === 'glue') return untape(sim, id);
   for (const [pid, h] of sim.hands) if (h.stick === id) release(sim, pid, false);
-  if (rec.links) clearLinks(sim, rec); unlink(sim, id);
+  clearLinks(sim, rec); unlink(sim, id);
   sim.world.removeBody(rec.body); sim.bodies.delete(id); wakeAll(sim);
   if (rec.kind === 'marsh') sim.marshInBag = true; else if (toBag) sim.bag = Math.round((sim.bag + rec.len / PH.STICK_LEN) * 100) / 100;
   sim.seq++; return { ok: true };
@@ -13381,12 +13381,10 @@ function grab(sim, pid, id, local) {
   c.equations.forEach(e => e.setSpookParams(1e7, 3, PH.DT));
   c.collideConnected = false; sim.world.addConstraint(c);
   rec.body.wakeUp(); rec.body.linearDamping = 0.9; rec.body.angularDamping = 0.9;
-  if (rec.kind !== 'glue') rec.body.collisionFilterMask = 1; // carried pieces pass through other pieces; welded partners follow the same rule
+  rec.body.collisionFilterMask = 1; // carried pieces pass through other pieces; welded partners follow the same rule
   for (const o of weldedWith(sim, rec.id)) o.body.collisionFilterMask = 1;
-  // fingers grip what they hold: a firm pinch on tape/marshmallow, a light one on a stick so it keeps its
-  // angle while you slide it around, but a second finger, the table or a glued joint can still turn it
-  // fingers pinch tape / the marshmallow firmly (keeps orientation); a stick pivots freely in the fingers
-  const hb = { body: hand }; const rot = rec.links ? frame(sim, world).slice(1).map(w => pin(sim, hb, rec, w, 3e3, 1e7)) : null;
+  // fingers pinch the marshmallow firmly (keeps orientation); a stick pivots freely in the fingers
+  const hb = { body: hand }; const rot = rec.kind === 'marsh' ? frame(sim, world).slice(1).map(w => pin(sim, hb, rec, w, 3e3, 1e7)) : null;
   regrip(sim, pid);
   sim.hands.set(pid, { body: hand, c, rot, stick: id, local, target: world.clone() });
   return { ok: true };
@@ -13397,75 +13395,68 @@ function release(sim, pid, tryTape = true) {
   sim.world.removeConstraint(h.c); if (h.rot) h.rot.forEach(c => sim.world.removeConstraint(c)); sim.world.removeBody(h.body); sim.hands.delete(pid);
   const rec = sim.bodies.get(h.stick); let taped = 0;
   wakeAll(sim);
-  if (rec) { for (const o of [rec, ...weldedWith(sim, rec.id)]) if (o.kind !== 'glue') o.body.collisionFilterMask = 1 | 2; }
+  if (rec) { for (const o of [rec, ...weldedWith(sim, rec.id)]) o.body.collisionFilterMask = 1 | 2; }
   if (rec) resetRot(sim, new Set([rec.id, ...weldedWith(sim, rec.id).map(o => o.id)]));
   regrip(sim, null);
   if (rec) { rec.body.linearDamping = 0.35; rec.body.angularDamping = 0.5; rec.body.velocity.scale(0.2, rec.body.velocity); rec.body.angularVelocity.scale(0.2, rec.body.angularVelocity); if (tryTape) taped = autoTape(sim, rec); }
   return { ok: true, taped };
 }
-/* ---- glue balls: a blob of tape you carry and press onto spaghetti ----
-   A ball touching pieces gets pinned to each of them with a ball joint at the touch point,
-   so glued sticks pivot freely at the joint. Rigidity has to come from triangles. */
-function spawnGlue(sim) {
-  if (sim.tape < PH.TAPE_COST) return { ok: false, msg: 'No tape left.' };
-  sim.tape -= PH.TAPE_COST; const C = sim.CANNON;
-  const body = new C.Body({ mass: PH.GLUE_MASS, collisionFilterGroup: 4, collisionFilterMask: 1, shape: new C.Sphere(PH.GLUE_R), linearDamping: 0.6, angularDamping: 0.9, sleepSpeedLimit: 2, sleepTimeLimit: 0.6 });
-  const n = sim.bodies.size; body.position.set(-22 + (n % 5) * 3, PH.GLUE_R + 0.2, 28);
-  sim.world.addBody(body);
-  const id = idn(sim); const rec = { id, kind: 'glue', len: PH.GLUE_R, body, links: [] }; sim.bodies.set(id, rec); body.userData = rec; sim.seq++;
-  return { ok: true, id };
-}
 function linked(anchor, id) { return anchor.links.some(l => l.id === id); }
-const reach = (a) => (a.kind === 'glue' ? PH.GLUE_R : PH.MARSH / 2);
-/* what would this piece stick to if released now. Anchors (glue balls, the marshmallow) grab
-   sticks they touch; a stick's end touching an anchor gets grabbed by it. */
+const reach = () => PH.MARSH / 2;   // how far the marshmallow grabs
+/* ---- gluing: what a piece would stick to if let go right now. A stick end glues itself to the marshmallow when it
+   touches it, otherwise to every stick it is near (end to end, or a T onto the middle of one). The marshmallow grabs
+   the stick ends that touch it. Each target: the partner `o`, the point `q` on the partner, the piece's own point `p`. ---- */
 function tapeTargets(sim, rec) {
   const out = [];
-  if (rec.links) {
+  const fresh = (o) => o !== rec && !linked(rec, o.id) && !linked(o, rec.id);
+  if (rec.kind === 'marsh') {
     const c = rec.body.position;
     for (const o of sim.bodies.values()) {
-      if (o === rec || linked(rec, o.id) || (o.links && linked(o, rec.id))) continue;
-      let q, d;
-      if (o.kind === 'stick') { const [a, b] = ends(o); q = closestOnSeg(a, b, c); d = q.distanceTo(c) - PH.STICK_R - reach(rec); if (rec.kind === 'marsh' && Math.min(a.distanceTo(c), b.distanceTo(c)) > PH.MARSH / 2 + PH.SNAP) continue; }
-      else if (o.links) { const dir = c.vsub(o.body.position); const L = dir.length() || 1; q = o.body.position.vadd(dir.scale(Math.min(L, reach(o)) / L)); d = L - reach(o) - reach(rec); }
-      else continue;
-      if (d < PH.SNAP) out.push({ o, d, q });
+      if (o.kind !== 'stick' || !fresh(o)) continue;
+      const [a, b] = ends(o); const q = closestOnSeg(a, b, c); const d = q.distanceTo(c) - PH.STICK_R - reach();
+      if (d < PH.SNAP && Math.min(a.distanceTo(c), b.distanceTo(c)) <= reach() + PH.SNAP) out.push({ o, d, q, p: q });
     }
     return out;
   }
+  const m = sim.bodies.get('marsh');
   for (const p of ends(rec)) {
-    let best = null;
+    if (m && fresh(m) && m.body.position.distanceTo(p) - reach() - PH.STICK_R < PH.SNAP) { out.push({ o: m, d: 0, q: p.clone(), p: p.clone() }); continue; }
     for (const o of sim.bodies.values()) {
-      if (!o.links || linked(o, rec.id)) continue;
-      const d = o.body.position.distanceTo(p) - reach(o) - PH.STICK_R;
-      if (d < PH.SNAP && (!best || d < best.d)) best = { o, d, q: p.clone() };
+      if (o.kind !== 'stick' || !fresh(o)) continue;
+      const [a, b] = ends(o); const q = closestOnSeg(a, b, p); const d = q.distanceTo(p) - 2 * PH.STICK_R;
+      if (d < PH.STICK_SNAP) out.push({ o, d, q, p: p.clone() });
     }
-    if (best) out.push(best);
   }
   return out;
 }
 function autoTape(sim, rec) {
-  let n = 0;
-  for (const t of tapeTargets(sim, rec)) { if (rec.links) attach(sim, rec, t.o, t.q, rec); else attach(sim, t.o, rec, t.q, rec); n++; }
+  let n = 0, shifted = false;
+  for (const t of tapeTargets(sim, rec)) {
+    if (t.o.kind === 'marsh') attach(sim, t.o, rec, t.q, rec);            // the marshmallow is always the anchor side of its joints
+    else if (rec.kind === 'marsh') attach(sim, rec, t.o, t.q, rec);
+    else { attach(sim, t.o, rec, t.q, rec, shifted ? null : t.p); shifted = true; }   // stick to stick: the moved stick is nudged so its end really touches (once; a second joint pins where it is)
+    n++;
+  }
   return n;
 }
-/* pin a piece to a glue ball at a world point: a ball joint, pieces keep their current pose */
-function attach(sim, ball, piece, worldPt, mover) {
+/* pin `piece` to `anchor` at a world point: a ball joint, pieces keep their current pose. `moverPt` = the mover's own contact point, to be nudged onto worldPt */
+function attach(sim, anchor, piece, worldPt, mover, moverPt) {
   const C = sim.CANNON;
-  ball.body.wakeUp(); piece.body.wakeUp();
-  // bury the contact: the moving piece is shifted so the stick end / ball actually sits inside the tape
-  if (mover === ball && piece.kind === 'stick') { const d = ball.body.position.vsub(worldPt); const L = d.length() || 1; ball.body.position.copy(worldPt.vadd(d.scale(Math.max(0.3, reach(ball) - 0.6) / L))); }
-  else if (mover === piece && piece.kind === 'stick') { const d = worldPt.vsub(ball.body.position); const L = d.length() || 1; const target = ball.body.position.vadd(d.scale(Math.max(0, reach(ball) - 0.7) / L)); piece.body.position.vadd(target.vsub(worldPt), piece.body.position); worldPt = target; }
+  anchor.body.wakeUp(); piece.body.wakeUp();
+  // bury the contact: the moving piece is shifted so the stick end actually sits inside the marshmallow / touches the other stick
+  if (mover === anchor && anchor.kind === 'marsh' && piece.kind === 'stick') { const d = anchor.body.position.vsub(worldPt); const L = d.length() || 1; anchor.body.position.copy(worldPt.vadd(d.scale(Math.max(0.3, reach() - 0.6) / L))); }
+  else if (mover === piece && anchor.kind === 'marsh' && piece.kind === 'stick') { const d = worldPt.vsub(anchor.body.position); const L = d.length() || 1; const target = anchor.body.position.vadd(d.scale(Math.max(0, reach() - 0.7) / L)); piece.body.position.vadd(target.vsub(worldPt), piece.body.position); worldPt = target; }
+  else if (mover && moverPt) mover.body.position.vadd(worldPt.vsub(moverPt), mover.body.position);
   if (mover) { mover.body.velocity.setZero(); mover.body.angularVelocity.setZero(); }
-  // sticks get one pin (they pivot on the tape); the marshmallow gets skewered: three pins, no pivoting
+  // sticks get one pin (they pivot on the joint, and a soft second pin resists bending); anchor to anchor is rigid: three pins
   const pts = [worldPt];
-  if (piece.links) { const u = new C.Vec3(1, 0, 0), v = new C.Vec3(0, 0, 1); pts.push(worldPt.vadd(u.scale(2)), worldPt.vadd(v.scale(2))); } // anchor to anchor: rigid
-  const cs = pts.map(w => pin(sim, ball, piece, w, PH.PIN_F * PH.DT, 1e7));
+  if (anchor.kind !== 'stick' && piece.kind !== 'stick') { const u = new C.Vec3(1, 0, 0), v = new C.Vec3(0, 0, 1); pts.push(worldPt.vadd(u.scale(2)), worldPt.vadd(v.scale(2))); }
+  const cs = pts.map(w => pin(sim, anchor, piece, w, PH.PIN_F * PH.DT, 1e7));
   const link = { id: piece.id, cs, rot: null };
-  if (piece.kind === 'stick') setRot(sim, ball, link);
-  ball.links.push(link); sim.seq++;
+  if (piece.kind === 'stick') setRot(sim, anchor, link);
+  anchor.links.push(link); sim.seq++;
 }
-/* tape resists bending a little: a soft, force-limited orientation coupling. It yields when you
+/* a joint resists bending a little: a soft, force-limited orientation coupling. It yields when you
    push, and is re-set at the new angle when you let go, like tape taking a set */
 function setRot(sim, ball, link) {
   const C = sim.CANNON; const piece = sim.bodies.get(link.id); if (!piece) return;
@@ -13476,16 +13467,11 @@ function setRot(sim, ball, link) {
   link.rot = pin(sim, ball, piece, jw.vadd(axis.scale(5 * sgn)), (PH.ROT_MAX / 5) * PH.DT, PH.ROT_STIFF);
 }
 function resetRot(sim, ids) {
-  for (const b of sim.bodies.values()) if (b.links) for (const l of b.links) if (l.rot && (ids.has(b.id) || ids.has(l.id))) setRot(sim, b, l);
-}
-/* peel a glue ball off: its joints go, the tape is spent */
-function untape(sim, id) {
-  const ball = sim.bodies.get(id); if (!ball || ball.kind !== 'glue') return { ok: false, msg: 'Tap a glue ball to peel it off.' };
-  clearLinks(sim, ball); unlink(sim, id); sim.world.removeBody(ball.body); sim.bodies.delete(id); wakeAll(sim); sim.seq++; return { ok: true };
+  for (const b of sim.bodies.values()) for (const l of b.links) if (l.rot && (ids.has(b.id) || ids.has(l.id))) setRot(sim, b, l);
 }
 function clearLinks(sim, anchor) { for (const l of anchor.links) { l.cs.forEach(c => sim.world.removeConstraint(c)); if (l.rot) sim.world.removeConstraint(l.rot); } anchor.links = []; }
 function unlink(sim, pieceId) {
-  for (const b of sim.bodies.values()) if (b.links) b.links = b.links.filter(l => l.id !== pieceId || (l.cs.forEach(c => sim.world.removeConstraint(c)), l.rot && sim.world.removeConstraint(l.rot), false));
+  for (const b of sim.bodies.values()) b.links = b.links.filter(l => l.id !== pieceId || (l.cs.forEach(c => sim.world.removeConstraint(c)), l.rot && sim.world.removeConstraint(l.rot), false));
 }
 /* ---- stepping ---- */
 function step(sim, dt) {
@@ -13496,9 +13482,8 @@ function step(sim, dt) {
     const held = sim.bodies.get(h.stick);
     if (held && held.kind === 'stick') held.body.angularVelocity.y *= PH.YAW_DAMP; // bleed off spin about vertical: no swivel when pushing along the stick const r = sim.bodies.get(h.stick); if (r) r.body.wakeUp();
   }
-  // tape that is overloaded breaks (spaghetti snaps at the joint)
   sim.world.step(PH.DT, dt, 6);
-  // pull a glued piece hard enough (drag it well past where it can go) and the glue gives
+  // pull a glued piece hard enough (drag it well past where it can go) and the joint gives
   for (const h of sim.hands.values()) {
     const r = sim.bodies.get(h.stick); if (!r) continue;
     const gp = r.body.pointToWorldFrame(new sim.CANNON.Vec3(h.local[0], h.local[1], h.local[2]));
@@ -13506,22 +13491,22 @@ function step(sim, dt) {
     h.ripT = lag > PH.RIP ? (h.ripT || 0) + dt : 0;
     if (h.ripT > 0.35) { h.ripT = 0; ripOne(sim, r); }
   }
-  // glue tears when a joint is pulled apart harder than tape can hold
-  for (const b of sim.bodies.values()) if (b.links) for (const l of [...b.links]) {
+  // a joint pulled apart harder than it can hold tears
+  for (const b of sim.bodies.values()) for (const l of [...b.links]) {
     const c = l.cs[0]; const gap = b.body.pointToWorldFrame(c.pivotA).distanceTo(c.pivotB && sim.bodies.get(l.id) ? sim.bodies.get(l.id).body.pointToWorldFrame(c.pivotB) : b.body.position);
     if (gap > PH.BREAK) { l.cs.forEach(x => sim.world.removeConstraint(x)); if (l.rot) sim.world.removeConstraint(l.rot); b.links = b.links.filter(x => x !== l); sim.events.push('tore'); wakeAll(sim); sim.seq++; }
   }
   // a loose stick balanced on its tip is not a thing: nudge it over
-  for (const r of sim.bodies.values()) if (r.kind === 'stick' && !isHeld(sim, r.id) && !anchored(sim, r.id)) {
+  for (const r of sim.bodies.values()) if (r.kind === 'stick' && !isHeld(sim, r.id) && !jointed(sim, r.id)) {
     const [a, c] = ends(r); const lo = a.y < c.y ? a : c, hi = a.y < c.y ? c : a;
     if (lo.y < PH.STICK_HR + 0.6 && hi.y - lo.y > r.len * 0.3) { if (!r.nudge) { const a = Math.random() * Math.PI * 2; r.nudge = new sim.CANNON.Vec3(Math.cos(a), 0, Math.sin(a)); } r.body.wakeUp(); r.body.applyTorque(r.nudge.scale(2500)); }
     else r.nudge = null;
   }
-  // anything that fell off the table comes back on its own (tape on it is lost)
+  // anything that fell off the table comes back on its own (its joints are lost)
   for (const r of [...sim.bodies.values()]) {
     const p = r.body.position;
     if (p.y < -25) {
-      if (r.kind === 'glue') { untape(sim, r.id); continue; } if (r.links) clearLinks(sim, r); unlink(sim, r.id);
+      clearLinks(sim, r); unlink(sim, r.id);
       for (const [pid, h] of sim.hands) if (h.stick === r.id) release(sim, pid, false);
       p.set(((sim.nextId * 7) % 41) - 20, 2, 18); r.body.velocity.setZero(); r.body.angularVelocity.setZero(); r.body.quaternion.setFromEuler(0, Math.PI / 2, 0); sim.seq++;
     }
@@ -13529,10 +13514,10 @@ function step(sim, dt) {
 }
 function snapshot(sim) {
   const out = [];
-  for (const r of sim.bodies.values()) { const p = r.body.position, q = r.body.quaternion; out.push([r.id, r.kind === 'marsh' ? 'm' : r.kind === 'glue' ? 'g' : 's', r.len, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4), +q.w.toFixed(4), r.body.sleepState === 2 ? 1 : 0]); }
+  for (const r of sim.bodies.values()) { const p = r.body.position, q = r.body.quaternion; out.push([r.id, r.kind === 'marsh' ? 'm' : 's', r.len, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4), +q.w.toFixed(4), r.body.sleepState === 2 ? 1 : 0]); }
   const hands = [...sim.hands.entries()].map(([pid, h]) => { const r = sim.bodies.get(h.stick); const c = r ? tapeTargets(sim, r).map(t => [+t.q.x.toFixed(1), +t.q.y.toFixed(1), +t.q.z.toFixed(1)]) : []; return [pid, h.stick, +h.body.position.x.toFixed(1), +h.body.position.y.toFixed(1), +h.body.position.z.toFixed(1), c]; });
   // live height: highest point of the build; once the marshmallow is skewered on, its top
-  let top = 0; for (const r of sim.bodies.values()) { if (r.kind === 'stick') for (const e of ends(r)) top = Math.max(top, e.y + PH.STICK_R); else if (r.kind === 'glue') top = Math.max(top, r.body.position.y + PH.GLUE_R); }
+  let top = 0; for (const r of sim.bodies.values()) if (r.kind === 'stick') for (const e of ends(r)) top = Math.max(top, e.y + PH.STICK_R);
   const m = sim.bodies.get('marsh'); const onMarsh = !!(m && m.links.length);
   const height = onMarsh ? m.body.position.y + PH.MARSH / 2 : top;
   return { b: out, h: hands, top: +height.toFixed(1), onMarsh };
@@ -13548,7 +13533,7 @@ function measure(sim) {
   if (maxStick > top + 1) return { ok: false, note: 'The marshmallow must be on the very top', height: top };
   return { ok: true, height: top, note: 'Standing with the marshmallow on top' };
 }
-if (typeof module !== 'undefined') module.exports = { PH, tapeTargets, spawnGlue, attach, makeWorld, spawnStick, spawnMarsh, removeBody, breakStick, grab, move, release, untape, step, snapshot, measure, ends };
+if (typeof module !== 'undefined') module.exports = { PH, tapeTargets, attach, makeWorld, spawnStick, spawnMarsh, removeBody, breakStick, grab, move, release, step, snapshot, measure, ends };
 
 </script>
 <script type="module">
@@ -13574,7 +13559,6 @@ class Viewer {
     this.mats = {
       spag: new THREE.MeshStandardMaterial({ color: 0xE9B949, roughness: .7 }),
       spagHeld: new THREE.MeshStandardMaterial({ color: 0xFFD86B, emissive: 0x6b4d00, roughness: .6 }),
-      tape: new THREE.MeshStandardMaterial({ color: 0xE8D3A0, roughness: .95 }),
       marsh: new THREE.MeshStandardMaterial({ color: 0xFFF9F4, roughness: .95 }),
       snap: new THREE.MeshStandardMaterial({ color: 0x2E9E6B, emissive: 0x1a6b44, transparent: true, opacity: .85 }),
     };
@@ -13644,7 +13628,7 @@ class Viewer {
     const consider = (d, along, cand) => { if (d < cand.tol && (!best || along < best.along)) best = { ...cand, along }; };
     for (const m of this.meshes.values()) {
       const u = m.userData;
-      if (u.kind === 'marsh' || u.kind === 'glue') { const q = m.position; const t = Math.max(0, q.clone().sub(ray.origin).dot(ray.direction)); const d = ray.at(t, new THREE.Vector3()).distanceTo(q); consider(d, t, { kind: u.kind, id: u.id, point: q.clone(), local: [0, 0, 0], tol: u.kind === 'glue' ? 3.2 : 4 }); continue; }
+      if (u.kind === 'marsh') { const q = m.position; const t = Math.max(0, q.clone().sub(ray.origin).dot(ray.direction)); const d = ray.at(t, new THREE.Vector3()).distanceTo(q); consider(d, t, { kind: u.kind, id: u.id, point: q.clone(), local: [0, 0, 0], tol: 4 }); continue; }
       const A = m.localToWorld(new THREE.Vector3(-u.len / 2, 0, 0)), B = m.localToWorld(new THREE.Vector3(u.len / 2, 0, 0));
       // closest points between ray (o + t d, t>=0) and segment (A + s (B-A), 0<=s<=1)
       const o = ray.origin, d = ray.direction, e = B.clone().sub(A), w = o.clone().sub(A);
@@ -13673,9 +13657,8 @@ class Viewer {
       if (!m || m.userData.len !== len) {
         if (m) { this.scene.remove(m); m.geometry.dispose(); }
         m = kind === 'm' ? new THREE.Mesh(new THREE.BoxGeometry(PH.MARSH, PH.MARSH, PH.MARSH, 1, 1, 1), this.mats.marsh)
-          : kind === 'g' ? new THREE.Mesh(new THREE.SphereGeometry(PH.GLUE_R, 14, 12), this.mats.tape)
                          : new THREE.Mesh(new THREE.CylinderGeometry(.42, .42, len, 8).rotateZ(Math.PI / 2), this.mats.spag);
-        m.castShadow = true; m.userData = { id, kind: kind === 'm' ? 'marsh' : kind === 'g' ? 'glue' : 'stick', len }; m.position.set(x, y, z); m.quaternion.set(qx, qy, qz, qw);
+        m.castShadow = true; m.userData = { id, kind: kind === 'm' ? 'marsh' : 'stick', len }; m.position.set(x, y, z); m.quaternion.set(qx, qy, qz, qw);
         this.scene.add(m); this.meshes.set(id, m);
       }
       m.userData.tp = [x, y, z]; m.userData.tq = [qx, qy, qz, qw];
@@ -13711,7 +13694,7 @@ class Viewer {
    touches a socket, a code, a QR or localStorage. Solo practice has no room at all: messages loop back in-page. */
 const host = { sim: null, room: null, viewer: null, mins: 18, rem: 0, phase: 'lobby', players: {}, log: [], local: false, result: null };
 function hostBroadcast(msg) { if (host.local) return player.receive(JSON.parse(JSON.stringify(msg))); if (host.room) host.room.send(msg); }
-function hostMeta() { return { phase: host.phase, players: host.players, log: host.log, rem: host.rem, tape: host.sim.tape, bag: host.sim.bag, marshInBag: host.sim.marshInBag, result: host.result }; }
+function hostMeta() { return { phase: host.phase, players: host.players, log: host.log, rem: host.rem, bag: host.sim.bag, marshInBag: host.sim.marshInBag, result: host.result }; }
 function hostSyncMeta() { hostBroadcast({ t: 'meta', ...hostMeta() }); hostRender(); }
 function logLine(s) { host.log.unshift(s); host.log = host.log.slice(0, 6); }
 function hostHandle(pid, msg) {
@@ -13720,12 +13703,10 @@ function hostHandle(pid, msg) {
   let r = { ok: true };
   if (msg.t === 'spawn') { r = spawnStick(S, msg.len); if (r.ok) logLine(`${who.name} took a ${msg.len < 20 ? 'half ' : ''}stick from the bag`); }
   else if (msg.t === 'marsh') { r = spawnMarsh(S); if (r.ok) logLine(`${who.name} took out the marshmallow`); }
-  else if (msg.t === 'glue') { r = spawnGlue(S); if (r.ok) logLine(`${who.name} tore off a bit of tape`); }
   else if (msg.t === 'grab') r = grab(S, pid + ':' + msg.h, msg.piece, msg.local);
   else if (msg.t === 'move') { move(S, pid + ':' + msg.h, msg.p); return; }
   else if (msg.t === 'release') { const x = release(S, pid + ':' + msg.h); if (x.taped) { logLine(`${who.name} glued ${x.taped} piece${x.taped>1?'s':''}`); reply(`Stuck to ${x.taped} piece${x.taped>1?'s':''}`); } }
   else if (msg.t === 'remove') { r = removeBody(S, msg.piece); if (r.ok) logLine(`${who.name} put a piece back in the bag`); }
-  else if (msg.t === 'untape') { r = untape(S, msg.piece); if (r.ok) logLine(`${who.name} peeled off a glue ball`); }
   if (!r.ok) return reply(r.msg || 'Not possible right now.');
   hostSyncMeta();
 }
@@ -13771,7 +13752,7 @@ function hostBegin() {
   host.netT = setInterval(() => {
     const sn = snapshot(host.sim);
     if (!host.local) { $('#hheight').innerHTML = `${Math.round(sn.top)}<small> cm ${sn.onMarsh ? 'to the marshmallow' : 'highest point'}</small>`; host.viewer.setSnapshot(sn); }
-    if (host.sim.events.length) { const n = host.sim.events.length; host.sim.events = []; logLine(`✂️ Glue tore — ${n} joint${n>1?'s':''} came apart`); hostSyncMeta(); }
+    if (host.sim.events.length) { const n = host.sim.events.length; host.sim.events = []; logLine(`✂️ ${n} joint${n>1?'s':''} came apart`); hostSyncMeta(); }
     // phones get 20 frames a second while anything moves; a sleeping table only needs a heartbeat
     const busy = host.sim.hands.size || sn.b.some(b => !b[10]) || host.sim.seq !== host.sentSeq;
     host.netN = (host.netN || 0) + 1;
@@ -13794,7 +13775,7 @@ function hostStatus() {
 }
 function hostRender() {
   if (host.local) return; const S = host.sim; hostClock();
-  $('#hkit').innerHTML = `<span>🍝 ${S.bag} sticks in the bag</span><span>🩹 ${Math.floor(S.tape / PH.TAPE_COST)} glue balls left</span><span>${S.marshInBag ? '🍡 marshmallow in the bag' : '🍡 marshmallow out'}</span>`;
+  $('#hkit').innerHTML = `<span>🍝 ${S.bag} sticks in the bag</span><span>${S.marshInBag ? '🍡 marshmallow in the bag' : '🍡 marshmallow out'}</span>`;
   $('#hfeed').innerHTML = host.log.map(l => `<div>${l}</div>`).join(''); hostStatus();
 }
 function hostDone() {
@@ -13834,19 +13815,19 @@ const player = {
   clock() { const el = $('#pclock'); el.textContent = mmss(Math.max(0, this.meta.rem)); el.classList.toggle('low', this.meta.rem <= 60); },
   hud() {
     const m = this.meta; this.clock();
-    $('#pinv').innerHTML = `<span class="${m.bag?'':'zero'}">🍝 ${m.bag}</span><span class="${m.tape >= PH.TAPE_COST?'':'zero'}">🩹 ${Math.floor(m.tape / PH.TAPE_COST)}</span>`;
-    $('#b-add').disabled = m.bag < 1; $('#b-addhalf').disabled = m.bag < 0.5; $('#b-marsh').disabled = !m.marshInBag; $('#b-glue').disabled = m.tape < PH.TAPE_COST;
+    $('#pinv').innerHTML = `<span class="${m.bag?'':'zero'}">🍝 ${m.bag}</span>`;
+    $('#b-add').disabled = m.bag < 1; $('#b-addhalf').disabled = m.bag < 0.5; $('#b-marsh').disabled = !m.marshInBag;
   },
   setMode(m) { this.mode = m; document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.mode === m)); this.hint(); },
   hint(text) {
-    const map = { move: this.holding.size ? 'Green dot = sticks there when you let go. Pull far past a joint to rip it off' : 'Drag pieces. Press a glue ball onto stick ends to join them', remove: 'Remove mode: tap a stick to put it back, a glue ball to peel it off' };
+    const map = { move: this.holding.size ? 'Green dot = glues there when you let go. Pull far past a joint to yank it apart' : 'Drag pieces. An end let go against another stick glues itself there', remove: 'Remove mode: tap a stick to put it back in the bag' };
     const el = $('#hint'); el.textContent = text || map[this.mode]; el.classList.remove('off');
     clearTimeout(this.hintT); this.hintT = setTimeout(() => el.classList.add('off'), text ? 6000 : 4000);
   },
   grab(hit, h) {
     if (!this.meta || this.meta.phase !== 'build') return false;
     if (this.mode === 'move') { this.send({ t: 'grab', h, piece: hit.id, local: hit.local }); this.holding.add(h); this.hint(); if (navigator.vibrate) navigator.vibrate(10); return true; }
-    if (this.mode === 'remove') { this.send({ t: hit.kind === 'glue' ? 'untape' : 'remove', piece: hit.id }); return false; }
+    if (this.mode === 'remove') { this.send({ t: 'remove', piece: hit.id }); return false; }
     return false;
   }
 };
@@ -13861,7 +13842,6 @@ document.querySelectorAll('.tool').forEach(b => b.onclick = () => player.setMode
 $('#b-add').onclick = () => player.send({ t: 'spawn', len: PH.STICK_LEN });
 $('#b-addhalf').onclick = () => player.send({ t: 'spawn', len: PH.STICK_LEN / 2 });
 $('#b-marsh').onclick = () => player.send({ t: 'marsh' });
-$('#b-glue').onclick = () => player.send({ t: 'glue' });
 
 let me = null;                                             // the phone's session, once it has a code
 function joinGame(code, name) {

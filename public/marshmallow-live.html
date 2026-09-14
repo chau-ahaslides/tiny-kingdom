@@ -89,7 +89,7 @@
 <div class="screen center on" id="s-home">
   <div style="font-size:64px;line-height:1">🍡</div>
   <h1>Marshmallow Challenge <span style="font-size:.45em;vertical-align:middle;background:var(--leaf);color:#fff;padding:4px 10px;border-radius:999px">LIVE</span></h1>
-  <p>Build the tallest free-standing tower out of 20 sticks of spaghetti, a metre of tape and one marshmallow. The marshmallow goes on top. Eighteen minutes, then hands off.</p>
+  <p>Build the tallest free-standing tower out of 20 sticks of spaghetti and one marshmallow. Sticks glue themselves wherever an end touches; the marshmallow goes on top. Eighteen minutes, then hands off.</p>
   <button class="big" id="b-host" style="margin-top:28px">Host on a big screen</button>
   <button class="big soft" id="b-joinscreen">Join on my phone</button>
   <button class="link" id="b-solo">Practise alone on this device</button>
@@ -137,18 +137,17 @@
 <div class="screen center" id="s-lobby">
   <div style="font-size:56px">🍝</div>
   <h2>You're in</h2>
-  <p>The big screen starts the clock. Everyone works on the same table. Drag sticks by any point; press a glue ball onto them to join them. Joints bend if you push them and hold when you let go. Gravity is real.</p>
+  <p>The big screen starts the clock. Everyone works on the same table. Drag sticks by any point; let go with an end touching another stick and they glue themselves. Joints bend if you push them, hold when you let go, and yank apart if you pull hard. Gravity is real.</p>
   <div class="players" id="lobbyplayers"></div>
 </div>
 
 <div class="screen" id="s-build">
   <div class="view" id="playerview">
     <div class="phud"><div class="clock" id="pclock">18:00</div><div class="live" id="plive">0<small> cm</small></div><div class="inv" id="pinv"></div></div>
-    <div class="hint" id="hint">Add a stick and a glue ball. Press the ball onto stick ends to join them</div>
+    <div class="hint" id="hint">Add sticks. Let go with an end touching another stick and they glue themselves</div>
     <div class="bar">
       <button class="spag" id="b-add">+ Stick</button>
       <button class="spag" id="b-addhalf">+ Half</button>
-      <button id="b-glue">+ Glue</button>
       <button id="b-marsh" aria-label="Take out the marshmallow">🍡</button>
       <div class="modes">
         <button class="tool on" data-mode="move" aria-label="Move pieces"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4"/></svg></button>
@@ -169,7 +168,7 @@
 
 <script>
 /* ===================== helpers ===================== */
-const PH = { STICK_LEN: 25, MARSH: 4.2, GLUE_R: 1.3, TAPE_COST: 5, TABLE: { w: 110, d: 80 } };   // mirrors src/physics.js
+const PH = { STICK_LEN: 25, MARSH: 4.2, TABLE: { w: 110, d: 80 } };   // mirrors src/physics.js
 const PALETTE = ['#E4573D','#2E9E6B','#3B7DD8','#B04BB3','#E08A1E','#1FA3A3','#7A5CD6','#C63A6B'];
 const $ = (s) => document.querySelector(s);
 function show(idn) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === idn)); }
@@ -190,7 +189,6 @@ class Viewer {
     this.mats = {
       spag: new THREE.MeshStandardMaterial({ color: 0xE9B949, roughness: .7 }),
       spagHeld: new THREE.MeshStandardMaterial({ color: 0xFFD86B, emissive: 0x6b4d00, roughness: .6 }),
-      tape: new THREE.MeshStandardMaterial({ color: 0xE8D3A0, roughness: .95 }),
       marsh: new THREE.MeshStandardMaterial({ color: 0xFFF9F4, roughness: .95 }),
       snap: new THREE.MeshStandardMaterial({ color: 0x2E9E6B, emissive: 0x1a6b44, transparent: true, opacity: .85 }),
     };
@@ -260,7 +258,7 @@ class Viewer {
     const consider = (d, along, cand) => { if (d < cand.tol && (!best || along < best.along)) best = { ...cand, along }; };
     for (const m of this.meshes.values()) {
       const u = m.userData;
-      if (u.kind === 'marsh' || u.kind === 'glue') { const q = m.position; const t = Math.max(0, q.clone().sub(ray.origin).dot(ray.direction)); const d = ray.at(t, new THREE.Vector3()).distanceTo(q); consider(d, t, { kind: u.kind, id: u.id, point: q.clone(), local: [0, 0, 0], tol: u.kind === 'glue' ? 3.2 : 4 }); continue; }
+      if (u.kind === 'marsh') { const q = m.position; const t = Math.max(0, q.clone().sub(ray.origin).dot(ray.direction)); const d = ray.at(t, new THREE.Vector3()).distanceTo(q); consider(d, t, { kind: u.kind, id: u.id, point: q.clone(), local: [0, 0, 0], tol: 4 }); continue; }
       const A = m.localToWorld(new THREE.Vector3(-u.len / 2, 0, 0)), B = m.localToWorld(new THREE.Vector3(u.len / 2, 0, 0));
       // closest points between ray (o + t d, t>=0) and segment (A + s (B-A), 0<=s<=1)
       const o = ray.origin, d = ray.direction, e = B.clone().sub(A), w = o.clone().sub(A);
@@ -296,9 +294,8 @@ class Viewer {
       if (!m || m.userData.len !== len) {
         if (m) { this.scene.remove(m); m.geometry.dispose(); }
         m = kind === 'm' ? new THREE.Mesh(new THREE.BoxGeometry(PH.MARSH, PH.MARSH, PH.MARSH, 1, 1, 1), this.mats.marsh)
-          : kind === 'g' ? new THREE.Mesh(new THREE.SphereGeometry(PH.GLUE_R, 14, 12), this.mats.tape)
                          : new THREE.Mesh(new THREE.CylinderGeometry(.42, .42, len, 8).rotateZ(Math.PI / 2), this.mats.spag);
-        m.castShadow = true; m.userData = { id, kind: kind === 'm' ? 'marsh' : kind === 'g' ? 'glue' : 'stick', len }; m.position.set(x, y, z); m.quaternion.set(qx, qy, qz, qw);
+        m.castShadow = true; m.userData = { id, kind: kind === 'm' ? 'marsh' : 'stick', len }; m.position.set(x, y, z); m.quaternion.set(qx, qy, qz, qw);
         this.scene.add(m); this.meshes.set(id, m);
       }
       m.userData.tp = [x, y, z]; m.userData.tq = [qx, qy, qz, qw];
@@ -391,7 +388,7 @@ function hostClock() { const rem = host.meta ? host.meta.rem : 0; const el = $('
 function hostStatus(st) { if (!st) return; const el = $('#hstatus'); el.textContent = st.note; el.className = 'status ' + (st.cls || ''); }
 function hostRender() {
   const m = host.meta; hostClock(); hostStatus(m.status);
-  $('#hkit').innerHTML = `<span>🍝 ${m.bag} sticks in the bag</span><span>🩹 ${Math.floor(m.tape / PH.TAPE_COST)} glue balls left</span><span>${m.marshInBag ? '🍡 marshmallow in the bag' : '🍡 marshmallow out'}</span>`;
+  $('#hkit').innerHTML = `<span>🍝 ${m.bag} sticks in the bag</span><span>${m.marshInBag ? '🍡 marshmallow in the bag' : '🍡 marshmallow out'}</span>`;
   $('#hfeed').innerHTML = m.log.map(l => `<div>${l}</div>`).join('');
   $('#mins').querySelectorAll('button').forEach(x => x.classList.toggle('on', +x.dataset.m === m.mins));
 }
@@ -433,19 +430,19 @@ const player = {
   clock() { const el = $('#pclock'); el.textContent = mmss(Math.max(0, this.meta.rem)); el.classList.toggle('low', this.meta.rem <= 60); },
   hud() {
     const m = this.meta; this.clock();
-    $('#pinv').innerHTML = `<span class="${m.bag?'':'zero'}">🍝 ${m.bag}</span><span class="${m.tape >= PH.TAPE_COST?'':'zero'}">🩹 ${Math.floor(m.tape / PH.TAPE_COST)}</span>`;
-    $('#b-add').disabled = m.bag < 1; $('#b-addhalf').disabled = m.bag < 0.5; $('#b-marsh').disabled = !m.marshInBag; $('#b-glue').disabled = m.tape < PH.TAPE_COST;
+    $('#pinv').innerHTML = `<span class="${m.bag?'':'zero'}">🍝 ${m.bag}</span>`;
+    $('#b-add').disabled = m.bag < 1; $('#b-addhalf').disabled = m.bag < 0.5; $('#b-marsh').disabled = !m.marshInBag;
   },
   setMode(m) { this.mode = m; document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.mode === m)); this.hint(); },
   hint(text) {
-    const map = { move: this.holding.size ? 'Green dot = sticks there when you let go. Pull far past a joint to rip it off' : 'Drag pieces. Press a glue ball onto stick ends to join them', remove: 'Remove mode: tap a stick to put it back, a glue ball to peel it off' };
+    const map = { move: this.holding.size ? 'Green dot = glues there when you let go. Pull far past a joint to yank it apart' : 'Drag pieces. An end let go against another stick glues itself there', remove: 'Remove mode: tap a stick to put it back in the bag' };
     const el = $('#hint'); el.textContent = text || map[this.mode]; el.classList.remove('off');
     clearTimeout(this.hintT); this.hintT = setTimeout(() => el.classList.add('off'), text ? 6000 : 4000);
   },
   grab(hit, h) {
     if (!this.meta || this.meta.phase !== 'build') return false;
     if (this.mode === 'move') { this.send({ t: 'grab', h, piece: hit.id, local: hit.local }); this.holding.add(h); this.hint(); if (navigator.vibrate) navigator.vibrate(10); return true; }
-    if (this.mode === 'remove') { this.send({ t: hit.kind === 'glue' ? 'untape' : 'remove', piece: hit.id }); return false; }
+    if (this.mode === 'remove') { this.send({ t: 'remove', piece: hit.id }); return false; }
     return false;
   }
 };
@@ -460,7 +457,6 @@ const here = () => (player.viewer ? player.viewer.centre() : {});   // new piece
 $('#b-add').onclick = () => player.send({ t: 'spawn', len: PH.STICK_LEN, ...here() });
 $('#b-addhalf').onclick = () => player.send({ t: 'spawn', len: PH.STICK_LEN / 2, ...here() });
 $('#b-marsh').onclick = () => player.send({ t: 'marsh', ...here() });
-$('#b-glue').onclick = () => player.send({ t: 'glue', ...here() });
 
 function joinGame(code, name) {
   const note = (t) => { $('#jnote').textContent = t; };

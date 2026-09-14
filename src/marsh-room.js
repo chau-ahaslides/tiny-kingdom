@@ -2,7 +2,7 @@
    players, so a phone's touch goes phone -> room -> everyone with no host browser in the loop.
    The big screen is a viewer with the start / again buttons. Solo practice is a room with one player. */
 import RAPIER from '@dimforge/rapier3d';
-import { PH, createSim, spawnStick, spawnMarsh, spawnGlue, grab, move, release, removeBody, untape, step, snapshot, measure, isBusy } from './physics.js';
+import { PH, createSim, spawnStick, spawnMarsh, grab, move, release, removeBody, step, snapshot, measure, isBusy } from './physics.js';
 
 const PALETTE = ['#E4573D', '#2E9E6B', '#3B7DD8', '#B04BB3', '#E08A1E', '#1FA3A3', '#7A5CD6', '#C63A6B'];
 const TICK = 1 / 60;
@@ -68,7 +68,7 @@ export class MarshRoom {
     if (S.hands.size) return { note: `Hands on — ${[...new Set([...S.hands.keys()].map(k => (this.players.get(k.split(':')[0]) || {}).name).filter(Boolean))].join(', ')}`, cls: '' };
     const m = measure(S); return { note: m.note, cls: m.ok ? 'good' : S.bodies.has('marsh') ? 'bad' : '' };
   }
-  meta() { return { t: 'meta', phase: this.phase, players: this.online(), log: this.log, rem: this.rem, mins: this.mins, tape: this.sim.tape, bag: this.sim.bag, marshInBag: this.sim.marshInBag, result: this.result, status: this.status() }; }
+  meta() { return { t: 'meta', phase: this.phase, players: this.online(), log: this.log, rem: this.rem, mins: this.mins, bag: this.sim.bag, marshInBag: this.sim.marshInBag, result: this.result, status: this.status() }; }
   syncMeta() { this.broadcast(this.meta()); }
   logLine(s) { this.log.unshift(s); this.log = this.log.slice(0, 6); }
   /* ---- messages ---- */
@@ -87,12 +87,10 @@ export class MarshRoom {
     const yaw = Number.isFinite(+msg.yaw) ? +msg.yaw : 0;
     if (msg.t === 'spawn') { const L = msg.len < PH.STICK_LEN * 0.75 ? PH.STICK_LEN / 2 : PH.STICK_LEN; r = spawnStick(S, L, at, yaw); if (r.ok) this.logLine(`${who.name} took a ${L < 20 ? 'half ' : ''}stick from the bag`); }
     else if (msg.t === 'marsh') { r = spawnMarsh(S, at); if (r.ok) this.logLine(`${who.name} took out the marshmallow`); }
-    else if (msg.t === 'glue') { r = spawnGlue(S, at); if (r.ok) this.logLine(`${who.name} tore off a bit of tape`); }
     else if (msg.t === 'grab') { if (!Array.isArray(msg.local) || msg.local.length !== 3) return; r = grab(S, pid + ':' + msg.h, String(msg.piece), msg.local.map(Number)); }
     else if (msg.t === 'move') { if (Array.isArray(msg.p) && msg.p.length === 3) move(S, pid + ':' + msg.h, msg.p.map(Number)); return; }
     else if (msg.t === 'release') { const x = release(S, pid + ':' + msg.h); if (x.taped) { this.logLine(`${who.name} glued ${x.taped} piece${x.taped > 1 ? 's' : ''}`); reply(`Stuck to ${x.taped} piece${x.taped > 1 ? 's' : ''}`); } }
     else if (msg.t === 'remove') { r = removeBody(S, String(msg.piece)); if (r.ok) this.logLine(`${who.name} put a piece back in the bag`); }
-    else if (msg.t === 'untape') { r = untape(S, String(msg.piece)); if (r.ok) this.logLine(`${who.name} peeled off a glue ball`); }
     else return;
     if (!r.ok) return reply(r.msg || 'Not possible right now.');
     this.syncMeta();
@@ -109,7 +107,7 @@ export class MarshRoom {
   tick() { try { step(this.sim, TICK); } catch (e) { console.error('physics', e); } }
   net() {
     const S = this.sim;
-    if (S.events.length) { const n = S.events.length; S.events = []; this.logLine(`✂️ Glue tore — ${n} joint${n > 1 ? 's' : ''} came apart`); this.syncMeta(); }
+    if (S.events.length) { const n = S.events.length; S.events = []; this.logLine(`✂️ ${n} joint${n > 1 ? 's' : ''} came apart`); this.syncMeta(); }
     // 20 frames a second while anything moves; a sleeping table only needs a heartbeat
     const busy = isBusy(S) || S.seq !== this.sentSeq;
     this.netN++;
