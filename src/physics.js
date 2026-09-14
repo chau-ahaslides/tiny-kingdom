@@ -312,7 +312,9 @@ export function snapshot(sim) {
   let top = 0; for (const r of sim.bodies.values()) if (r.kind === 'stick') for (const e of ends(r)) top = Math.max(top, e.y + PH.STICK_R);
   const m = sim.bodies.get('marsh'); const onMarsh = !!(m && m.links.length);
   const height = onMarsh ? m.body.translation().y + PH.MARSH / 2 : top;
-  return { b: out, h: hands, top: +height.toFixed(1), onMarsh };
+  // every joint, as the blob of glue you see on it
+  const j = []; for (const b of sim.bodies.values()) for (const l of b.links) { const w = toWorld(b.body, l.cs[0].la); j.push([+w.x.toFixed(1), +w.y.toFixed(1), +w.z.toFixed(1)]); }
+  return { b: out, h: hands, j, top: +height.toFixed(1), onMarsh };
 }
 /* height of the marshmallow top if it rests on sticks (not the table), nobody is holding anything */
 export function measure(sim) {

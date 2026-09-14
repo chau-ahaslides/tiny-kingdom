@@ -152,3 +152,13 @@ test('new pieces land where the phone asks, and step aside when the spot is take
   assert.ok(sim.bodies.size === 3);
   assert.equal(joints(sim), 0, 'pieces that were only put down next to each other are not glued');
 });
+
+test('the snapshot carries a glue blob for every joint, where the joint is', () => {
+  const sim = createSim(RAPIER);
+  const a = spawnStick(sim); const b = spawnStick(sim); run(sim, 0.3);
+  assert.deepEqual(snapshot(sim).j, []);
+  const [, e] = ends(rec(sim, b.id)); attach(sim, rec(sim, a.id), rec(sim, b.id), e, null);
+  const j = snapshot(sim).j;
+  assert.equal(j.length, 1);
+  assert.ok(Math.hypot(j[0][0] - e.x, j[0][1] - e.y, j[0][2] - e.z) < 0.2, 'blob sits on the joint: ' + JSON.stringify(j[0]));
+});

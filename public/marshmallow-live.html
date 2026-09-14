@@ -186,9 +186,11 @@ class Viewer {
     this.cam = { theta: 0.5, phi: this.host ? 1.1 : 0.95, dist: this.host ? 150 : 130, target: new THREE.Vector3(0, this.host ? 12 : 4, 0) };
     this.autoSpin = this.host;
     this.meshes = new Map(); this.handGroup = new THREE.Group(); this.scene.add(this.handGroup);
+    this.jointGroup = new THREE.Group(); this.scene.add(this.jointGroup); this.blobGeo = new THREE.SphereGeometry(1.1, 12, 10);   // a blob of glue on every joint
     this.mats = {
       spag: new THREE.MeshStandardMaterial({ color: 0xE9B949, roughness: .7 }),
       spagHeld: new THREE.MeshStandardMaterial({ color: 0xFFD86B, emissive: 0x6b4d00, roughness: .6 }),
+      glue: new THREE.MeshStandardMaterial({ color: 0xE8D3A0, roughness: .95 }),
       marsh: new THREE.MeshStandardMaterial({ color: 0xFFF9F4, roughness: .95 }),
       snap: new THREE.MeshStandardMaterial({ color: 0x2E9E6B, emissive: 0x1a6b44, transparent: true, opacity: .85 }),
     };
@@ -303,6 +305,10 @@ class Viewer {
       top = Math.max(top, y);
     }
     for (const [id, m] of this.meshes) if (!seen.has(id)) { this.scene.remove(m); m.geometry.dispose(); this.meshes.delete(id); }
+    // glue blobs: one per joint, eased toward the latest pose with the sticks; a new one appears in place
+    const js = snap.j || [], jg = this.jointGroup.children;
+    while (jg.length > js.length) this.jointGroup.remove(jg[jg.length - 1]);
+    js.forEach((c, i) => { let g = jg[i]; if (!g) { g = new THREE.Mesh(this.blobGeo, this.mats.glue); g.castShadow = true; g.position.set(c[0], c[1], c[2]); this.jointGroup.add(g); } g.userData.tp = c; });
     // hands
     while (this.handGroup.children.length) { const c = this.handGroup.children.pop(); if (c.material.map) c.material.map.dispose(); }
     for (const h of snap.h) {
@@ -322,6 +328,7 @@ class Viewer {
     this.camera.lookAt(c.target);
     const k = 1 - Math.pow(0.001, dt * 4); // smooth toward the latest physics pose
     for (const m of this.meshes.values()) { const u = m.userData; if (!u.tp) continue; m.position.lerp(new THREE.Vector3(...u.tp), k); m.quaternion.slerp(new THREE.Quaternion(...u.tq), k); }
+    for (const g of this.jointGroup.children) if (g.userData.tp) g.position.lerp(new THREE.Vector3(...g.userData.tp), k);
     this.renderer.render(this.scene, this.camera);
   }
 }
