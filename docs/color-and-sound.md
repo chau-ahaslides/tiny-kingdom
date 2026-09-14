@@ -36,6 +36,27 @@ Host → phones, through the SDK:
 - frames: 1280 px on the long side, WebP quality 0.6, only when the sheet changed, every 0.7 s
   plus 30 ms per phone, capped at 2.5 s; `frames.now()` after Undo and Clear.
 
+## The stroke sings
+
+Nothing sounds while the brush moves (only the root drone). The finished stroke is read as a
+figure, the way a line in Kandinsky's paintings is read, and played when it is lifted:
+
+- **An upright stroke is a chord.** Its height is stacked into notes in thirds (two to five,
+  bottom of the stroke = lowest note) and strummed the way it was drawn: upward strokes strum
+  low to high, downward ones high to low.
+- **Any other stroke is a melody.** The path is the tune: pitch from height, in the order the
+  hand made it, one note per short step of the path (up to sixteen), paced on the sixteenth grid
+  at the current tempo, or faster if the hand was quicker than the grid. Scale walk still turns a
+  flat drag into a run.
+- **A tap is one note** at the height it landed.
+
+The phrase starts on the next grid slot, so strokes from several phones fall into the same time.
+Each note keeps the voice, weight and brightness of the pigment that made it (in Mix, the pigment
+each dab actually chose), and lights that pigment's swatch on the dock while it sounds: a melody
+runs across the swatches note by note, a chord lights its colours together. Bloom notes, drips
+and the Play sweep light their swatches the same way. Phones in a room send only pointer input,
+so the phrase plays on the big screen.
+
 ## White
 
 A sixth swatch, white, is always on the dock, whatever the palette (New hues never changes it).

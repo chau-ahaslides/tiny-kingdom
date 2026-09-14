@@ -45,7 +45,11 @@
     transition: transform 150ms ease, box-shadow 150ms ease;
   }
   .sw[aria-pressed="true"] { transform: scale(1.22); box-shadow: 0 0 0 2px rgba(51,50,45,.55); }
-  #sw5 { background: #fbfaf5; border-color: rgba(51,50,45,.38); }   /* white: always there, whatever the palette */
+  #sw5 { background: #fbfaf5; border-color: rgba(51,50,45,.38); --c: #fff2c8; }   /* white: always there, whatever the palette */
+  /* the pigment that is sounding right now: the swatch swells and glows in its own colour */
+  .sw.sing { transform: scale(1.5); box-shadow: 0 0 0 2px #fff, 0 0 18px 6px var(--c, #fff); transition-duration: 60ms; }
+  .sw[aria-pressed="true"].sing { transform: scale(1.6); box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(51,50,45,.55), 0 0 18px 6px var(--c, #fff); }
+  @media (prefers-reduced-motion: reduce) { .sw.sing, .sw[aria-pressed="true"].sing { transform: none; } }
   .sw:focus-visible { outline: 2px solid #33322D; outline-offset: 3px; }
 
   button.t {
@@ -144,7 +148,7 @@
 <canvas id="c"></canvas>
 <div class="paper"></div>
 <div class="edge"></div>
-<p class="say" id="say">Paint on it. Every mark keeps blooming after you lift your finger.</p>
+<p class="say" id="say">Paint on it. An upright stroke sounds as a chord, a sideways one as a melody. Every mark keeps blooming after you lift.</p>
 <p class="tag" id="tag" hidden></p>
 
 <div class="card" id="card" hidden title="Click to enlarge"></div>
@@ -166,18 +170,18 @@
     <p class="hint">How long each note rings. Short separates the melody; long lets notes pile onto each other.</p>
     <label class="row" title="How many octaves the canvas height covers. 1 keeps steps small and easy to follow; 3 leaps."><span>Pitch range</span><input type="range" id="cfg_span" min="1" max="3" step="1" title="How many octaves the canvas height covers. 1 keeps steps small and easy to follow; 3 leaps."><b id="v_span"></b></label>
     <p class="hint">How many octaves the canvas height covers. 1 keeps steps small and easy to follow; 3 leaps.</p>
-    <label class="row" title="When a stroke holds one height, notes step along the scale instead of repeating. 0 = pitch strictly follows height."><span>Scale walk</span><input type="range" id="cfg_walk" min="0" max="6" step="1" title="When a stroke holds one height, notes step along the scale instead of repeating. 0 = pitch strictly follows height."><b id="v_walk"></b></label>
-    <p class="hint">When a stroke holds one height, notes step along the scale instead of repeating. 0 = pitch strictly follows height.</p>
+    <label class="row" title="When a melody holds one height, its notes step along the scale instead of repeating. 0 = pitch strictly follows height."><span>Scale walk</span><input type="range" id="cfg_walk" min="0" max="6" step="1" title="When a melody holds one height, its notes step along the scale instead of repeating. 0 = pitch strictly follows height."><b id="v_walk"></b></label>
+    <p class="hint">When a melody holds one height, its notes step along the scale instead of repeating. 0 = pitch strictly follows height.</p>
     <label class="row" title="A quiet root note under the painting, retriggered every 5s. Degrees only sound like a scale against a tonic."><span>Root drone</span><input type="range" id="cfg_drone" min="0" max="0.25" step="0.005" title="A quiet root note under the painting, retriggered every 5s. Degrees only sound like a scale against a tonic."><b id="v_drone"></b></label>
     <p class="hint">A quiet root note under the painting, retriggered every 5s. Degrees only sound like a scale against a tonic.</p>
-    <label class="row" title="The grid notes snap to. Faster means tighter timing and less delay between your stroke and its sound."><span>Tempo</span><input type="range" id="cfg_bpm" min="50" max="160" step="2" title="The grid notes snap to. Faster means tighter timing and less delay between your stroke and its sound."><b id="v_bpm"></b></label>
-    <p class="hint">The grid notes snap to. Faster means tighter timing and less delay between your stroke and its sound.</p>
-    <label class="row" title="Most notes allowed in one grid slot, across all instruments. Higher is fuller but muddier."><span>Notes per slot</span><input type="range" id="cfg_slot" min="1" max="6" step="1" title="Most notes allowed in one grid slot, across all instruments. Higher is fuller but muddier."><b id="v_slot"></b></label>
-    <p class="hint">Most notes allowed in one grid slot, across all instruments. Higher is fuller but muddier.</p>
-    <label class="row" title="Most notes one instrument may play per slot. 1 throws away fast gestures; 3 keeps runs intact."><span>Per instrument</span><input type="range" id="cfg_perVoice" min="1" max="3" step="1" title="Most notes one instrument may play per slot. 1 throws away fast gestures; 3 keeps runs intact."><b id="v_perVoice"></b></label>
-    <p class="hint">Most notes one instrument may play per slot. 1 throws away fast gestures; 3 keeps runs intact.</p>
-    <label class="row" title="Multiplies each instrument’s enforced silence between notes (bass rests longest, harp shortest)."><span>Instrument rest</span><input type="range" id="cfg_gap" min="0.2" max="2" step="0.1" title="Multiplies each instrument’s enforced silence between notes (bass rests longest, harp shortest)."><b id="v_gap"></b></label>
-    <p class="hint">Multiplies each instrument’s enforced silence between notes (bass rests longest, harp shortest).</p>
+    <label class="row" title="The grid a stroke’s phrase starts on, and the pace of a melody. Faster means less delay between lifting the brush and its sound."><span>Tempo</span><input type="range" id="cfg_bpm" min="50" max="160" step="2" title="The grid a stroke’s phrase starts on, and the pace of a melody. Faster means less delay between lifting the brush and its sound."><b id="v_bpm"></b></label>
+    <p class="hint">The grid a stroke’s phrase starts on, and the pace of a melody. Faster means less delay between lifting the brush and its sound.</p>
+    <label class="row" title="Most bloom and drip notes allowed in one grid slot, across all instruments. Higher is fuller but muddier."><span>Notes per slot</span><input type="range" id="cfg_slot" min="1" max="6" step="1" title="Most bloom and drip notes allowed in one grid slot, across all instruments. Higher is fuller but muddier."><b id="v_slot"></b></label>
+    <p class="hint">Most bloom and drip notes allowed in one grid slot, across all instruments. Higher is fuller but muddier.</p>
+    <label class="row" title="Most bloom notes one instrument may play per slot."><span>Per instrument</span><input type="range" id="cfg_perVoice" min="1" max="3" step="1" title="Most bloom notes one instrument may play per slot."><b id="v_perVoice"></b></label>
+    <p class="hint">Most bloom notes one instrument may play per slot.</p>
+    <label class="row" title="Multiplies each instrument’s enforced silence between bloom notes (bass rests longest, harp shortest)."><span>Instrument rest</span><input type="range" id="cfg_gap" min="0.2" max="2" step="0.1" title="Multiplies each instrument’s enforced silence between bloom notes (bass rests longest, harp shortest)."><b id="v_gap"></b></label>
+    <p class="hint">Multiplies each instrument’s enforced silence between bloom notes (bass rests longest, harp shortest).</p>
     <label class="row" title="Volume of notes played by pools as they keep blooming after you lift. 0 = only your strokes sound."><span>Bloom notes</span><input type="range" id="cfg_bloom" min="0" max="0.3" step="0.01" title="Volume of notes played by pools as they keep blooming after you lift. 0 = only your strokes sound."><b id="v_bloom"></b></label>
     <p class="hint">Volume of notes played by pools as they keep blooming after you lift. 0 = only your strokes sound.</p>
     <label class="row" title="Forces pitches onto the bar’s chord. off = free; busy = only when crowded; all = safest, least melodic freedom."><span>Chord snap</span><input type="range" id="cfg_snap" min="0" max="2" step="1" title="Forces pitches onto the bar’s chord. off = free; busy = only when crowded; all = safest, least melodic freedom."><b id="v_snap"></b></label>
@@ -401,6 +405,7 @@ import { AhaRoom } from '/js/aha-room.js';
       const el = document.getElementById('sw' + i);
       const c = palette[i];
       el.style.background = `hsl(${c.h} ${c.s}% ${c.l}%)`;
+      el.style.setProperty('--c', `hsl(${c.h} ${clamp(c.s + 15, 0, 100)}% ${c.l}%)`);
       const v = VOICES[clamp(hueRank[i], 0, VOICES.length - 1)];
       el.title = v.charAt(0).toUpperCase() + v.slice(1);
       el.setAttribute('aria-label', 'Colour ' + (i + 1) + ' — ' + el.title);
@@ -683,7 +688,7 @@ import { AhaRoom } from '/js/aha-room.js';
     const spread = 1 / Math.sqrt(picked.length);  // so a stroke up then down is heard that way
     picked.forEach((r, i) => {
       const v = note(r.deg, r.oct, r.gain * spread, r.decay, when + i * ROLL, r.bright, r.voice);
-      if (v) liveVoices.push({ v, end: when + r.decay + 1 });
+      if (v) { liveVoices.push({ v, end: when + r.decay + 1 }); glow(r.ci, when + i * ROLL, Math.min(r.decay, 0.6)); }
     });
   }
 
@@ -909,6 +914,122 @@ import { AhaRoom } from '/js/aha-room.js';
   const decayFor = l => 1.2 + (l / 100) * 2.3;
   const brightFor = sat => clamp(0.2 + (sat / 100) * 0.85, 0.15, 1);
 
+  /* ---------- the stroke sings ------------------------------------------
+     Nothing sounds while the brush moves (only the root drone): the finished
+     stroke is read as a figure, the way Kandinsky's lines are read. An upright
+     stroke is a CHORD, its height stacked into notes and strummed the way it
+     was drawn. Any other stroke is a MELODY: its path is the tune, pitch from
+     height, in the order the hand made it, at the grid's pace or the hand's if
+     that was quicker. A tap is one note. Each note lights the swatch of the
+     pigment that made it, so the dock shows what is playing. --------------- */
+  const glows = [];                                   // {ci, t0, t1} in audio time
+  let glowLit = false;
+  function glow(ci, t0, dur) {
+    if (ci === null || ci === undefined || ci < 0) return;
+    glows.push({ ci, t0, t1: t0 + Math.max(0.12, dur) });
+  }
+  function glowTick() {
+    if (!glows.length && !glowLit) return;
+    const t = actx ? actx.currentTime : 0, on = new Set();
+    for (let i = glows.length - 1; i >= 0; i--) {
+      const g = glows[i];
+      if (g.t1 < t) glows.splice(i, 1);
+      else if (g.t0 <= t) on.add(g.ci);
+    }
+    for (let k = 0; k < 6; k++) document.getElementById('sw' + k).classList.toggle('sing', on.has(k));
+    glowLit = on.size > 0;
+  }
+  function sing(deg, oct, gain, decay, when, bright, kind, ci, hold) {
+    const v = note(deg, oct, gain, decay, when, bright, kind);
+    if (v) { liveVoices.push({ v, end: when + decay + 1 }); glow(ci, when, hold || Math.min(decay * 0.5, 0.7)); }
+    return v;
+  }
+  // phrases start on the next grid slot, so two painters' strokes fall into the same time
+  function phraseStart() {
+    const c = audio();
+    if (!c) return 0;
+    return nextSlot > c.currentTime + 0.02 ? nextSlot : c.currentTime + 0.03;
+  }
+  // n points evenly spaced along the path, each carrying the pigment of the dab nearest to it
+  function resampleN(pts, n) {
+    if (pts.length === 1 || n <= 1) return [pts[0]];
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    const total = cum[cum.length - 1] || 1, out = [];
+    let j = 0;
+    for (let k = 0; k < n; k++) {
+      const d = total * k / (n - 1);
+      while (j < pts.length - 2 && cum[j + 1] < d) j++;
+      const seg = cum[j + 1] - cum[j] || 1, f = clamp((d - cum[j]) / seg, 0, 1);
+      const a = pts[j], b = pts[j + 1];
+      out.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, ci: f < 0.5 ? a.ci : b.ci });
+    }
+    return out;
+  }
+  function singStroke(p, stroke) {
+    if (!soundOn || playing || !stroke.pts.length) return;
+    const c = audio();
+    if (!c) return;
+    const B = BRUSHES[p.brush.type] || BRUSHES.wash;
+    const pts = stroke.pts;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, len = 0;
+    pts.forEach((q, i) => {
+      if (q.x < x0) x0 = q.x; if (q.x > x1) x1 = q.x; if (q.y < y0) y0 = q.y; if (q.y > y1) y1 = q.y;
+      if (i) len += Math.hypot(q.x - pts[i - 1].x, q.y - pts[i - 1].y);
+    });
+    const w = x1 - x0, h = y1 - y0;
+    const loud = p.brush.size === 'L' ? 1.55 : p.brush.size === 'M' ? 1 : 0.55;   // S/M/L is loudness
+    const timbre = ci => {
+      const col = colorAt(ci === undefined || ci === null ? chosenIndex(p) : ci);
+      const kind = col.white ? 'pad' : voiceOf(col.h);
+      return { ci: col.white ? WHITE_IX : nearestIndex(col.h), kind,
+               gain: gainFor(col.l) * loud * B.bright * (kind === 'pad' ? 0.8 : 1),
+               decay: decayFor(col.l) * CFG.decay * B.decay,
+               bright: clamp(brightFor(col.s) * B.bright, 0.12, 1) };
+    };
+    const t0 = phraseStart();
+    const grid = 60 / CFG.bpm / 4;
+    const st = SCALES[scaleIx].steps, total = st.length * Math.round(CFG.span);
+    const idxOf = y => clamp(Math.floor((1 - clamp(y / H, 0, 0.999)) * total), 0, total - 1);
+
+    if (len < short * 0.03) {                                  // a tap: one note where it landed
+      const pit = pitchAt(pts[0].y), tm = timbre(pts[0].ci);
+      sing(pit.deg, pit.oct, tm.gain, tm.decay, t0, tm.bright, tm.kind, tm.ci);
+      return;
+    }
+    if (h > w * 1.3) {                                         // upright: a chord
+      let lo = idxOf(y1), hi = idxOf(y0);                      // bottom of the stroke is the low note
+      if (hi - lo < 2) hi = Math.min(total - 1, lo + 2);
+      if (hi - lo < 2) lo = Math.max(0, hi - 2);
+      const n = clamp(Math.floor((hi - lo) / 2) + 1, 2, 5);    // stacked in thirds, never more than five
+      const idxs = [];
+      for (let i = 0; i < n; i++) idxs.push(Math.round(lo + (hi - lo) * i / (n - 1)));
+      const upward = pts[pts.length - 1].y < pts[0].y;         // strummed the way it was drawn
+      if (!upward) idxs.reverse();
+      const spread = 1.25 / Math.sqrt(n);
+      idxs.forEach((ix, i) => {
+        const yy = H * (1 - (ix + 0.5) / total);
+        let near = pts[0], bd = 1e9;                           // the pigment nearest that height
+        for (const q of pts) { const d = Math.abs(q.y - yy); if (d < bd) { bd = d; near = q; } }
+        const tm = timbre(near.ci);
+        sing(ix % st.length, Math.floor(ix / st.length), tm.gain * spread, tm.decay * 1.4,
+             t0 + i * ROLL * 0.7, tm.bright, tm.kind, tm.ci);
+      });
+      return;
+    }
+    // anything else: a melody along the path, in the order it was drawn
+    const n = clamp(Math.round(len / (short * 0.05)), 2, 16);
+    const dur = Math.max(0, (performance.now() - (stroke.t0 || 0)) / 1000);
+    const dt = clamp(dur / n, grid * 0.5, grid);               // a quick flick plays as a quick run
+    const samp = resampleN(pts, n), walk = {};                 // Scale walk still turns a flat drag into a run
+    const spread = n > 8 ? 0.85 : 1;
+    samp.forEach((q, i) => {
+      const pit = stepPitch(walk, q.y), tm = timbre(q.ci);
+      const sustain = (tm.kind === 'pad' || tm.kind === 'bass') ? 0.6 : 1;   // slow voices would smear a tune
+      sing(pit.deg, pit.oct, tm.gain * spread, tm.decay * sustain, t0 + i * dt, tm.bright, tm.kind, tm.ci, dt * 0.9);   // the glow hands over note to note
+    });
+  }
+
 
   /* ---------- other painters ---------- */
   let bots = [];
@@ -1024,6 +1145,7 @@ import { AhaRoom } from '/js/aha-room.js';
           deg: pit.deg,
           oct: pit.oct + shift,
           kind,
+          ci: lig > 90 && sat < 25 ? WHITE_IX : nearestIndex(hue),
           gain: gainFor(lig) * clamp(r.n / 10, 0.45, 1.3) * spread * 0.85 * (kind === 'pad' ? 0.7 : 1),
           decay: decayFor(lig) * clamp(0.7 + r.n / 40, 0.7, 1.5) * (kind === 'pad' ? 1.8 : 1),
           bright: brightFor(sat)
@@ -1044,7 +1166,7 @@ import { AhaRoom } from '/js/aha-room.js';
     while (scoreIx < score.length && playT0 + score[scoreIx].t < ahead) {
       const n = score[scoreIx++];
       const src = note(n.deg, n.oct, n.gain, n.decay, playT0 + n.t, n.bright, n.kind);
-      if (src) voices.push(src);
+      if (src) { voices.push(src); glow(n.ci, playT0 + n.t, Math.min(n.decay * 0.5, 0.7)); }
     }
     if (scoreIx >= score.length && c.currentTime > playT0 + playDur) stopPlay();
   }
@@ -1069,6 +1191,7 @@ import { AhaRoom } from '/js/aha-room.js';
     if (schedTimer) { clearInterval(schedTimer); schedTimer = 0; }
     for (const v of voices) { try { v.stop(); } catch (e) {} }
     voices = [];
+    glows.length = 0;
     if (playBtn) playBtn.textContent = 'Play';
   }
 
@@ -1438,7 +1561,7 @@ import { AhaRoom } from '/js/aha-room.js';
           if (soundOn && d.t % 14 === 0) {          // descending gliss as it falls
             const pit = pitchAt(d.y);
             requestNote({
-              voice, deg: pit.deg, oct: pit.oct,
+              voice, deg: pit.deg, oct: pit.oct, ci: c.white ? WHITE_IX : nearestIndex(c.h),
               gain: 0.10 * taper, decay: 1.6, bright: 0.7, sal: 0.4
             });
           }
@@ -1500,42 +1623,12 @@ import { AhaRoom } from '/js/aha-room.js';
     const ci = forceIx === undefined ? chosenIndex(p) : forceIx;
     const c = colorAt(ci);
     const B = BRUSHES[p.brush.type] || BRUSHES.wash;
-    if (soundOn) {
-      tonicDrone();
-      const now = performance.now();
-      const locked = forceIx !== undefined ? true : p.brush.color !== null;
-      let kind = c.white ? 'pad' : voiceOf(c.h);         // white hums, it does not take a hue's voice
-      let shift = 0;
-      if (now - (lastByVoice[kind] || 0) < VOICE_GAP[kind] * CFG.gap && !locked) {
-        shift = (VOICE_OCT[kind] || 0) - (VOICE_OCT.harp || 0);   // only Mix lets the harp cover
-        kind = 'harp';
-      }
-      if (now - (lastByVoice[kind] || 0) >= VOICE_GAP[kind] * CFG.gap) {
-        // the note is filed, not played; the grid slot decides what sounds
-        // a brush moving slowly is loaded and rings longer; a fast one is dry
-        const fast = clamp(p.speed / 1.8, 0, 1);
-        const speed = clamp((now - lastNoteT) / 260, 0, 1);
-        const pit = stepPitch(job, y);
-        const loud = p.brush.size === 'L' ? 1.55 : p.brush.size === 'M' ? 1 : 0.55;   // S/M/L is loudness
-        lastNoteT = now; lastByVoice[kind] = now;
-        const nn = Math.max(0, B.notes === undefined ? 1 : B.notes);
-        for (let q = 0; q < nn; q++) {                         // Spray fires grace notes
-          requestNote({
-            voice: kind,
-            deg: pit.deg + q,
-            oct: pit.oct + shift,
-            gain: gainFor(c.l) * loud * rand(0.92, 1.08) * (1.15 - fast * 0.45) / (q ? nn * 0.8 : 1),
-            decay: ((decayFor(c.l) * 0.6) + speed * 1.5) * CFG.decay * B.decay * (1.2 - fast * 0.5),
-            bright: clamp(brightFor(c.s) * B.bright, 0.12, 1),
-            sal: loud * (1.2 - c.l / 140) * rand(0.85, 1.15) - q * 0.3
-          });
-        }
-      }
-    }
+    // the dab itself is silent: the stroke sings when it is lifted (singStroke)
+    if (soundOn) tonicDrone();
     const baseR = (r0 || brushRadius(p)) * B.r;
     const lock = forceIx !== undefined ? true : p.brush.color !== null;
 
-    if (B.prim === 'outline') return;         // painted by the stroke outline, not by dabs
+    if (B.prim === 'outline') return ci;      // painted by the stroke outline, not by dabs
     if (B.prim !== 'pool') {                  // the non-pool mechanisms draw themselves
       if (marks.length < 140) {
         if (B.prim === 'salt') saltBurst(x, y, baseR, c);
@@ -1543,7 +1636,7 @@ import { AhaRoom } from '/js/aha-room.js';
         else if (B.prim === 'flick') flick(x, y, ang, baseR, c);
         else if (B.prim === 'lift') liftAt(x, y, baseR);
       }
-      return;
+      return ci;
     }
 
     const n = B.count || 1;
@@ -1564,6 +1657,7 @@ import { AhaRoom } from '/js/aha-room.js';
       const burst = Math.min(Math.round(CFG.burst), b.layers - 1);
       for (let k = 0; k < burst; k++) { layer(b, 1.45); b.done++; }
     }
+    return ci;
   }
 
   function down(p, x, y, pr, real) {
@@ -1572,7 +1666,7 @@ import { AhaRoom } from '/js/aha-room.js';
     if (soundOn) wake();
     snapshot();
     document.getElementById('say').classList.add('gone');
-    p.stroke = { job: newJob(true, p.brush.color), pts: [{ x, y }], last: { x, y } };
+    p.stroke = { job: newJob(true, p.brush.color), pts: [{ x, y }], last: { x, y }, t0: performance.now() };
     const B0 = BRUSHES[p.brush.type] || BRUSHES.wash;
     if (B0.prim === 'outline') {
       p.stroke.ol = {
@@ -1582,7 +1676,7 @@ import { AhaRoom } from '/js/aha-room.js';
       wetDirty = true;
     }
     p.lastPt = { x, y }; p.lastAt = performance.now();
-    dab(p, x, y, p.stroke.job);
+    p.stroke.pts[0].ci = dab(p, x, y, p.stroke.job);
   }
   // t: when the sample happened. Phone points arrive in batches, so they carry
   // their own clock; without it every batch would read as one instant.
@@ -1613,14 +1707,16 @@ import { AhaRoom } from '/js/aha-room.js';
     } else if (step < gap) return;
     const ang = Math.atan2(dy, dx);
     stroke.last = { x, y };
-    stroke.pts.push({ x, y });
-    dab(p, x, y, stroke.job, undefined, undefined, ang);
+    const pt = { x, y };
+    stroke.pts.push(pt);
+    pt.ci = dab(p, x, y, stroke.job, undefined, undefined, ang);
   }
   function up(p) {
     const stroke = p.stroke;
     if (!stroke) return;
     p.speed = 0;
     if (stroke.ol) bakeStroke(stroke.ol);
+    singStroke(p, stroke);                            // the finished figure is what sounds
     stroke.job.spine = stroke.pts;
     stroke.job.closed = true;
     p.stroke = null;
@@ -1979,6 +2075,7 @@ import { AhaRoom } from '/js/aha-room.js';
     const dt = Math.min(64, (ts || 0) - prevTs || 16);
     prevTs = ts || 0;
     const now = performance.now();
+    glowTick();
     if (bots.length && !playing) stepBots(dt);
     if (marks.length) touch();
     for (let i = marks.length - 1; i >= 0; i--) {
@@ -2008,6 +2105,7 @@ import { AhaRoom } from '/js/aha-room.js';
               const pit = pitchAt(b.cy);
               requestNote({
                 voice: kind, deg: pit.deg, oct: pit.oct,
+                ci: (b.color && b.color.white) ? WHITE_IX : nearestIndex(b.h),
                 gain: clamp(b.r / (short * 0.09), 0.3, 1) * CFG.bloom,
                 decay: rand(1.8, 3.4), bright: brightFor(b.s),
                 sal: 0.25                                       // blooms yield to live strokes
