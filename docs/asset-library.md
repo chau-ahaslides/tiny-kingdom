@@ -10,16 +10,24 @@ LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
 
 | Where to look | What you get |
 |---|---|
-| `LIB/` | The catalog: every pack, its licence, thumbnails, play buttons, a filter box. |
-| `LIB/llms.txt` | This guide, served from the CDN. Start here. |
-| `LIB/manifest.json` | Every file (3,650) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `duration`, `frames`/`frameWidth`/`frameHeight`, `category`, `variant`, `tags`. |
-| `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. |
+| `LIB/<path>` | Any file: open to everyone, so games load them from any origin. |
+| `LIB/llms.txt` | This guide, served from the CDN. Start here. **Gated.** |
+| `LIB/manifest.json` | Every file (3,650) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `duration`, `frames`/`frameWidth`/`frameHeight`, `category`, `variant`, `tags`. **Gated.** |
+| `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. **Gated.** |
+| `LIB/` | The catalog: every pack, its licence, thumbnails, play buttons, a filter box. **Gated**: open it once as `LIB/?key=<token>`. |
 | `library/packs.json` in this repo | The same pack index, plus the build rules. Edit this to add or change a pack. |
+
+**Gated** means the request needs the library read token, either as a header
+`Authorization: Bearer <token>` or as `?key=<token>`. The token is `TINY_KINGDOM_LIB_READ_TOKEN` in
+`~/.env` on the AhaSlides machines. Without it those four URLs answer 401; every asset file still
+answers. The gate is deliberate: most packs forbid redistribution as an asset pack, so the host must
+be an asset server for our games rather than a browsable library.
 
 Ask the manifest, not the file system: it is 1.3 MB of JSON, so fetch it once and filter.
 
 ```js
-const m = await (await fetch(`${LIB}/manifest.json`)).json();
+const KEY = process.env.TINY_KINGDOM_LIB_READ_TOKEN;           // or whatever holds it where you run
+const m = await (await fetch(`${LIB}/manifest.json`, { headers: { authorization: `Bearer ${KEY}` } })).json();
 const explosions = m.entries.filter(e => e.pack === 'pixel-combat' && e.category === 'explosion');
 const strips     = m.entries.filter(e => e.pack === 'pixel-effects' && e.category === 'impacts');
 ```
@@ -175,8 +183,10 @@ AutoBattlers Crew by RafaelMatos (rafaelmatos.itch.io)          (appreciated, no
 
 Most of the other packs say "use in your games, do not redistribute as an asset pack". Hosting them
 on our own CDN for our own games is that use; re-publishing the CDN as a general asset site is not.
-So the catalog page is `noindex`, the host is not linked from any public page, and the library
-should be referenced from AhaSlides games only.
+So the index (guide, manifest, packs, catalog) is behind the read token, the host is not linked from
+any public page, and the library is referenced from AhaSlides games only. Do not expose it to
+customers as an asset picker: GandalfHardcore's terms exclude "game development tools", and Free
+Foes, Kobold and Mana Seed allow the files only as part of a shipped project.
 
 ## Maintaining the library
 
@@ -213,13 +223,16 @@ library/worker/         the CDN worker (R2 bucket `tiny-kingdom-lib`)
 
 ```
 npx wrangler r2 bucket create tiny-kingdom-lib
-npx wrangler secret put LIB_UPLOAD_TOKEN -c library/worker/wrangler.jsonc   # any long random string
+npx wrangler secret put LIB_UPLOAD_TOKEN -c library/worker/wrangler.jsonc   # writes; any long random string
+npx wrangler secret put LIB_READ_TOKEN -c library/worker/wrangler.jsonc     # index reads; a different string
 npm run lib:deploy                                                          # prints the workers.dev URL
-LIB_URL=<that url> LIB_TOKEN=<the token> npm run lib:upload
+LIB_URL=<that url> LIB_TOKEN=<the upload token> npm run lib:upload
 ```
 
-The upload token is kept in `~/.env` as `TINY_KINGDOM_LIB_TOKEN` on the machine that deployed it, so a
-later upload is `LIB_TOKEN=$TINY_KINGDOM_LIB_TOKEN npm run lib:upload` (the URL above is the default).
+Both tokens are kept in `~/.env` on the machine that deployed them: `TINY_KINGDOM_LIB_TOKEN` (upload)
+and `TINY_KINGDOM_LIB_READ_TOKEN` (index reads). A later upload is
+`LIB_TOKEN=$TINY_KINGDOM_LIB_TOKEN npm run lib:upload` (the URL above is the default); the upload
+token also opens the index.
 To put the CDN on a domain, add a `routes` entry with `custom_domain: true` to
 `library/worker/wrangler.jsonc`.
 

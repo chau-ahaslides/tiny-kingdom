@@ -28,7 +28,7 @@ const local = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
 let remote = null;
 try {
-  const r = await fetch(`${URL_}/manifest.json`, { cache: 'no-store' });
+  const r = await fetch(`${URL_}/manifest.json`, { cache: 'no-store', headers: { authorization: `Bearer ${TOKEN}` } });
   if (r.ok) remote = await r.json();
 } catch {}
 const remoteSha = new Map((remote?.entries || []).map((e) => [e.path, e.sha1]));
