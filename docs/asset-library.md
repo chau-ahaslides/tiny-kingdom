@@ -184,9 +184,40 @@ AutoBattlers Crew by RafaelMatos (rafaelmatos.itch.io)          (appreciated, no
 Most of the other packs say "use in your games, do not redistribute as an asset pack". Hosting them
 on our own CDN for our own games is that use; re-publishing the CDN as a general asset site is not.
 So the index (guide, manifest, packs, catalog) is behind the read token, the host is not linked from
-any public page, and the library is referenced from AhaSlides games only. Do not expose it to
-customers as an asset picker: GandalfHardcore's terms exclude "game development tools", and Free
-Foes, Kobold and Mana Seed allow the files only as part of a shipped project.
+any public page, and the library is referenced from AhaSlides games only.
+
+**Conditions that still apply** to hosted packs (all in `packs.json` under `license`):
+
+- **Not for "game development tools":** the four GandalfHardcore packs. Free Foes, Kobold Warrior
+  and both Mana Seed samples allow the files only as part of a shipped project. So the library must
+  not be exposed to AhaSlides customers as an asset picker; it is for games we build.
+- **No AI or machine-learning use** of the art: 32rogues, AutoBattlers Crew, ELV Games, Mana Seed.
+  An agent reading the manifest to build a game is fine; training a model on the files is not.
+- **Credit in the game** for the six `commercial: "credit"` packs, block above.
+
+**Nothing hosted needs a purchase.** Several packs are the free tier of a paid pack; buying adds
+content, not rights (the free files are already licensed for commercial use). If a game needs more:
+
+| Pack | Paid tier adds | Buy |
+|---|---|---|
+| HD Knight | the other 8 characters and projectiles, from $9.95 | https://smallscaleint.itch.io/hd-8-directional-top-down-character-pack-1 |
+| Kobold Warrior | all 10 animations, from $5 | https://xzany.itch.io/kobold-warrior-2d-pixel-art |
+| Forest Monsters | slime and bush monster, from $4 | https://monopixelart.itch.io/forest-monsters-pixel-art |
+| Super Pixel Effects | 68 more effect types and colour themes, from $4.99 | https://untiedgames.itch.io/super-pixel-effects-gigapack |
+| Female Adventurer | run, spear and gun animations, from $3 | https://sscary.itch.io/the-adventurer-female |
+| KayKit Adventurers / Forest | Extra tiers (more characters, colour variants), from $7.95 / $9.99 | https://kaylousberg.itch.io/kaykit-adventurers · https://kaylousberg.itch.io/kaykit-forest |
+| Mana Seed Farmer / Winter Forest | full sprite system $29.99 / full tileset $19.99. The Mana Seed licence limits a purchased pack to **one product**, so a purchase covers one game, not this library | https://seliel-the-shaper.itch.io/farmer-base · https://seliel-the-shaper.itch.io/winter-forest |
+
+**Downloaded but not hosted.** These would need a purchase (or an identified source) before they can
+go in; if you buy one, add it to `packs.json` and rebuild:
+
+| Pack | Why it is out | What fixes it |
+|---|---|---|
+| Tree Animated (ToffeeCraft) | free tier is personal use only | premium licence from $0.80: https://toffeecraft.itch.io/tree-animated-forest |
+| Forest Nature Pack (ToffeeCraft) | free tier is personal use only | premium licence from $1.80: https://toffeecraft.itch.io/forest-nature-pack |
+| RPG Fantasy Battlers (LimeZu) | free trial has no commercial licence | complete version from $1.50, CC BY 4.0: https://limezu.itch.io/fantasy-battlers |
+| Destructible Objects (Elthen) | commercial terms are on a separate licensing page, unconfirmed | confirm at https://elthen.itch.io/pixel-art-destructible-objects |
+| `spritesheets.zip` (12 monster strips), `File.png` (weapon icons) | no source page found, licence unknown | identify the source, or replace |
 
 ## Maintaining the library
 
