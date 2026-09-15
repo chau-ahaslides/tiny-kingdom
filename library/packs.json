@@ -1,5 +1,5 @@
 {
-  "$comment": "Source of truth for the asset library. One entry per pack. `from` says where the pack comes from inside LIB_SRC (a zip, a directory, or loose files); `dest` is the URL prefix on the CDN (a string, or a map of source-prefix -> dest-prefix, longest prefix wins); `skip` are regexes on the source path; `only` keeps just those source prefixes; `handler` picks a special build routine. url/author/license/price are the facts from the pack's page (checked 15 Sep 2026); `licenseFile` quotes the licence shipped inside the zip; `commercial` is yes | credit (yes, attribution required) | no | unknown; `credit` is the attribution line to ship when required.",
+  "$comment": "Source of truth for the asset library. One entry per pack. `from` says where the pack comes from inside LIB_SRC (a zip, a directory, or loose files); `dest` is the URL prefix on the CDN (a string, or a map of source-prefix -> dest-prefix, longest prefix wins); `skip` are regexes on the source path; `only` keeps just those source prefixes; `handler` picks a special build routine. url/author/license/price are the facts from the pack's page (checked 15 Sep 2026); `licenseFile` quotes the licence shipped inside the zip; `commercial` is yes | credit (yes, attribution required): packs whose free tier is personal-use only or whose origin is unknown are not in the library; `credit` is the attribution line to ship when required.",
   "packs": [
     {
       "id": "pixel-combat",
@@ -11,7 +11,9 @@
       "price": "free (name your price)",
       "kind": "sfx",
       "dest": "sfx/pixel-combat",
-      "from": { "dir": "Helton Yan's Pixel Combat - Single Files" },
+      "from": {
+        "dir": "Helton Yan's Pixel Combat - Single Files"
+      },
       "handler": "pixel-combat",
       "license": "Creative Commons Attribution 4.0 (CC BY 4.0): credit required.",
       "commercial": "credit",
@@ -30,7 +32,9 @@
       "price": "free (name your price)",
       "kind": "sfx",
       "dest": "sfx/400-sounds",
-      "from": { "zip": "400 Sounds Pack.zip" },
+      "from": {
+        "zip": "400 Sounds Pack.zip"
+      },
       "handler": "sfx-folders",
       "license": "Any use including commercial, with or without credit; you may not sell or redistribute the unaltered assets as your own game assets.",
       "commercial": "yes",
@@ -55,7 +59,9 @@
         "music/": "music/brackeys-platformer",
         "fonts/": "fonts/brackeys-platformer"
       },
-      "from": { "zip": "brackeys_platformer_assets.zip" },
+      "from": {
+        "zip": "brackeys_platformer_assets.zip"
+      },
       "license": "CC0 (Creative Commons Zero).",
       "commercial": "yes",
       "credit": null,
@@ -73,7 +79,14 @@
       "price": "free (name your price)",
       "kind": "sprites",
       "dest": "sprites/32rogues",
-      "from": { "zip": "32rogues-0.5.0.zip", "extra": ["water-example.tmx", "watertiles-auto.tsx"], "extraDest": "sprites/32rogues/tiled" },
+      "from": {
+        "zip": "32rogues-0.5.0.zip",
+        "extra": [
+          "water-example.tmx",
+          "watertiles-auto.tsx"
+        ],
+        "extraDest": "sprites/32rogues/tiled"
+      },
       "license": "Commercial and non-commercial projects OK (no NFT/blockchain, no generative-AI/ML use); modify freely; no redistribution or resale; credit appreciated.",
       "commercial": "yes",
       "credit": "32rogues by Seth Boyles (sethbb.itch.io)",
@@ -91,8 +104,15 @@
       "price": "free tier of a paid pack",
       "kind": "models",
       "dest": "models/kaykit-adventurers",
-      "from": { "zip": "KayKit_Adventurers_2.0_FREE.zip" },
-      "skip": ["/fbx/", "/fbx\\(unity\\)/", "/obj/", "\\.url$"],
+      "from": {
+        "zip": "KayKit_Adventurers_2.0_FREE.zip"
+      },
+      "skip": [
+        "/fbx/",
+        "/fbx\\(unity\\)/",
+        "/obj/",
+        "\\.url$"
+      ],
       "license": "CC0 (Creative Commons Zero).",
       "commercial": "yes",
       "credit": null,
@@ -110,8 +130,15 @@
       "price": "free tier of a paid pack",
       "kind": "models",
       "dest": "models/kaykit-forest",
-      "from": { "zip": "KayKit_Forest_Nature_Pack_1.0_FREE.zip" },
-      "skip": ["/fbx/", "/fbx\\(unity\\)/", "/obj/", "\\.url$"],
+      "from": {
+        "zip": "KayKit_Forest_Nature_Pack_1.0_FREE.zip"
+      },
+      "skip": [
+        "/fbx/",
+        "/fbx\\(unity\\)/",
+        "/obj/",
+        "\\.url$"
+      ],
       "license": "CC0 (Creative Commons Zero).",
       "commercial": "yes",
       "credit": null,
@@ -129,7 +156,9 @@
       "price": "free version of a paid pack",
       "kind": "sprites",
       "dest": "sprites/pixel-effects",
-      "from": { "zip": "Super Pixel Effects Gigapack (Free Version) v2.9.0.zip" },
+      "from": {
+        "zip": "Super Pixel Effects Gigapack (Free Version) v2.9.0.zip"
+      },
       "handler": "pixel-effects",
       "license": "Attribution required; no reselling the asset itself; commercial and non-commercial use OK (full text at untiedgames.com/files/license.txt).",
       "commercial": "credit",
@@ -148,7 +177,9 @@
       "price": "free sample of a paid pack",
       "kind": "sprites",
       "dest": "sprites/hd-knight",
-      "from": { "zip": "2D HD Character Knight.zip" },
+      "from": {
+        "zip": "2D HD Character Knight.zip"
+      },
       "license": "Standard commercial licence: unlimited commercial or personal game projects, no attribution required, modify freely; no reselling, redistributing or sublicensing the raw files.",
       "commercial": "yes",
       "credit": null,
@@ -166,31 +197,15 @@
       "price": "free (name your price)",
       "kind": "sprites",
       "dest": "sprites/iso-village",
-      "from": { "zip": "2D Isometric Village Asset Pack.zip" },
+      "from": {
+        "zip": "2D Isometric Village Asset Pack.zip"
+      },
       "license": "CC BY 4.0: credit required.",
       "commercial": "credit",
       "credit": "Isometric village tiles by Xilurus (xilurus.itch.io), CC BY 4.0",
       "licenseFile": null,
       "description": "150+ hand-made isometric tiles at 256x256 on four sheets: ground sets, slopes, slabs, decorative tiles, minerals, flora, structures.",
       "notes": null
-    },
-    {
-      "id": "animated-tree",
-      "title": "Tree Animated (free)",
-      "author": "ToffeeCraft",
-      "authorUrl": "https://toffeecraft.itch.io/",
-      "url": "https://toffeecraft.itch.io/tree-animated-forest",
-      "source": "itch.io",
-      "price": "free sample of a paid pack",
-      "kind": "sprites",
-      "dest": "sprites/animated-tree",
-      "from": { "zip": "AnimatedTreeFree.zip" },
-      "license": "Free (standard) licence is PERSONAL USE ONLY; the premium licence ($0.80+) adds commercial use. No redistribution or resale.",
-      "commercial": "no",
-      "credit": null,
-      "licenseFile": null,
-      "description": "Pixel-art autumn tree wind animation strip (1024x64 = 16 frames of 64x64) plus a small decorations sheet.",
-      "notes": "Buy the premium licence before using in a shipped AhaSlides game."
     },
     {
       "id": "autobattlers-crew",
@@ -202,7 +217,9 @@
       "price": "free (name your price)",
       "kind": "sprites",
       "dest": "sprites/autobattlers-crew",
-      "from": { "zip": "AutoBattlers Crew - Free Asset V1.0.zip" },
+      "from": {
+        "zip": "AutoBattlers Crew - Free Asset V1.0.zip"
+      },
       "license": "Free for personal and commercial projects (no NFTs, no AI training); modify for your project; no repackaging, redistributing or reselling; credit appreciated.",
       "commercial": "yes",
       "credit": "AutoBattlers Crew by RafaelMatos (rafaelmatos.itch.io)",
@@ -220,7 +237,9 @@
       "price": "free (name your price)",
       "kind": "sprites",
       "dest": "sprites/card-rpg-monsters",
-      "from": { "zip": "Card RPG Monsters.zip" },
+      "from": {
+        "zip": "Card RPG Monsters.zip"
+      },
       "license": "Commercial or free projects OK; may modify; no redistribution or resale.",
       "commercial": "yes",
       "credit": null,
@@ -238,31 +257,15 @@
       "price": "free sample of a paid pack",
       "kind": "sprites",
       "dest": "sprites/kobold-warrior",
-      "from": { "zip": "FREE_Kobold Warrior 2D Pixel Art.zip" },
+      "from": {
+        "zip": "FREE_Kobold Warrior 2D Pixel Art.zip"
+      },
       "license": "Any personal or commercial game project; do not resell or redistribute as a game asset; no NFTs; credit appreciated.",
       "commercial": "yes",
       "credit": null,
       "licenseFile": "You can use this asset in any game project, personal or commercial. DO NOT resell or redistribute AS A GAME ASSET, it has to be part of a project. Credit is not required but it is appreciated. Modify to suit your needs. You are NOT allowed to turn any of my assets to an NFT.",
       "description": "48x64 side-view pixel-art kobold warrior: 7 animation strips in the free set (idle, run, attacks, jump, death, hurt).",
       "notes": null
-    },
-    {
-      "id": "fantasy-battlers",
-      "title": "RPG Fantasy Battlers (free trial)",
-      "author": "LimeZu",
-      "authorUrl": "https://limezu.itch.io/",
-      "url": "https://limezu.itch.io/fantasy-battlers",
-      "source": "itch.io",
-      "price": "free trial of a paid pack",
-      "kind": "sprites",
-      "dest": "sprites/fantasy-battlers",
-      "from": { "zip": "Fantasy Battlers - Free.zip" },
-      "license": "Free trial: NO COMMERCIAL LICENSE (stated on the page). The complete version ($1.50+) is CC BY 4.0.",
-      "commercial": "no",
-      "credit": null,
-      "licenseFile": null,
-      "description": "11 pixel-art side-view RPG battler illustrations (enemy portraits) plus recolours at 1x and 2x (RPG Maker MV size); a 'Complete asset' sheet at each scale.",
-      "notes": "Buy the complete version before using in a shipped AhaSlides game."
     },
     {
       "id": "forest-monsters",
@@ -274,7 +277,9 @@
       "price": "free sample of a paid pack",
       "kind": "sprites",
       "dest": "sprites/forest-monsters",
-      "from": { "zip": "Forest_Monsters_FREE.zip" },
+      "from": {
+        "zip": "Forest_Monsters_FREE.zip"
+      },
       "license": "Any project, commercial or not; no reselling or redistributing (modifying for your own project is fine per the creator).",
       "commercial": "yes",
       "credit": null,
@@ -292,7 +297,9 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/fantasy-dreamland",
-      "from": { "zip": "Free Character Sprites - Fantasy Dreamland.zip" },
+      "from": {
+        "zip": "Free Character Sprites - Fantasy Dreamland.zip"
+      },
       "license": "Personal and commercial projects OK; modify freely; credit ELV Games; no reselling or claiming as your own; no AI training or crypto/NFT use.",
       "commercial": "credit",
       "credit": "Characters by ELV Games (elvgames.itch.io)",
@@ -310,31 +317,15 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/free-foes",
-      "from": { "zip": "Free Sprites.zip" },
+      "from": {
+        "zip": "Free Sprites.zip"
+      },
       "license": "Free or commercial games OK; Robert Pinero MUST be credited in your game; no redistribution except packaged in your own game.",
       "commercial": "credit",
       "credit": "Enemy sprites by Robert Pinero (robertpinero.itch.io)",
       "licenseFile": null,
       "description": "16 hand-drawn cartoon animated side-view enemy sheets sized for RPG Maker MV/MZ (about 2700 px wide each): slime, wolf, bat, goblin, kobold, sahuagin, troll, crab, gnoll, skeleton, rat, training dummy, turnip, werewolf, 8-direction zombies (NPC, VS8, battler), 4-direction German shepherd (+ battler, RPG Maker version).",
       "notes": null
-    },
-    {
-      "id": "forest-nature-free",
-      "title": "Forest Nature Pack (free sheet)",
-      "author": "ToffeeCraft",
-      "authorUrl": "https://toffeecraft.itch.io/",
-      "url": "https://toffeecraft.itch.io/forest-nature-pack",
-      "source": "itch.io",
-      "price": "free sample of a paid pack",
-      "kind": "sprites",
-      "dest": "sprites/forest-nature-free",
-      "from": { "zip": "FreeEnvironment.zip" },
-      "license": "Free (standard) licence is PERSONAL USE ONLY; the premium licence ($1.80+) adds commercial use. No redistribution or resale.",
-      "commercial": "no",
-      "credit": null,
-      "licenseFile": null,
-      "description": "One 512x384 sheet of 32x32 pixel-art trees, rocks and a fruit/vegetable sample from the Forest Nature Pack.",
-      "notes": "Buy the premium licence before using in a shipped AhaSlides game."
     },
     {
       "id": "gandalf-characters",
@@ -346,7 +337,9 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/gandalf-characters",
-      "from": { "zip": "GandalfHardcore Character Asset Pack.zip" },
+      "from": {
+        "zip": "GandalfHardcore Character Asset Pack.zip"
+      },
       "license": "Commercial and non-commercial games OK; modify as needed; no reselling, repackaging or redistributing; no AI training, game-dev tools, NFTs or printed materials.",
       "commercial": "yes",
       "credit": null,
@@ -364,8 +357,13 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/gandalf-city-tiles",
-      "from": { "zip": "GandalfHardcore City Tiles.zip" },
-      "skip": ["\\.aseprite$", "\\.ase$"],
+      "from": {
+        "zip": "GandalfHardcore City Tiles.zip"
+      },
+      "skip": [
+        "\\.aseprite$",
+        "\\.ase$"
+      ],
       "license": "Commercial and non-commercial games OK; modify as needed; no reselling, repackaging or redistributing; no AI training, game-dev tools, NFTs or printed materials.",
       "commercial": "yes",
       "credit": null,
@@ -383,7 +381,9 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/gandalf-warrior",
-      "from": { "zip": "GandalfHardcore FREE Warrior.zip" },
+      "from": {
+        "zip": "GandalfHardcore FREE Warrior.zip"
+      },
       "license": "Same page terms as the character pack: commercial and non-commercial games OK; no reselling, repackaging or redistributing; no AI training or NFTs.",
       "commercial": "yes",
       "credit": null,
@@ -401,7 +401,9 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/gandalf-effects",
-      "from": { "zip": "GandalfHardcore character effects.zip" },
+      "from": {
+        "zip": "GandalfHardcore character effects.zip"
+      },
       "license": "Same page terms as the character pack: commercial and non-commercial games OK; no reselling, repackaging or redistributing; no AI training or NFTs.",
       "commercial": "yes",
       "credit": null,
@@ -419,7 +421,9 @@
       "price": "free sample of a paid pack",
       "kind": "sprites",
       "dest": "sprites/mana-seed-farmer",
-      "from": { "zip": "Mana Seed Farmer Sprite Free Sample.zip" },
+      "from": {
+        "zip": "Mana Seed Farmer Sprite Free Sample.zip"
+      },
       "license": "Mana Seed User License (selieltheshaper.weebly.com/user-license.html): own commercial or free game OK, editing encouraged, credit optional; no reselling or redistribution, no AI or crypto/NFT projects, no printed products.",
       "commercial": "yes",
       "credit": null,
@@ -437,7 +441,9 @@
       "price": "free sample of a paid pack",
       "kind": "sprites",
       "dest": "sprites/mana-seed-forest-winter",
-      "from": { "zip": "mana seed seasonal forest sample (winter).zip" },
+      "from": {
+        "zip": "mana seed seasonal forest sample (winter).zip"
+      },
       "license": "Mana Seed User License: own commercial or free game OK, editing OK, credit optional; no reselling or redistribution, no AI or NFT projects, no printed products.",
       "commercial": "yes",
       "credit": null,
@@ -455,7 +461,9 @@
       "price": "free sample of a paid pack",
       "kind": "sprites",
       "dest": "sprites/female-adventurer",
-      "from": { "zip": "The Female Adventurer - Free.zip" },
+      "from": {
+        "zip": "The Female Adventurer - Free.zip"
+      },
       "license": "Free and commercial games OK; modify freely; no redistribution or resale; credit appreciated.",
       "commercial": "yes",
       "credit": null,
@@ -473,7 +481,9 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/adventure-girl",
-      "from": { "zip": "adventure_girl.zip" },
+      "from": {
+        "zip": "adventure_girl.zip"
+      },
       "license": "CC0 / public domain (GameArt2D freebies licence): any use, no credit needed.",
       "commercial": "yes",
       "credit": null,
@@ -491,31 +501,15 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/ninja-girl",
-      "from": { "zip": "ninjagirlnew.zip" },
+      "from": {
+        "zip": "ninjagirlnew.zip"
+      },
       "license": "CC0 / public domain (GameArt2D freebies licence): any use, no credit needed.",
       "commercial": "yes",
       "credit": null,
       "licenseFile": null,
       "description": "Cartoon side-scroller ninja girl as individual frames (about 524x565), 10 frames per state: Attack, Climb, Dead, Glide, Idle, Jump, Jump_Attack, Jump_Throw, Run, Slide, Throw.",
       "notes": "Per-frame PNGs named Attack_000.png etc."
-    },
-    {
-      "id": "monster-spritesheets",
-      "title": "Monster spritesheets (origin unknown)",
-      "author": null,
-      "authorUrl": null,
-      "url": null,
-      "source": "unknown",
-      "price": "free",
-      "kind": "sprites",
-      "dest": "sprites/monster-spritesheets",
-      "from": { "zip": "spritesheets.zip" },
-      "license": "Unknown: no store page found for these files.",
-      "commercial": "unknown",
-      "credit": null,
-      "licenseFile": null,
-      "description": "12 pixel-art monster and projectile strips; the frame size is in each file name (minion-45x66.png = 45x66 frames): acid, andromalius, disciple, flameball, gnu, mage 1-3, mage bullet, minion, shadow, tentacles.",
-      "notes": "Do not ship until the source and licence are identified."
     },
     {
       "id": "dragons",
@@ -527,49 +521,17 @@
       "price": "free",
       "kind": "sprites",
       "dest": "sprites/dragons",
-      "from": { "files": { "DAGRONS5.png": "dragons.png" } },
+      "from": {
+        "files": {
+          "DAGRONS5.png": "dragons.png"
+        }
+      },
       "license": "CC BY 3.0: credit required.",
       "commercial": "credit",
       "credit": "Dragons by Stephen 'Redshrike' Challener, MrBeast, Surt, Blarumyrran, Sharm, Zabin (opengameart.org), CC BY 3.0",
       "licenseFile": null,
       "description": "Eleven pixel-art RPG battle dragons on one 428x377 sheet.",
       "notes": null
-    },
-    {
-      "id": "destructible-objects",
-      "title": "2D Pixel Art Destructible Objects",
-      "author": "Elthen's Pixel Art Shop",
-      "authorUrl": "https://elthen.itch.io/",
-      "url": "https://elthen.itch.io/pixel-art-destructible-objects",
-      "source": "itch.io",
-      "price": "free (name your price)",
-      "kind": "sprites",
-      "dest": "sprites/destructible-objects",
-      "from": { "files": { "Destructible Objects Sprite Sheet.png": "destructible_objects.png" } },
-      "license": "Elthen's licence: free for non-commercial use; commercial use per the creator's licensing page (no p2e/NFT/web3). Check before shipping.",
-      "commercial": "unknown",
-      "credit": "Destructible objects by Elthen (elthen.itch.io)",
-      "licenseFile": null,
-      "description": "448x768 sheet (64 px cells) of barrel, crate, pot, two signs and a chest, each with a 3-frame idle row and a break/open row.",
-      "notes": null
-    },
-    {
-      "id": "weapon-icons",
-      "title": "Weapon icons (origin unknown)",
-      "author": null,
-      "authorUrl": null,
-      "url": null,
-      "source": "unknown",
-      "price": "free",
-      "kind": "sprites",
-      "dest": "sprites/weapon-icons",
-      "from": { "files": { "File.png": "weapon_icons.png" } },
-      "license": "Unknown: the file was saved as File.png and no source page was found.",
-      "commercial": "unknown",
-      "credit": null,
-      "licenseFile": null,
-      "description": "192x160 sheet of 30 pixel-art weapon icons in 32x32 cells (swords, spears, axes, bows, staves).",
-      "notes": "Do not ship until the source and licence are identified."
     }
   ]
 }

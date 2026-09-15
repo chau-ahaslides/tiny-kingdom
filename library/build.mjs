@@ -217,7 +217,7 @@ if (failed) process.exit(1);
 // Remove stale output (files no longer planned).
 const planned = new Set(items.map((i) => i.dst));
 for (const rel of walk(OUT)) {
-  if (['manifest.json', 'packs.json', 'index.html'].includes(rel)) continue;
+  if (['manifest.json', 'packs.json', 'index.html', 'README.md', 'llms.txt'].includes(rel)) continue;
   if (!planned.has(rel)) { fs.rmSync(path.join(OUT, rel)); console.log(`  removed stale ${rel}`); }
 }
 

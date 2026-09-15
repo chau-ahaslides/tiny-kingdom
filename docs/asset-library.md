@@ -12,8 +12,8 @@ LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
 |---|---|
 | `LIB/` | The catalog: every pack, its licence, thumbnails, play buttons, a filter box. |
 | `LIB/README.md`, `LIB/llms.txt` | This guide, served from the CDN, and a short pointer file for agents. |
-| `LIB/manifest.json` | Every file (3,714) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `duration`, `frames`/`frameWidth`/`frameHeight`, `category`, `variant`, `tags`. |
-| `LIB/packs.json` | The 31 packs: title, author, page URL, licence, `commercial` (yes / credit / no / unknown), the `credit` line to ship, description, notes. |
+| `LIB/manifest.json` | Every file (3,650) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `duration`, `frames`/`frameWidth`/`frameHeight`, `category`, `variant`, `tags`. |
+| `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. |
 | `library/packs.json` in this repo | The same pack index, plus the build rules. Edit this to add or change a pack. |
 
 Ask the manifest, not the file system: it is 1.3 MB of JSON, so fetch it once and filter.
@@ -119,10 +119,6 @@ Remember iOS: create or resume the `AudioContext` inside a user gesture.
 | `mana-seed-forest-winter` | `sprites/mana-seed-forest-winter/` | three 16x16 winter forest tile sheets | 16x16 | commercial OK (sample) |
 | `adventure-girl`, `ninja-girl` | `sprites/adventure-girl/png/`, `sprites/ninja-girl/png/` | cartoon side-scroller heroines as per-frame PNGs (about 640x540, 524x565) | per frame | CC0 |
 | `dragons` | `sprites/dragons/dragons.png` | eleven pixel dragons on one 428x377 sheet | irregular | **credit Redshrike et al. (CC BY 3.0)** |
-| `destructible-objects` | `sprites/destructible-objects/destructible_objects.png` | barrel, crate, pot, signs, chest: idle row + break row | 64 px cells | check Elthen's licence before commercial use |
-| `animated-tree`, `forest-nature-free` | `sprites/animated-tree/`, `sprites/forest-nature-free/` | 64x64 16-frame wind tree; 32x32 trees/rocks sheet | 64 / 32 | **personal use only** on the free tier |
-| `fantasy-battlers` | `sprites/fantasy-battlers/` | 11 RPG battler portraits at 1x and 2x | portraits | **no commercial licence** on the free trial |
-| `monster-spritesheets`, `weapon-icons` | `sprites/monster-spritesheets/`, `sprites/weapon-icons/` | 12 monster strips (frame size in the file name); 30 weapon icons in 32x32 cells | in name / 32x32 | **origin unknown**, do not ship |
 
 Strips animate by stepping a source rectangle across the sheet:
 
@@ -155,15 +151,15 @@ resolve on the CDN.
 
 ## Licences and credits
 
-Every pack's page terms are in `packs.json` (`license`, `commercial`, `credit`). Three groups need
-care before a game ships:
+Every pack's page terms are in `packs.json` (`license`, `commercial`, `credit`). Everything in the
+library may be used in commercial games: packs whose free tier is personal-use only (ToffeeCraft's
+trees and environment sheet, LimeZu's Fantasy Battlers trial) and files whose origin could not be
+identified (a monster spritesheet zip, a weapon-icon sheet, Elthen's destructible objects) were
+downloaded but are deliberately not hosted. Keep it that way: a pack goes in only when its page
+says commercial use is allowed.
 
-- **Not licensed for commercial use as downloaded:** `animated-tree` and `forest-nature-free`
-  (ToffeeCraft's free tier is personal use only; the premium licence is under $2), `fantasy-battlers`
-  (LimeZu's free trial says "No commercial license"; the full set is $1.50 and CC BY).
-- **Unknown origin:** `monster-spritesheets` and `weapon-icons` (no store page found), and
-  `destructible-objects` (Elthen's terms differ for commercial use). Identify or replace before use.
-- **Credit required:** ship this block (or the relevant lines) in the game's credits screen or page:
+**Credit required** for the packs marked `commercial: "credit"`. Ship this block (or the relevant
+lines) in the game's credits screen or page:
 
 ```
 Sound effects: Pixel Combat SFX by Helton Yan (heltonyan.itch.io), CC BY 4.0
@@ -174,7 +170,6 @@ Isometric village tiles by Xilurus (xilurus.itch.io), CC BY 4.0
 Dragons by Stephen 'Redshrike' Challener, MrBeast, Surt, Blarumyrran, Sharm, Zabin (opengameart.org), CC BY 3.0
 32rogues by Seth Boyles (sethbb.itch.io)                        (appreciated, not required)
 AutoBattlers Crew by RafaelMatos (rafaelmatos.itch.io)          (appreciated, not required)
-Destructible objects by Elthen (elthen.itch.io)
 3D models: KayKit by Kay Lousberg (kaylousberg.com), CC0        (appreciated, not required)
 ```
 
@@ -203,7 +198,8 @@ library/worker/         the CDN worker (R2 bucket `tiny-kingdom-lib`)
 2. Add an entry to `library/packs.json`: `id` (becomes the URL segment), `from` (`{ "zip": … }`,
    `{ "dir": … }` or `{ "files": { src: dest } }`), `dest` (a prefix, or a map of source prefix to
    dest prefix for mixed packs), optional `skip` regexes, and the page facts: `url`, `author`,
-   `license`, `commercial`, `credit`, `description`. Look the page up; do not guess the licence.
+   `license`, `commercial`, `credit`, `description`. Look the page up; do not guess the licence, and
+   do not add a pack unless its page allows commercial use (`commercial` is `yes` or `credit`).
    Sound packs laid out as `<Folder>/<name>.wav` take `"handler": "sfx-folders"`.
 3. `npm run lib:build` (incremental; `--clean` to start over). Needs macOS `afconvert` or `ffmpeg`.
    It refuses two files landing on one path and warns about glTF files whose textures went missing.
