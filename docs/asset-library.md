@@ -1,6 +1,6 @@
-# Asset library
+# AhaSlides games asset library
 
-A public CDN of game art, sound and 3D models for the tiny-kingdom games, built from free packs
+A public CDN of game art, sound and 3D models for AhaSlides games, built from free packs
 downloaded from itch.io (and a few from GameArt2D and OpenGameArt). Everything is served from one
 host with CORS open, so any page, on any origin, can use it directly.
 

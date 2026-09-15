@@ -1,4 +1,4 @@
-// tiny-kingdom-lib: serves the game-asset library out of an R2 bucket.
+// AhaSlides games asset library (worker tiny-kingdom-lib): serves the library out of an R2 bucket.
 //
 //   GET  /<key>           the object, with CORS, ETag/304, Range, 1-day edge+browser cache — open to anyone
 //   GET  /                the catalog page (index.html in the bucket)       ┐ the index: needs the read token,

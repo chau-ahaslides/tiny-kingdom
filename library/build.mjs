@@ -262,11 +262,11 @@ fs.copyFileSync(path.join(HERE, 'catalog.html'), path.join(OUT, 'index.html'));
 // a one-paragraph summary on top so an agent that reads only the first lines still knows what is here).
 const LIB_URL = (process.env.LIB_URL || 'https://tiny-kingdom-lib.ahaslides-game.workers.dev').replace(/\/+$/, '');
 const guide = fs.readFileSync(path.join(HERE, '..', 'docs', 'asset-library.md'), 'utf8').replace(/https:\/\/tiny-kingdom-lib\.[^\s`]+/g, LIB_URL);
-fs.writeFileSync(path.join(OUT, 'llms.txt'), `# tiny-kingdom asset library
+fs.writeFileSync(path.join(OUT, 'llms.txt'), `# AhaSlides games asset library
 
 > Free game art, sound effects and 3D models (${files.length} files, ${(manifest.bytes / 1048576).toFixed(0)} MB, ${Object.keys(packs).length} packs), all licensed for commercial use, served with open CORS for AhaSlides games. Files live at ${LIB_URL}/<path>; exact paths and metadata are in ${LIB_URL}/manifest.json, pack licences and credits in ${LIB_URL}/packs.json, a browsable catalog at ${LIB_URL}/. The full guide follows.
 
-${guide.replace(/^# Asset library\n/, '')}`);
+${guide.replace(/^# AhaSlides games asset library\n/, "")}`);
 
 console.log(`\nmanifest: ${files.length} files, ${(manifest.bytes / 1048576).toFixed(1)} MB`);
 for (const [id, s] of Object.entries(packStats)) console.log(`  ${id.padEnd(26)} ${String(s.files).padStart(5)} files ${(s.bytes / 1048576).toFixed(1).padStart(7)} MB`);
