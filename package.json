@@ -6,7 +6,11 @@
     "build": "node build.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "lib:build": "node library/build.mjs",
+    "lib:upload": "node library/upload.mjs",
+    "lib:dev": "wrangler dev -c library/worker/wrangler.jsonc --port 8790",
+    "lib:deploy": "wrangler deploy -c library/worker/wrangler.jsonc"
   },
   "dependencies": {
     "@dimforge/rapier3d": "0.20.0"

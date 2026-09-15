@@ -2,3 +2,6 @@
 node_modules/
 .DS_Store
 dist/
+library/out/
+library/.stage/
+library/worker/.dev.vars

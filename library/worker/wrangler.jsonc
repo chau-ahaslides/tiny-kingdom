@@ -1,0 +1,14 @@
+// The asset-library CDN: a worker in front of the tiny-kingdom-lib R2 bucket.
+// Deployed on its own, never together with the game worker:
+//   npx wrangler r2 bucket create tiny-kingdom-lib            (once)
+//   npx wrangler secret put LIB_UPLOAD_TOKEN -c library/worker/wrangler.jsonc   (once)
+//   npx wrangler deploy -c library/worker/wrangler.jsonc
+{
+  "name": "tiny-kingdom-lib",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "r2_buckets": [{ "binding": "LIB", "bucket_name": "tiny-kingdom-lib" }]
+  // To put it on a domain you own in Cloudflare, add:
+  // "routes": [{ "pattern": "lib.example.com", "custom_domain": true }]
+}

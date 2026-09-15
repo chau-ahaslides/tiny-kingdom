@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>tiny-kingdom asset library</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f5f2; --fg: #1d1d1b; --mute: #6b6a66; --line: #dedcd6; --card: #fff; --accent: #2f6fdb; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17181a; --fg: #ececea; --mute: #9a9a95; --line: #2f3034; --card: #1f2023; --accent: #7aa7ff; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { padding: 20px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; }
+  h1 { font-size: 18px; margin: 0; } h1 small { color: var(--mute); font-weight: normal; margin-left: 8px; }
+  input[type=search] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); min-width: 260px; }
+  main { padding: 12px 24px 60px; max-width: 1400px; }
+  details { border: 1px solid var(--line); border-radius: 8px; background: var(--card); margin: 10px 0; }
+  summary { cursor: pointer; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary b { font-size: 15px; } summary .meta { color: var(--mute); font-size: 12px; }
+  summary code { background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .info { padding: 0 14px 10px; color: var(--mute); font-size: 13px; } .info a { color: var(--accent); }
+  .lic { padding: 0 14px 10px; font-size: 12px; color: var(--mute); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 0 14px 14px; }
+  .tile { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; font-size: 11px; overflow: hidden; }
+  .tile img { display: block; width: 100%; height: 96px; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#8883 0 25%, transparent 0 50%) 0 0/12px 12px; }
+  .tile .n { word-break: break-all; margin-top: 4px; } .tile .d { color: var(--mute); }
+  .list { padding: 0 14px 14px; columns: 3 320px; column-gap: 20px; font-size: 12px; }
+  .list div { break-inside: avoid; padding: 2px 0; display: flex; gap: 6px; align-items: center; }
+  .list button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 4px; padding: 0 6px; cursor: pointer; }
+  .list button:hover { border-color: var(--accent); }
+  .list .cat { font-weight: 600; margin-top: 8px; display: block; column-span: all; }
+  .more { margin: 0 14px 14px; font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; }
+  .hidden { display: none; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>tiny-kingdom asset library <small id="totals"></small></h1>
+  <input id="q" type="search" placeholder="filter by name or path (e.g. explosion, knight, 32x32)">
+  <span class="meta"><a href="manifest.json">manifest.json</a> · <a href="packs.json">packs.json</a></span>
+</header>
+<main>
+<pre id="how">Every file lives at <b id="base"></b>/&lt;path&gt;. Paths and metadata come from manifest.json:
+  sfx/&lt;pack&gt;/&lt;category&gt;/&lt;name&gt;-&lt;variant&gt;.m4a   sounds (AAC, 44.1 kHz; play with Web Audio or &lt;audio&gt;)
+  sprites/&lt;pack&gt;/...                              PNG sheets and frames (width/height in the manifest)
+  models/&lt;pack&gt;/...                               glTF / GLB with textures beside them
+  music/…  fonts/…                                  the odd track and font</pre>
+<div id="packs"></div>
+</main>
+<script>
+const base = location.origin + location.pathname.replace(/\/[^/]*$/, '');
+document.getElementById('base').textContent = base;
+let audioCtx;
+function play(url) {
+  const a = new Audio(url); a.play().catch(() => {});
+}
+const fmtMB = (b) => (b / 1048576).toFixed(b > 10485760 ? 0 : 1) + ' MB';
+fetch('manifest.json').then((r) => r.json()).then(render).catch((e) => { document.getElementById('packs').textContent = 'manifest.json not found: ' + e; });
+
+function render(m) {
+  document.getElementById('totals').textContent = `${m.files.toLocaleString()} files · ${fmtMB(m.bytes)} · built ${m.generated.slice(0, 10)}`;
+  const byPack = {};
+  for (const e of m.entries) (byPack[e.pack] ||= []).push(e);
+  const root = document.getElementById('packs');
+  const order = ['sfx', 'sprites', 'models', 'mixed'];
+  const packs = Object.values(m.packs).sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.title.localeCompare(b.title));
+  for (const p of packs) {
+    const entries = byPack[p.id] || [];
+    const d = document.createElement('details');
+    d.dataset.pack = p.id;
+    const prefix = typeof p.dest === 'string' ? p.dest : Object.values(p.dest)[0];
+    d.innerHTML = `<summary><b>${esc(p.title)}</b> <code>${esc(prefix)}/</code> <span class="meta">${p.kind} · ${entries.length} files · ${fmtMB(p.bytes)}</span></summary>
+      <div class="info">${p.author ? esc(p.author) + ' · ' : ''}${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.source || 'source')}</a> · ` : ''}${esc(p.description || '')}${p.notes ? ' <i>' + esc(p.notes) + '</i>' : ''}</div>
+      <div class="lic">Licence: ${esc(p.license || 'not stated on the page (check before shipping)')}</div>`;
+    const body = document.createElement('div');
+    d.appendChild(body);
+    d.addEventListener('toggle', () => { if (d.open && !body.childElementCount) fill(body, p, entries); }, { once: false });
+    root.appendChild(d);
+  }
+  const q = document.getElementById('q');
+  q.addEventListener('input', () => filter(q.value.trim().toLowerCase(), byPack, m.packs));
+}
+
+function fill(body, p, entries) {
+  const audio = entries.filter((e) => e.type.startsWith('audio/'));
+  const images = entries.filter((e) => e.type.startsWith('image/'));
+  const other = entries.filter((e) => !e.type.startsWith('audio/') && !e.type.startsWith('image/'));
+  if (audio.length) {
+    const list = document.createElement('div'); list.className = 'list';
+    let cat = null;
+    for (const e of audio) {
+      if (e.category !== cat) { cat = e.category; const h = document.createElement('span'); h.className = 'cat'; h.textContent = cat || '(root)'; list.appendChild(h); }
+      const row = document.createElement('div');
+      const b = document.createElement('button'); b.textContent = '▶'; b.onclick = () => play(e.path);
+      const a = document.createElement('a'); a.href = e.path; a.textContent = e.path.split('/').pop(); a.title = e.path;
+      row.append(b, a, document.createTextNode(e.duration ? ` ${e.duration}s` : ''));
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+  }
+  if (images.length) {
+    const grid = document.createElement('div'); grid.className = 'grid';
+    const LIMIT = 80;
+    images.forEach((e, i) => {
+      const t = document.createElement('div'); t.className = 'tile' + (i >= LIMIT ? ' hidden' : '');
+      t.innerHTML = `<a href="${esc(e.path)}" target="_blank"><img loading="lazy" src="${esc(e.path)}" alt=""></a><div class="n">${esc(e.path.replace(/^[^/]+\/[^/]+\//, ''))}</div><div class="d">${e.width}×${e.height}${e.frames ? ` · ${e.frames} frames of ${e.frameWidth}×${e.frameHeight}` : ''}</div>`;
+      grid.appendChild(t);
+    });
+    body.appendChild(grid);
+    if (images.length > LIMIT) {
+      const more = document.createElement('button'); more.className = 'more'; more.textContent = `show all ${images.length} images`;
+      more.onclick = () => { grid.querySelectorAll('.hidden').forEach((x) => x.classList.remove('hidden')); more.remove(); };
+      body.appendChild(more);
+    }
+  }
+  if (other.length) {
+    const list = document.createElement('div'); list.className = 'list';
+    for (const e of other) { const row = document.createElement('div'); row.innerHTML = `<a href="${esc(e.path)}">${esc(e.path.replace(/^[^/]+\/[^/]+\//, ''))}</a> <span class="d">${fmtMB(e.bytes)}</span>`; list.appendChild(row); }
+    body.appendChild(list);
+  }
+}
+
+function filter(q, byPack, packs) {
+  for (const d of document.querySelectorAll('details')) {
+    const p = packs[d.dataset.pack];
+    const entries = byPack[p.id] || [];
+    const hay = [p.title, p.description, p.author, p.kind].join(' ').toLowerCase();
+    const hit = !q || hay.includes(q) || entries.some((e) => e.path.toLowerCase().includes(q) || (e.name || '').toLowerCase().includes(q));
+    d.style.display = hit ? '' : 'none';
+    if (q && hit && !hay.includes(q)) {
+      d.open = true;
+      const body = d.lastElementChild;
+      if (!body.childElementCount) fill(body, p, entries);
+      for (const el of body.querySelectorAll('.tile, .list > div')) {
+        const text = (el.querySelector('a')?.title || el.textContent).toLowerCase();
+        el.classList.toggle('hidden', !text.includes(q));
+      }
+    } else if (hit && !q) {
+      for (const el of d.querySelectorAll('.list > div.hidden')) el.classList.remove('hidden');
+    }
+  }
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+</script>
+</body>
+</html>
