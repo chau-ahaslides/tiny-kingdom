@@ -8,6 +8,7 @@
   "main": "worker.js",
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
+  "preview_urls": false,
   "r2_buckets": [{ "binding": "LIB", "bucket_name": "tiny-kingdom-lib" }]
   // To put it on a domain you own in Cloudflare, add:
   // "routes": [{ "pattern": "lib.example.com", "custom_domain": true }]

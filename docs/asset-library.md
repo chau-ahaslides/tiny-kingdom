@@ -5,12 +5,13 @@ downloaded from itch.io (and a few from GameArt2D and OpenGameArt). Everything i
 host with CORS open, so any page, on any origin, can use it directly.
 
 ```
-LIB = https://tiny-kingdom-lib.<account>.workers.dev      ← printed by `npm run lib:deploy`
+LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
 ```
 
 | Where to look | What you get |
 |---|---|
 | `LIB/` | The catalog: every pack, its licence, thumbnails, play buttons, a filter box. |
+| `LIB/README.md`, `LIB/llms.txt` | This guide, served from the CDN, and a short pointer file for agents. |
 | `LIB/manifest.json` | Every file (3,714) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `duration`, `frames`/`frameWidth`/`frameHeight`, `category`, `variant`, `tags`. |
 | `LIB/packs.json` | The 31 packs: title, author, page URL, licence, `commercial` (yes / credit / no / unknown), the `credit` line to ship, description, notes. |
 | `library/packs.json` in this repo | The same pack index, plus the build rules. Edit this to add or change a pack. |
@@ -221,8 +222,10 @@ npm run lib:deploy                                                          # pr
 LIB_URL=<that url> LIB_TOKEN=<the token> npm run lib:upload
 ```
 
-Then paste the URL at the top of this file. To put the CDN on a domain, add a `routes` entry with
-`custom_domain: true` to `library/worker/wrangler.jsonc`.
+The upload token is kept in `~/.env` as `TINY_KINGDOM_LIB_TOKEN` on the machine that deployed it, so a
+later upload is `LIB_TOKEN=$TINY_KINGDOM_LIB_TOKEN npm run lib:upload` (the URL above is the default).
+To put the CDN on a domain, add a `routes` entry with `custom_domain: true` to
+`library/worker/wrangler.jsonc`.
 
 The library worker is separate from the game worker on purpose: it has its own `wrangler.jsonc`,
 deploys on its own, and a game deploy never touches it (and vice versa).

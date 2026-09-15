@@ -14,14 +14,14 @@ import { mimeOf } from './lib.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'out');
-const URL_ = (process.env.LIB_URL || '').replace(/\/+$/, '');
-const TOKEN = process.env.LIB_TOKEN || '';
+const URL_ = (process.env.LIB_URL || 'https://tiny-kingdom-lib.ahaslides-game.workers.dev').replace(/\/+$/, '');
+const TOKEN = process.env.LIB_TOKEN || process.env.TINY_KINGDOM_LIB_TOKEN || '';
 const PRUNE = process.argv.includes('--prune');
 const DRY = process.argv.includes('--dry-run');
 const FORCE = process.argv.includes('--force');
 const JOBS = Number(process.env.LIB_JOBS) || 12;
 
-if (!URL_ || !TOKEN) { console.error('set LIB_URL and LIB_TOKEN (the worker\'s LIB_UPLOAD_TOKEN secret)'); process.exit(1); }
+if (!TOKEN) { console.error('set LIB_TOKEN (the worker\'s LIB_UPLOAD_TOKEN secret; TINY_KINGDOM_LIB_TOKEN in ~/.env)'); process.exit(1); }
 const manifestPath = path.join(OUT, 'manifest.json');
 if (!fs.existsSync(manifestPath)) { console.error('no library/out/manifest.json: run `node library/build.mjs` first'); process.exit(1); }
 const local = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -64,5 +64,5 @@ const t0 = Date.now();
 let failed = await pool(toSend.map((e) => e.path), JOBS, put);
 failed += await pool(toDelete, JOBS, del);
 if (failed) { console.error(`${failed} transfers failed; manifest not updated`); process.exit(1); }
-if (!DRY) for (const f of ['packs.json', 'index.html', 'manifest.json']) await put(f);
+if (!DRY) for (const f of ['packs.json', 'index.html', 'README.md', 'llms.txt', 'manifest.json']) await put(f);
 console.log(`done in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${URL_}/`);
