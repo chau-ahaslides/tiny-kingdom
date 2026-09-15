@@ -5,3 +5,4 @@ dist/
 library/out/
 library/.stage/
 library/worker/.dev.vars
+.env
