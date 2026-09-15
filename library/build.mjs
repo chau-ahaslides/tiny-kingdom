@@ -217,7 +217,7 @@ if (failed) process.exit(1);
 // Remove stale output (files no longer planned).
 const planned = new Set(items.map((i) => i.dst));
 for (const rel of walk(OUT)) {
-  if (['manifest.json', 'packs.json', 'index.html', 'README.md', 'llms.txt'].includes(rel)) continue;
+  if (['manifest.json', 'packs.json', 'index.html', 'llms.txt'].includes(rel)) continue;
   if (!planned.has(rel)) { fs.rmSync(path.join(OUT, rel)); console.log(`  removed stale ${rel}`); }
 }
 
@@ -258,21 +258,15 @@ fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null,
 fs.writeFileSync(path.join(OUT, 'packs.json'), JSON.stringify({ generated: manifest.generated, packs }, null, 2));
 fs.copyFileSync(path.join(HERE, 'catalog.html'), path.join(OUT, 'index.html'));
 
-// The guide, served from the CDN itself as README.md, with the live base URL baked in, plus llms.txt for agents.
+// The guide, served from the CDN itself as llms.txt (the whole of docs/asset-library.md, live base URL baked in,
+// a one-paragraph summary on top so an agent that reads only the first lines still knows what is here).
 const LIB_URL = (process.env.LIB_URL || 'https://tiny-kingdom-lib.ahaslides-game.workers.dev').replace(/\/+$/, '');
 const guide = fs.readFileSync(path.join(HERE, '..', 'docs', 'asset-library.md'), 'utf8').replace(/https:\/\/tiny-kingdom-lib\.[^\s`]+/g, LIB_URL);
-fs.writeFileSync(path.join(OUT, 'README.md'), guide);
 fs.writeFileSync(path.join(OUT, 'llms.txt'), `# tiny-kingdom asset library
 
-> Free game art, sound effects and 3D models (${files.length} files, ${(manifest.bytes / 1048576).toFixed(0)} MB, ${Object.keys(packs).length} packs) served with open CORS for AhaSlides games.
+> Free game art, sound effects and 3D models (${files.length} files, ${(manifest.bytes / 1048576).toFixed(0)} MB, ${Object.keys(packs).length} packs), all licensed for commercial use, served with open CORS for AhaSlides games. Files live at ${LIB_URL}/<path>; exact paths and metadata are in ${LIB_URL}/manifest.json, pack licences and credits in ${LIB_URL}/packs.json, a browsable catalog at ${LIB_URL}/. The full guide follows.
 
-- [Guide](${LIB_URL}/README.md): URL scheme, code recipes, every pack with sizes and licence, credits to ship, how to add a pack.
-- [manifest.json](${LIB_URL}/manifest.json): every file with path, pack, bytes, sha1, type, width/height, duration, frames.
-- [packs.json](${LIB_URL}/packs.json): the packs with author, page URL, licence, commercial (yes | credit | no | unknown), credit line.
-- [Catalog](${LIB_URL}/): browsable page with thumbnails and play buttons.
-
-Files live at ${LIB_URL}/<path>, where <path> is the manifest entry's path. Sounds are .m4a (AAC), sprites PNG, models glTF/GLB.
-`);
+${guide.replace(/^# Asset library\n/, '')}`);
 
 console.log(`\nmanifest: ${files.length} files, ${(manifest.bytes / 1048576).toFixed(1)} MB`);
 for (const [id, s] of Object.entries(packStats)) console.log(`  ${id.padEnd(26)} ${String(s.files).padStart(5)} files ${(s.bytes / 1048576).toFixed(1).padStart(7)} MB`);

@@ -64,5 +64,5 @@ const t0 = Date.now();
 let failed = await pool(toSend.map((e) => e.path), JOBS, put);
 failed += await pool(toDelete, JOBS, del);
 if (failed) { console.error(`${failed} transfers failed; manifest not updated`); process.exit(1); }
-if (!DRY) for (const f of ['packs.json', 'index.html', 'README.md', 'llms.txt', 'manifest.json']) await put(f);
+if (!DRY) for (const f of ['packs.json', 'index.html', 'llms.txt', 'manifest.json']) await put(f);
 console.log(`done in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${URL_}/`);
