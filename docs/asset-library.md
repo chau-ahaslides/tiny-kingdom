@@ -189,21 +189,25 @@ POST https://play.ahaslides.io/api/room      mints a room code and join URL (COR
 https://play.ahaslides.io/j/<CODE>           the join link phones open; /ws/<CODE> the socket
 ```
 
-A game page served from `play.ahaslides.io` calls `AhaRoom.host()` and `AhaRoom.join()` with no
-configuration. A page anywhere else (an artifact, for example) names the relay and the URL phones
-should open, which may be the page itself:
+One page is both the big screen and the phone. Write no host-or-join logic and no addresses:
 
-```js
-const relay = AhaRoom.relay({ origin: 'https://play.ahaslides.io' });
-const room = await AhaRoom.host({ transport: relay, page: 'https://agent-fleet.ahaslides.io/artifacts/<id>' });
-// room.joinUrl is https://play.ahaslides.io/j/<CODE>; it redirects phones to the page above with ?join=<CODE>
-const me = AhaRoom.join({ transport: relay });   // on the phone: reads ?join= (or #join=) from the URL
+```html
+<script src="https://play.ahaslides.io/js/aha-room.js"></script>
+<script>
+const { role, room, me } = await AhaRoom.auto({ askName: () => prompt('Your name') });
+if (role === 'host') { drawQr(room.joinUrl); room.on('join', p => …); room.state.set({ … }); }
+else                 { me.on('state', (doc, mine) => render(doc, mine)); me.send({ t: 'tap' }); }
+</script>
 ```
 
-`page` must be an https URL on an AhaSlides origin (`*.ahaslides.com` / `.io` / `.ai`); a sandboxed
-page cannot discover its own address, so it passes it. The page opened with `?join=<CODE>` runs the
-same code in join mode. When a viewer renders the page in an iframe it has to forward that query (or
-`#join=<CODE>`) to the iframe for the phone side to find its room. This library only supplies the
+`auto()` hosts when the page is opened plainly and joins when it is opened from the join link
+(`?join=CODE`, `#join=CODE`, or a code the framing page hands in). It picks the relay
+(`play.ahaslides.io`, or the page's own site when the page lives there) and the URL phones open
+(the page's own URL, so an artifact's audience joins on the artifact). The only thing a sandboxed
+page (an artifact in a viewer) cannot find alone is its address; the viewer supplies it with
+`<iframe name='aha:{"url":"…","join":"…"}'>` or `postMessage({ aha: 'page', url, join })`, and
+passes its own `?join=` along the same way. `host()` and `join()` still exist for pages that want to
+decide themselves. Details at `https://play.ahaslides.io/sdk#auto`. This library only supplies the
 art, sound, maps and libraries; the room service is `play.ahaslides.io`.
 
 ## Libraries on the CDN: three.js and PixiJS

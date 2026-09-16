@@ -145,7 +145,7 @@ function joinTarget(origin, page, code) {
 // that way); minting a room is public and unauthenticated, so echoing it back gives nothing away.
 function cors(req, headers = new Headers()) {
   const origin = req.headers.get('origin');
-  if (origin && (origin === 'null' || AHASLIDES_ORIGIN.test(origin))) {
+  if (origin && (origin === 'null' || AHASLIDES_ORIGIN.test(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))) {   // localhost: developing a page against the live relay
     headers.set('access-control-allow-origin', origin);
     headers.set('access-control-allow-methods', 'POST, OPTIONS');
     headers.set('access-control-allow-headers', 'content-type');
