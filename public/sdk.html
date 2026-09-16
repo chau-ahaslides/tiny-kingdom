@@ -554,10 +554,10 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <h3>Step 1 · Hybrid: identity from the parent, data over the relay</h3>
 <p>The presenter app embeds the big-screen page; the audience app embeds the phone page. The presenter app derives a code from the presentation and slide and passes it down; the SDK on the big screen claims it through the directory, exactly as a game bringing its own code would, so a clash with another game is reported rather than silently shared. There is no QR to show. Bytes still flow directly between the iframes and the relay: nothing crosses the AhaSlides channel, the game is unchanged, and the only new part is <code>report()</code>.</p>
 <pre><code><span class="c">presenter app, big screen</span>
-&lt;iframe src="https://tiny-kingdom…/color-and-sound?host=1&amp;embed=1&amp;room=P8F3K-S12"&gt;
+&lt;iframe src="https://play.ahaslides.io/color-and-sound?host=1&amp;embed=1&amp;room=P8F3K-S12"&gt;
 
 <span class="c">audience app, phone</span>
-&lt;iframe src="https://tiny-kingdom…/color-and-sound?join=P8F3K-S12&amp;embed=1&amp;name=Chau&amp;token=a91…"&gt;</code></pre>
+&lt;iframe src="https://play.ahaslides.io/color-and-sound?join=P8F3K-S12&amp;embed=1&amp;name=Chau&amp;token=a91…"&gt;</code></pre>
 <p>The game code sees none of this: the <code>embed</code> transport reads <code>room</code>, <code>name</code> and <code>token</code> from the URL (or from a postMessage, for tokens that should not appear in a URL) and reports <code>providesRoom</code> and <code>providesIdentity</code>, so <code>mountLobby</code> renders nothing and <code>askName</code> is never called. The token is the participant id, so a participant who reloads or switches tabs keeps their seat, exactly as today.</p>
 <h4>The audience is already there</h4>
 <p>Inside a presentation, people joined before the game loaded, and the lobby lives in the parent app. Two things follow.</p>

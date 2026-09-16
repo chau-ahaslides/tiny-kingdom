@@ -177,6 +177,24 @@ world.add(await scene.build({ THREE, GLTFLoader }));             // one load per
 
 Enemy tables, wave scripts, dialogue: same rule. Data file per game, loaded by URL.
 
+## Rooms: the multiplayer backend
+
+Live rooms (a host on the big screen, phones joining by QR) are a separate service at
+`https://play.ahaslides.io`, not part of this CDN:
+
+```
+https://play.ahaslides.io/js/aha-room.js     the room SDK (host(), join(), replicated state, presence)
+https://play.ahaslides.io/sdk                its guide: messages, state document, worked examples
+POST https://play.ahaslides.io/api/room      mints a room code and join URL (CORS for AhaSlides origins and sandboxed iframes)
+https://play.ahaslides.io/j/<CODE>           the join link phones open; /ws/<CODE> the socket
+```
+
+A game page served from `play.ahaslides.io` calls `AhaRoom.host()` and `AhaRoom.join()` with no
+configuration. A page on another origin passes the relay explicitly:
+`AhaRoom.host({ transport: new AhaRoom.RelayTransport({ origin: 'https://play.ahaslides.io' }) })`.
+The join link always opens the game's page on `play.ahaslides.io`, so a multiplayer game's page
+belongs on that host; this library only supplies its art, sound, maps and libraries.
+
 ## Libraries on the CDN: three.js and PixiJS
 
 The two engines the games use are hosted here too, pinned by version, so a game page references
