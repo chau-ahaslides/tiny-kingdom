@@ -119,9 +119,11 @@ async function lookup(env, code, touch) {
    call it from another site. Same-origin pages need none of this; the socket routes and /j/CODE are not
    subject to CORS, so joining a room works from anywhere. */
 const AHASLIDES_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*ahaslides\.(com|io|ai)$/i;
+// "null" is what a sandboxed iframe sends (the artifact viewer on agent-fleet.ahaslides.io renders games
+// that way); minting a room is public and unauthenticated, so echoing it back gives nothing away.
 function cors(req, headers = new Headers()) {
   const origin = req.headers.get('origin');
-  if (origin && AHASLIDES_ORIGIN.test(origin)) {
+  if (origin && (origin === 'null' || AHASLIDES_ORIGIN.test(origin))) {
     headers.set('access-control-allow-origin', origin);
     headers.set('access-control-allow-methods', 'POST, OPTIONS');
     headers.set('access-control-allow-headers', 'content-type');

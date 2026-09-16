@@ -263,7 +263,8 @@ Names are the pack's own names with spaces and punctuation turned into `_` (`Run
 
 Responses carry an `ETag`, `Accept-Ranges: bytes`, and `Cache-Control: public, max-age=86400`.
 `Access-Control-Allow-Origin` is set only for AhaSlides origins (`https://*.ahaslides.com` / `.io` / `.ai`,
-`https://*.ahaslides-game.workers.dev`, `http://localhost:*`): from those, `fetch`, Web Audio,
+`https://*.ahaslides-game.workers.dev`, `http://localhost:*`) and for the `null` origin that a
+sandboxed iframe reports (the artifact viewer runs games that way): from those, `fetch`, Web Audio,
 canvas readback and `import` of `aha-assets.js` all work; from anywhere else only plain `<img>` and
 `<audio>` tags do. A file at a given path is only ever replaced when a pack is rebuilt; append
 `?v=<sha1 prefix>` from the manifest if you need an immutable URL.

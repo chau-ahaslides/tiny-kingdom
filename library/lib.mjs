@@ -117,11 +117,13 @@ export function parseEffectSheet(text) {
 /**
  * Origins that may load library files cross-origin (fetch, Web Audio, import): AhaSlides sites (any
  * subdomain of ahaslides.com, ahaslides.io, ahaslides.ai), the games on the ahaslides-game workers.dev
- * account, and localhost for development.
+ * account, localhost for development, and "null": the origin a sandboxed iframe reports, which is how
+ * the artifact viewer on agent-fleet.ahaslides.io runs games. Files are public anyway and the index
+ * stays behind its token, so the null origin gains nothing beyond what <img> and <audio> already get.
  */
 export const ALLOWED_ORIGIN = /^(https:\/\/([a-z0-9-]+\.)*(ahaslides\.(com|io|ai)|ahaslides-game\.workers\.dev)|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/i;
 export function originAllowed(origin) {
-  return typeof origin === 'string' && ALLOWED_ORIGIN.test(origin);
+  return origin === 'null' || (typeof origin === 'string' && ALLOWED_ORIGIN.test(origin));
 }
 
 /**
