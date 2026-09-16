@@ -78,3 +78,9 @@ test('aha-assets frame math', async () => {
   assert.equal(frameAt(999, 1, 10), 0);
   assert.deepEqual(cellRect(3, 2, 80, 64), { sx: 240, sy: 128, sw: 80, sh: 64 });
 });
+
+test('originAllowed: AhaSlides sites, the games account, localhost', async () => {
+  const { originAllowed } = await import('../library/lib.mjs');
+  for (const ok of ['https://ahaslides.com', 'https://app.ahaslides.com', 'https://presenter.staging.ahaslides.com', 'https://tiny-kingdom.ahaslides-game.workers.dev', 'http://localhost:8791', 'http://127.0.0.1']) assert.equal(originAllowed(ok), true, ok);
+  for (const no of ['http://ahaslides.com', 'https://ahaslides.com.evil.io', 'https://notahaslides.com', 'https://evil.workers.dev', 'https://localhost', 'null', undefined]) assert.equal(originAllowed(no), false, String(no));
+});

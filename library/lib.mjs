@@ -114,6 +114,15 @@ export function parseEffectSheet(text) {
   return { frames: rects.length, width: rects[0].w, height: rects[0].h };
 }
 
+/**
+ * Origins that may load library files cross-origin: AhaSlides sites (any subdomain of ahaslides.com),
+ * the games on the ahaslides-game workers.dev account, and localhost for development.
+ */
+export const ALLOWED_ORIGIN = /^(https:\/\/([a-z0-9-]+\.)*(ahaslides\.com|ahaslides-game\.workers\.dev)|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/i;
+export function originAllowed(origin) {
+  return typeof origin === 'string' && ALLOWED_ORIGIN.test(origin);
+}
+
 export const MIME = {
   m4a: 'audio/mp4', mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav',
   png: 'image/png', gif: 'image/gif', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml',

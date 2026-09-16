@@ -115,16 +115,34 @@ async function lookup(env, code, touch) {
   try { return await (await dir(env).fetch('https://dir/lookup?code=' + encodeURIComponent(code) + (touch ? '&touch=1' : ''))).json(); }
   catch (e) { return null; }
 }
+/* CORS for the HTTP API: only AhaSlides origins (https://ahaslides.com and any subdomain) may call it
+   from another site. Same-origin pages need none of this, and the socket routes are not subject to CORS. */
+const AHASLIDES_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*ahaslides\.com$/i;
+function cors(req, headers = new Headers()) {
+  const origin = req.headers.get('origin');
+  if (origin && AHASLIDES_ORIGIN.test(origin)) {
+    headers.set('access-control-allow-origin', origin);
+    headers.set('access-control-allow-methods', 'POST, OPTIONS');
+    headers.set('access-control-allow-headers', 'content-type');
+    headers.set('access-control-max-age', '86400');
+    headers.append('vary', 'origin');
+  }
+  return headers;
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
+    if (url.pathname === '/api/room' && req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
     if (url.pathname === '/api/room' && req.method === 'POST') {
       // pages without a body (the older games) still get a plain minted code
       let body = {}; try { body = await req.json(); } catch (e) {}
       const res = await dir(env).fetch('https://dir/claim', { method: 'POST', body: JSON.stringify(body) });
       const out = await res.json();
       if (res.status === 201) out.joinUrl = url.origin + '/j/' + out.code;
-      return Response.json(out, { status: res.status });
+      const reply = Response.json(out, { status: res.status });
+      cors(req, reply.headers);
+      return reply;
     }
     const j = url.pathname.match(/^\/j\/([A-Za-z0-9-]{4,32})$/);
     if (j) {

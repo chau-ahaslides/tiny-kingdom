@@ -2,7 +2,7 @@
 
 A public CDN of game art, sound and 3D models for AhaSlides games, built from free packs
 downloaded from itch.io (and a few from GameArt2D and OpenGameArt). Everything is served from one
-host with CORS open, so any page, on any origin, can use it directly.
+host; pages on AhaSlides origins can load it directly (CORS is limited to those).
 
 ```
 LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
@@ -75,13 +75,50 @@ await assets.preload(['sfx/pixel-combat/hit/bit-kick', 'sprites/32rogues/tiles.p
 ```
 
 The module reads a small JSON that sits next to each asset: `<image>.json` (cell size, columns,
-rows, frame count, fps, named animations), `<Animation>.json` for per-frame packs (the ordered
-frame list), and `<sound>.json` for Pixel Combat (the variant list). Those files are open, so the
+rows, frame count, fps, named animations), `<image>.atlas.json` (the same as a TexturePacker atlas,
+for Phaser and PixiJS, see below), `<Animation>.json` for per-frame packs (the ordered frame list),
+and `<sound>.json` for Pixel Combat (the variant list). Those files are open, so the
 runtime never needs the token; the same fields are in the manifest for authoring. Where the library
 has no cell for an image (single pictures, previews, the large RPG Maker battler sheets), pass one:
 `assets.sheet(path, { cell: [150, 150] })`, or an ad-hoc animation:
 `sheet.draw(ctx, { row: 2, frames: 6 }, t, x, y)`. Playback rates default to the pack's `fps`;
 override per call with `{ fps: 12 }`. Pixel art is drawn unsmoothed unless `{ smooth: true }`.
+
+## Other engines
+
+`aha-assets.js` draws with the 2D canvas and Web Audio, which is what the tiny-kingdom games use.
+Every sheet with a known grid also has `<image>.atlas.json`, a TexturePacker-style JSON hash
+(frames named `r<row>c<col>`, plus `animations`), and every Pixel Combat sound has `<sound>.json`
+listing its variants, so the common web engines load the library with their own loaders:
+
+```js
+// Phaser 3
+this.load.atlas('guy', `${LIB}/sprites/gandalf-characters/Character_skin_colors/Male_Skin1.png`,
+                       `${LIB}/sprites/gandalf-characters/Character_skin_colors/Male_Skin1.png.atlas.json`);
+this.load.audio('hit', [`${LIB}/sfx/pixel-combat/explosion/bass-hit-01.m4a`]);
+// later, in create():
+this.anims.create({ key: 'walk', frames: this.anims.generateFrameNames('guy', { prefix: 'r1c', start: 0, end: 7 }), frameRate: 10, repeat: -1 });
+this.add.sprite(x, y, 'guy').play('walk');
+// or, without the atlas, straight from the numbers in <image>.json:
+this.load.spritesheet('boom', `${LIB}/sprites/pixel-effects/explosions/epic_explosion_001_small_orange.png`, { frameWidth: 64, frameHeight: 64 });
+```
+
+```js
+// PixiJS 7 / 8
+const sheet = await PIXI.Assets.load(`${LIB}/sprites/gandalf-characters/Character_skin_colors/Male_Skin1.png.atlas.json`);
+const guy = new PIXI.AnimatedSprite(sheet.animations.walk);
+guy.animationSpeed = 10 / 60; guy.play(); app.stage.addChild(guy);
+```
+
+```js
+// three.js: models load straight from the CDN; textures and buffers resolve next to the .gltf
+new GLTFLoader().load(`${LIB}/models/kaykit-adventurers/Characters/gltf/Knight.glb`, (g) => scene.add(g.scene));
+```
+
+Godot, Unity and other native engines are not web-facing: download the files (a pack's paths are in
+the manifest) and use the cell sizes from `<image>.json`. Whatever the engine, the page has to be on
+an AhaSlides origin (`*.ahaslides.com`, `*.ahaslides-game.workers.dev`, or localhost while
+developing): cross-origin loading is allowed for those origins only.
 
 ## URL scheme
 
@@ -97,9 +134,12 @@ Names are the pack's own names with spaces and punctuation turned into `_` (`Run
 `Run_8.png`); folders that are categories are lower-case slugs (`Card and Board` becomes
 `card-and-board`). The manifest's `path` is always the exact key, so copy from there.
 
-Responses carry `Access-Control-Allow-Origin: *`, an `ETag`, `Accept-Ranges: bytes`, and
-`Cache-Control: public, max-age=86400`. A file at a given path is only ever replaced when a pack is
-rebuilt; append `?v=<sha1 prefix>` from the manifest if you need an immutable URL.
+Responses carry an `ETag`, `Accept-Ranges: bytes`, and `Cache-Control: public, max-age=86400`.
+`Access-Control-Allow-Origin` is set only for AhaSlides origins (`https://*.ahaslides.com`,
+`https://*.ahaslides-game.workers.dev`, `http://localhost:*`): from those, `fetch`, Web Audio,
+canvas readback and `import` of `aha-assets.js` all work; from anywhere else only plain `<img>` and
+`<audio>` tags do. A file at a given path is only ever replaced when a pack is rebuilt; append
+`?v=<sha1 prefix>` from the manifest if you need an immutable URL.
 
 ## Sounds
 

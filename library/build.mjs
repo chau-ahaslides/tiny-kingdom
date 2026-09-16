@@ -275,6 +275,25 @@ for (const e of files) {
   if (p.fps) e.fps ??= p.fps;
   if (p.animations && e.rows > 1) e.animations = p.animations;
   writeDerived(`${e.path}.json`, pick(e, ['path', 'width', 'height', 'cell', 'cols', 'rows', 'frames', 'fps', 'animations', 'animation']), e.pack);
+  writeDerived(`${e.path}.atlas.json`, atlasFor(e), e.pack);
+}
+
+/**
+ * A TexturePacker-style "JSON hash" atlas for the sheet, which Phaser (load.atlas) and PixiJS
+ * (Assets.load, Spritesheet) read natively. Frames are named r<row>c<col>; `animations` lists the
+ * named rows, or the whole strip under its animation name (or "play").
+ */
+function atlasFor(e) {
+  const [w, h] = e.cell;
+  const frames = {};
+  const name = (r, c) => `r${r}c${c}`;
+  for (let r = 0; r < e.rows; r++) for (let c = 0; c < e.cols; c++) {
+    frames[name(r, c)] = { frame: { x: c * w, y: r * h, w, h }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w, h }, sourceSize: { w, h } };
+  }
+  const animations = {};
+  if (e.animations) for (const [n, a] of Object.entries(e.animations)) animations[n] = Array.from({ length: a.frames }, (_, i) => name(a.row, (a.col || 0) + i));
+  else if (e.rows === 1 && e.frames > 1) animations[e.animation || 'play'] = Array.from({ length: e.frames }, (_, i) => name(0, i));
+  return { frames, animations, meta: { app: 'AhaSlides games asset library', version: '1', image: path.basename(e.path), format: 'RGBA8888', size: { w: e.width, h: e.height }, scale: '1', ...(e.fps ? { fps: e.fps } : {}) } };
 }
 for (const p of packsFile.packs.filter((x) => x.sequences)) {
   const groups = {};
