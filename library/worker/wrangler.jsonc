@@ -1,7 +1,8 @@
-// The asset-library CDN: a worker in front of the tiny-kingdom-lib R2 bucket.
-// Deployed on its own, never together with the game worker:
+// The asset-library CDN: a worker in front of the tiny-kingdom-lib R2 bucket, at https://games.ahaslides.io
+// (the workers.dev URL keeps working). Deployed on its own, never together with the game worker:
 //   npx wrangler r2 bucket create tiny-kingdom-lib            (once)
-//   npx wrangler secret put LIB_UPLOAD_TOKEN -c library/worker/wrangler.jsonc   (once)
+//   npx wrangler secret put LIB_UPLOAD_TOKEN -c library/worker/wrangler.jsonc   (once; writes)
+//   npx wrangler secret put LIB_READ_TOKEN -c library/worker/wrangler.jsonc     (once; agents reading the index)
 //   npx wrangler deploy -c library/worker/wrangler.jsonc
 {
   "name": "tiny-kingdom-lib",
@@ -9,7 +10,10 @@
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
   "preview_urls": false,
-  "r2_buckets": [{ "binding": "LIB", "bucket_name": "tiny-kingdom-lib" }]
-  // To put it on a domain you own in Cloudflare, add:
-  // "routes": [{ "pattern": "lib.example.com", "custom_domain": true }]
+  "routes": [{ "pattern": "games.ahaslides.io", "custom_domain": true }],
+  "r2_buckets": [{ "binding": "LIB", "bucket_name": "tiny-kingdom-lib" }],
+  // People log in at /catalog through Cloudflare Access; the worker checks the Access JWT with these.
+  // ACCESS_TEAM_DOMAIN is the Zero Trust team domain (<team>.cloudflareaccess.com); ACCESS_AUD is the
+  // Access application's Audience tag. Both empty until the Access app exists (then only the key works).
+  "vars": { "ACCESS_TEAM_DOMAIN": "", "ACCESS_AUD": "" }
 }

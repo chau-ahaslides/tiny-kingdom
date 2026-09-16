@@ -14,7 +14,7 @@ import { mimeOf } from './lib.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'out');
-const URL_ = (process.env.LIB_URL || 'https://tiny-kingdom-lib.ahaslides-game.workers.dev').replace(/\/+$/, '');
+const URL_ = (process.env.LIB_URL || 'https://games.ahaslides.io').replace(/\/+$/, '');
 const TOKEN = process.env.LIB_TOKEN || process.env.TINY_KINGDOM_LIB_TOKEN || '';
 const PRUNE = process.argv.includes('--prune');
 const DRY = process.argv.includes('--dry-run');

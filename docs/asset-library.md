@@ -5,7 +5,7 @@ downloaded from itch.io (and a few from GameArt2D and OpenGameArt). Everything i
 host; pages on AhaSlides origins can load it directly (CORS is limited to those).
 
 ```
-LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
+LIB = https://games.ahaslides.io
 ```
 
 | Where to look | What you get |
@@ -14,7 +14,8 @@ LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
 | `LIB/llms.txt` | This guide, served from the CDN. Start here. **Gated.** |
 | `LIB/manifest.json` | Every file (3,650 assets, 1,298 metadata) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `cell`/`cols`/`rows`/`frames`/`fps`/`animations`, `duration`, `category`, `variant`, `tags`. **Gated.** |
 | `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. **Gated.** |
-| `LIB/` | The catalog: every pack, its licence, thumbnails, play buttons, a filter box. **Gated**: open it once as `LIB/?key=<token>`. |
+| `LIB/catalog` | The catalog: every pack, its licence, thumbnails, play buttons, the starter maps, a filter box. Sign in with an AhaSlides account (Cloudflare Access). |
+| `LIB/` | The same catalog for agents and scripts: open it once as `LIB/?key=<token>`. |
 | `LIB/vendor/…` | three.js and PixiJS, pinned by version (see "Libraries on the CDN"). |
 | `LIB/maps/<pack>/…` | A starter map per tileset pack, in the library's map format (see "Maps"). |
 | `library/packs.json` in this repo | The same pack index, plus the build rules. Edit this to add or change a pack. |
@@ -23,11 +24,13 @@ LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
 folder, embed them as data URIs, or bundle three.js/PixiJS into the page; the CDN caches them for
 a day at the edge and in the browser, and a pinned version path never changes.
 
-**Gated** means the request needs the library read token, either as a header
-`Authorization: Bearer <token>` or as `?key=<token>`. The token is `TINY_KINGDOM_LIB_READ_TOKEN` in
-`~/.env` on the AhaSlides machines. Without it those four URLs answer 401; every asset file still
-answers. The gate is deliberate: most packs forbid redistribution as an asset pack, so the host must
-be an asset server for our games rather than a browsable library.
+**Gated** means the request needs one of two credentials. Agents and scripts send the library read
+token, as a header `Authorization: Bearer <token>` or as `?key=<token>`; it is
+`TINY_KINGDOM_LIB_READ_TOKEN` in `~/.env` on the AhaSlides machines. People sign in with their
+AhaSlides account at `LIB/catalog`, which sits behind Cloudflare Access; the session cookie it sets
+then opens `llms.txt`, `manifest.json` and `packs.json` in that browser too. Without either, those URLs
+answer 401; every asset file still answers. The gate is deliberate: most packs forbid redistribution as
+an asset pack, so the host must be an asset server for our games rather than a browsable library.
 
 Ask the manifest, not the file system: it is 1.3 MB of JSON, so fetch it once and filter.
 
@@ -44,7 +47,7 @@ const strips     = m.entries.filter(e => e.pack === 'pixel-effects' && e.categor
 decoding, sheet splitting and frame timing, so a game needs none of that code:
 
 ```js
-import { assets } from 'https://tiny-kingdom-lib.ahaslides-game.workers.dev/aha-assets.js';
+import { assets } from 'https://games.ahaslides.io/aha-assets.js';
 
 // Sounds: a Pixel Combat name loads all its variants; play() picks one at random.
 const hit  = await assets.sound('sfx/pixel-combat/explosion/bass-hit');
@@ -192,14 +195,14 @@ three.js addons import the bare specifier `three`, so the page declares an impor
 ```html
 <script type="importmap">
 { "imports": {
-    "three": "https://tiny-kingdom-lib.ahaslides-game.workers.dev/vendor/three/0.186.0/build/three.module.js",
-    "three/addons/": "https://tiny-kingdom-lib.ahaslides-game.workers.dev/vendor/three/0.186.0/examples/jsm/"
+    "three": "https://games.ahaslides.io/vendor/three/0.186.0/build/three.module.js",
+    "three/addons/": "https://games.ahaslides.io/vendor/three/0.186.0/examples/jsm/"
 } }
 </script>
 <script type="module">
   import * as THREE from 'three';
   import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-  const LIB = 'https://tiny-kingdom-lib.ahaslides-game.workers.dev';
+  const LIB = 'https://games.ahaslides.io';
   // models load straight from the CDN; textures and buffers resolve next to the .gltf
   new GLTFLoader().load(`${LIB}/models/kaykit-adventurers/Characters/gltf/Knight.glb`, (g) => scene.add(g.scene));
 </script>
@@ -207,8 +210,8 @@ three.js addons import the bare specifier `three`, so the page declares an impor
 
 ```html
 <script type="module">
-  import * as PIXI from 'https://tiny-kingdom-lib.ahaslides-game.workers.dev/vendor/pixi/8.20.1/pixi.min.mjs';
-  const LIB = 'https://tiny-kingdom-lib.ahaslides-game.workers.dev';
+  import * as PIXI from 'https://games.ahaslides.io/vendor/pixi/8.20.1/pixi.min.mjs';
+  const LIB = 'https://games.ahaslides.io';
   const app = new PIXI.Application(); await app.init({ width: 640, height: 360 }); document.body.append(app.canvas);
   const sheet = await PIXI.Assets.load(`${LIB}/sprites/gandalf-characters/Character_skin_colors/Male_Skin1.png.atlas.json`);
   const guy = new PIXI.AnimatedSprite(sheet.animations.walk);
@@ -485,6 +488,24 @@ Both tokens are kept in `~/.env` on the machine that deployed them: `TINY_KINGDO
 and `TINY_KINGDOM_LIB_READ_TOKEN` (index reads). A later upload is
 `LIB_TOKEN=$TINY_KINGDOM_LIB_TOKEN npm run lib:upload` (the URL above is the default); the upload
 token also opens the index.
+
+**AhaSlides login for people** (Cloudflare Access, once, in the Zero Trust dashboard of the account
+that owns `ahaslides.io`):
+
+1. Zero Trust, Settings, Authentication: make sure a login method exists for the company, either
+   Google Workspace (the AhaSlides domain) or One-time PIN by email.
+2. Zero Trust, Access, Applications, Add an application, Self-hosted. Name "AhaSlides games asset
+   library"; application domain `games.ahaslides.io`, path `catalog`. Session duration 24 hours.
+3. Policy: name "AhaSlides staff", action Allow, include Emails ending in `@ahaslides.com`,
+   `@ahaslides.io`, `@ahaslides.ai` (one rule per domain).
+4. Save. On the application's overview copy the **Application Audience (AUD) tag**, and note the
+   team domain (`<team>.cloudflareaccess.com`, under Settings, Custom Pages).
+5. Put both into `library/worker/wrangler.jsonc` (`ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`) and
+   `npm run lib:deploy`.
+
+Only `/catalog` is behind Access, so agents keep using `/` with the key and asset files stay open.
+The worker verifies the Access JWT (signature against the team's public keys, audience, issuer,
+expiry) before honouring the session, so a stray `CF_Authorization` cookie cannot open the index.
 To put the CDN on a domain, add a `routes` entry with `custom_domain: true` to
 `library/worker/wrangler.jsonc`.
 

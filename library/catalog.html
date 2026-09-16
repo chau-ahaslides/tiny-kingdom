@@ -70,8 +70,9 @@ let key = new URLSearchParams(location.search).get('key');
 try { if (key) localStorage.setItem('lib-key', key); else key = localStorage.getItem('lib-key'); } catch {}
 if (new URLSearchParams(location.search).has('key')) history.replaceState(null, '', location.pathname);
 for (const [id, f] of [['l-guide', 'llms.txt'], ['l-manifest', 'manifest.json'], ['l-packs', 'packs.json']]) document.getElementById(id).href = key ? `${f}?key=${encodeURIComponent(key)}` : f;
-fetch('manifest.json', { headers: key ? { authorization: `Bearer ${key}` } : {} })
-  .then((r) => { if (r.status === 401) throw new Error('open this page as /?key=<library read token> (TINY_KINGDOM_LIB_READ_TOKEN)'); return r.json(); })
+// Without a key the request still carries an AhaSlides login (the Cloudflare Access cookie set at /catalog).
+fetch('manifest.json', { headers: key ? { authorization: `Bearer ${key}` } : {}, credentials: 'same-origin' })
+  .then((r) => { if (r.status === 401) throw new Error('sign in with your AhaSlides account at /catalog, or open this page as /?key=<library read token> (TINY_KINGDOM_LIB_READ_TOKEN)'); return r.json(); })
   .then(render).catch((e) => { document.getElementById('packs').textContent = String(e.message || e); });
 
 function render(m) {

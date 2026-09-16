@@ -124,6 +124,32 @@ export function originAllowed(origin) {
   return typeof origin === 'string' && ALLOWED_ORIGIN.test(origin);
 }
 
+/**
+ * Verify a Cloudflare Access JWT (RS256) against the team's JWKS `keys`. Returns the payload, or null
+ * when the signature, audience, issuer or expiry does not check out. Pure WebCrypto, so it runs in
+ * the worker and in Node tests alike.
+ */
+export async function verifyAccessJwt(token, { keys, aud, issuer, now = Date.now() / 1000 }) {
+  try {
+    const [h, p, s] = String(token || '').split('.');
+    if (!s) return null;
+    const b64 = (x) => Uint8Array.from(atob(x.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+    const dec = (x) => JSON.parse(new TextDecoder().decode(b64(x)));
+    const header = dec(h), payload = dec(p);
+    if (header.alg !== 'RS256') return null;
+    const jwk = (keys || []).find((k) => k.kid === header.kid);
+    if (!jwk) return null;
+    const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64(s), new TextEncoder().encode(`${h}.${p}`));
+    if (!ok) return null;
+    const auds = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (aud && !auds.includes(aud)) return null;
+    if (issuer && payload.iss !== issuer) return null;
+    if (typeof payload.exp === 'number' && payload.exp < now) return null;
+    return payload;
+  } catch { return null; }
+}
+
 export const MIME = {
   m4a: 'audio/mp4', mp3: 'audio/mpeg', ogg: 'audio/ogg', wav: 'audio/wav',
   png: 'image/png', gif: 'image/gif', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml',

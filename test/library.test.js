@@ -110,3 +110,25 @@ test('map helpers: parseCell, expandRows, iso projection', async () => {
   assert.equal(g.layers[0].solid, true);
   assert.deepEqual(g.objects[0], { type: 'spawn', name: 'spawn', x: 1, y: 2 });
 });
+
+test('verifyAccessJwt: signature, audience, issuer, expiry', async () => {
+  const { verifyAccessJwt } = await import('../library/lib.mjs');
+  const { publicKey, privateKey } = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+  const jwk = { ...(await crypto.subtle.exportKey('jwk', publicKey)), kid: 'k1' };
+  const b64 = (o) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url');
+  const sign = async (payload, kid = 'k1') => {
+    const head = `${b64({ alg: 'RS256', kid })}.${b64(payload)}`;
+    const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', privateKey, new TextEncoder().encode(head));
+    return `${head}.${Buffer.from(sig).toString('base64url')}`;
+  };
+  const now = 1_800_000_000;
+  const good = { aud: ['app-aud'], iss: 'https://team.cloudflareaccess.com', exp: now + 600, email: 'chau@ahaslides.com' };
+  const opts = { keys: [jwk], aud: 'app-aud', issuer: 'https://team.cloudflareaccess.com', now };
+  assert.equal((await verifyAccessJwt(await sign(good), opts))?.email, 'chau@ahaslides.com');
+  assert.equal(await verifyAccessJwt(await sign({ ...good, aud: 'other' }), opts), null, 'wrong audience');
+  assert.equal(await verifyAccessJwt(await sign({ ...good, iss: 'https://evil' }), opts), null, 'wrong issuer');
+  assert.equal(await verifyAccessJwt(await sign({ ...good, exp: now - 1 }), opts), null, 'expired');
+  assert.equal(await verifyAccessJwt(await sign(good, 'k2'), opts), null, 'unknown key id');
+  const t = await sign(good); assert.equal(await verifyAccessJwt(t.slice(0, -4) + 'AAAA', opts), null, 'tampered signature');
+  assert.equal(await verifyAccessJwt('not.a.jwt', opts), null);
+});

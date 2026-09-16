@@ -426,8 +426,8 @@ fs.copyFileSync(path.join(HERE, 'catalog.html'), path.join(OUT, 'index.html'));
 
 // The guide, served from the CDN itself as llms.txt (the whole of docs/asset-library.md, live base URL baked in,
 // a one-paragraph summary on top so an agent that reads only the first lines still knows what is here).
-const LIB_URL = (process.env.LIB_URL || 'https://tiny-kingdom-lib.ahaslides-game.workers.dev').replace(/\/+$/, '');
-const guide = fs.readFileSync(path.join(HERE, '..', 'docs', 'asset-library.md'), 'utf8').replace(/https:\/\/tiny-kingdom-lib\.[^\s`]+/g, LIB_URL);
+const LIB_URL = (process.env.LIB_URL || 'https://games.ahaslides.io').replace(/\/+$/, '');
+const guide = fs.readFileSync(path.join(HERE, '..', 'docs', 'asset-library.md'), 'utf8').replace(/https:\/\/games\.ahaslides\.io/g, LIB_URL);
 fs.writeFileSync(path.join(OUT, 'llms.txt'), `# AhaSlides games asset library
 
 > Free game art, sound effects and 3D models (${files.length} files, ${(manifest.bytes / 1048576).toFixed(0)} MB, ${Object.keys(packs).length} packs), all licensed for commercial use, plus three.js and PixiJS under ${LIB_URL}/vendor/, served for AhaSlides games (CORS for *.ahaslides.com/.io/.ai). Reference these URLs from game code; never inline assets or libraries. Files live at ${LIB_URL}/<path>; exact paths and metadata are in ${LIB_URL}/manifest.json, pack licences and credits in ${LIB_URL}/packs.json, a browsable catalog at ${LIB_URL}/. The full guide follows.
