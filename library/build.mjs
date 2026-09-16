@@ -19,6 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cleanName, cleanPath, imageSize, mimeOf, parseEffectSheet, parsePixelCombat, PIXEL_COMBAT_CAT, routeDest, slug, wavDuration } from './lib.mjs';
+import { parseCell } from './aha-assets.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (process.env.LIB_SRC || path.join(os.homedir(), 'Downloads', 'Game asset')).replace(/^~/, os.homedir());
@@ -201,7 +202,65 @@ function planPixelEffects(pack, root, rels) {
   }
 }
 
-const HANDLERS = { 'sfx-folders': planSfxFolders, 'pixel-combat': planPixelCombat, 'pixel-effects': planPixelEffects };
+function planMaps(pack, root, rels) {
+  // library/maps/<pack>/<name>.json -> maps/<pack>/<name>.json; validated against the planned files below.
+  for (const rel of rels) {
+    if (!/\.json$/i.test(rel) || GLOBAL_SKIP.some((re) => re.test(rel))) continue;
+    const data = JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'));
+    add({ src: path.join(root, rel), dst: `${pack.dest}/${cleanPath(rel)}`, pack: pack.id, convert: false,
+      meta: { kind: data.kind === 'scene' ? 'scene' : 'map', name: data.name, basedOn: data.basedOn || null, description: data.description || null, ...(data.size ? { size: data.size } : {}), ...(data.iso ? { iso: true } : {}) },
+      validate: data });
+  }
+}
+
+/** Every tileset, sprite and model a map refers to must be a planned file; every cell must parse and fit its sheet. */
+function validateMap(it) {
+  const data = it.validate, errors = [];
+  const exists = (p) => seen.has(p);
+  const sizeOf = (p) => imageSize(fs.readFileSync(seen.get(p)));
+  if (data.kind === 'scene') {
+    for (const p of data.placements || []) { const f = /\.(glb|gltf)$/.test(p.model) ? p.model : `${data.models || ''}${p.model}.gltf`; if (!exists(f)) errors.push(`model ${f}`); }
+  } else {
+    const sets = data.tilesets || (data.tileset ? { main: data.tileset } : {});
+    const cols = {};
+    for (const [k, v] of Object.entries(sets)) {
+      const url = typeof v === 'string' ? v : v.url;
+      if (!exists(url)) { errors.push(`tileset ${url}`); continue; }
+      const cell = (typeof v === 'object' && v.cell) || data.cell || cellOfPlanned(url);
+      if (!cell) { errors.push(`tileset ${url}: no cell size known`); continue; }
+      const s = sizeOf(url); cols[k] = Math.floor(s.width / cell[0]); cols[`${k}:rows`] = Math.floor(s.height / cell[1]);
+    }
+    const first = Object.keys(sets)[0];
+    const layers = Array.isArray(data.layers) ? data.layers : Object.entries(data.layers || {}).map(([name, rows]) => (Array.isArray(rows) || typeof rows === 'string' ? { name, rows } : { name, ...rows }));
+    for (const l of layers) {
+      const key = l.tileset || first; if (!(key in cols)) { errors.push(`layer ${l.name}: tileset ${key}`); continue; }
+      const max = cols[key] * cols[`${key}:rows`];
+      const check = (tok, where) => { try { const i = parseCell(tok, cols[key]); if (i > max) errors.push(`${where}: cell ${tok} is outside ${key} (${cols[key]}x${cols[`${key}:rows`]})`); } catch (e) { errors.push(`${where}: ${e.message}`); } };
+      if (l.fill) check(l.fill, `layer ${l.name} fill`);
+      const legend = l.legend || data.legend || null;
+      for (const row of (typeof l.rows === 'string' ? l.rows.split(/\r?\n/) : l.rows || [])) {
+        const toks = Array.isArray(row) ? row : legend && !/\s/.test(row.trim()) ? [...row].map((ch) => legend[ch] ?? (ch === ' ' || ch === '.' ? 0 : ch)) : row.trim().split(/\s+/);
+        toks.forEach((tok) => { if (tok !== '~') check(tok, `layer ${l.name}`); });
+      }
+    }
+    for (const st of data.stamps || []) { const l = layers.find((x) => x.name === st.layer) || layers[0]; const key = l?.tileset || first; if (key in cols) { try { parseCell(st.from, cols[key]); } catch (e) { errors.push(`stamp ${st.from}: ${e.message}`); } } }
+    for (const im of data.images || []) if (!exists(im.src)) errors.push(`image ${im.src}`);
+    for (const o of data.objects || []) if (o.sprite && !exists(o.sprite)) errors.push(`object sprite ${o.sprite}`);
+  }
+  return errors;
+}
+function cellOfPlanned(url) {
+  // the pack's cell rule for this planned file (same lookup the manifest uses later)
+  const it = items.find((i) => i.dst === url); if (!it) return null;
+  if (it.meta.cell) return it.meta.cell;
+  const p = packsFile.packs.find((x) => x.id === it.pack); if (!p) return null;
+  const d = typeof p.dest === 'string' ? p.dest : Object.values(p.dest)[0];
+  const rel = url.startsWith(`${d}/`) ? url.slice(d.length + 1) : url;
+  for (const [re, cell] of Object.entries(p.cells || {})) if (new RegExp(re).test(rel)) return cell;
+  return p.cell || null;
+}
+
+const HANDLERS = { 'sfx-folders': planSfxFolders, 'pixel-combat': planPixelCombat, 'pixel-effects': planPixelEffects, maps: planMaps };
 
 // ---------- plan ----------
 console.log(`source: ${SRC}\nout:    ${OUT}\njobs:   ${JOBS}  (${HAS_AFCONVERT ? 'afconvert' : 'ffmpeg'})\n`);
@@ -211,12 +270,24 @@ for (const pack of packsFile.packs) {
   if (from.zip) { root = await stage(from.zip); rels = walk(root); }
   else if (from.dir) { root = unwrap(findSource(from.dir)); rels = walk(root); }
   else if (from.npm) { root = await stageNpm(from.npm, from.version); rels = walk(root); }
+  else if (from.repo) { root = path.join(HERE, from.repo); rels = walk(root); }
   else if (from.files) {
     for (const [srcName, dstName] of Object.entries(from.files)) add({ src: findSource(srcName), dst: `${pack.dest}/${dstName}`, pack: pack.id, convert: false, meta: {} });
     continue;
   } else throw new Error(`pack ${pack.id}: unknown from`);
   (HANDLERS[pack.handler] || planGeneric)(pack, root, rels);
   for (const extra of from.extra || []) add({ src: findSource(extra), dst: `${from.extraDest || pack.dest}/${cleanName(extra)}`, pack: pack.id, convert: false, meta: {} });
+}
+
+// Maps are checked against everything planned above before anything is copied.
+{
+  let bad = 0;
+  for (const it of items.filter((i) => i.validate)) {
+    const errors = validateMap(it);
+    for (const e of errors) console.error(`  map ${it.dst}: ${e}`);
+    bad += errors.length;
+  }
+  if (bad) { console.error(`${bad} map problems`); process.exit(1); }
 }
 
 // ---------- execute ----------
@@ -255,6 +326,7 @@ for (const it of items.sort((a, b) => a.dst.localeCompare(b.dst))) {
   if (img) Object.assign(entry, img);
   if (it.convert) { const d = wavDuration(fs.readFileSync(it.src)); if (d != null) entry.duration = d; }
   Object.assign(entry, it.meta);
+  if (it.validate) entry.kind = it.meta.kind;
   files.push(entry);
   const s = (packStats[it.pack] ||= { files: 0, bytes: 0 });
   s.files++; s.bytes += buf.length;

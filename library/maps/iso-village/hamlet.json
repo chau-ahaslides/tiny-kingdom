@@ -1,0 +1,263 @@
+{
+ "name": "Hamlet",
+ "basedOn": "iso-village",
+ "description": "An isometric village square: a dirt crossroads on grass slabs, three cottages, a well, trees, a cart, crates, pots and a lamp. Props are objects with a sheet region, drawn back to front.",
+ "tilesets": {
+  "ground": "sprites/iso-village/Isometric_Assets_1.png"
+ },
+ "size": [
+  9,
+  9
+ ],
+ "iso": true,
+ "isoHeight": 128,
+ "background": "#1f2430",
+ "layers": [
+  {
+   "name": "ground",
+   "tileset": "ground",
+   "rows": [
+    "7a 7a 7a 7a 10i 10h 7a 7a 7a",
+    "7a 7a 7a 10d 10i 7a 7a 7a 7a",
+    "7a 7a 7a 10d 10i 7a 7a 7a 7a",
+    "7a 7a 8f 7a 10i 7a 10h 7a 7a",
+    "10i 10i 10i 10i 10i 10i 10i 10i 10i",
+    "7a 8f 7a 7e 10i 7a 7e 7a 7a",
+    "7a 10h 7a 7a 10i 7a 10h 7a 7a",
+    "8f 7a 7a 7a 10i 8f 7a 7a 10d",
+    "7e 7a 7a 7a 10i 7a 7a 7a 7a"
+   ]
+  }
+ ],
+ "objects": [
+  {
+   "type": "house",
+   "x": 1,
+   "y": 1,
+   "sprite": "sprites/iso-village/Isometric_Assets_3.png",
+   "region": [
+    1,
+    1,
+    4,
+    4
+   ],
+   "anchor": [
+    0.5,
+    0.78
+   ]
+  },
+  {
+   "type": "house",
+   "x": 6,
+   "y": 1,
+   "sprite": "sprites/iso-village/Isometric_Assets_3.png",
+   "region": [
+    6,
+    1,
+    4,
+    5
+   ],
+   "anchor": [
+    0.5,
+    0.82
+   ]
+  },
+  {
+   "type": "house",
+   "x": 1,
+   "y": 6,
+   "sprite": "sprites/iso-village/Isometric_Assets_3.png",
+   "region": [
+    1,
+    5,
+    4,
+    4
+   ],
+   "anchor": [
+    0.5,
+    0.78
+   ]
+  },
+  {
+   "type": "well",
+   "x": 5,
+   "y": 5,
+   "sprite": "sprites/iso-village/Isometric_Assets_3.png",
+   "region": [
+    6,
+    6,
+    2,
+    2
+   ],
+   "anchor": [
+    0.5,
+    0.7
+   ]
+  },
+  {
+   "type": "tree",
+   "x": 7,
+   "y": 7,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    1,
+    7,
+    3,
+    4
+   ],
+   "anchor": [
+    0.5,
+    0.86
+   ]
+  },
+  {
+   "type": "tree",
+   "x": 8,
+   "y": 3,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    5,
+    7,
+    3,
+    4
+   ],
+   "anchor": [
+    0.5,
+    0.86
+   ]
+  },
+  {
+   "type": "cart",
+   "x": 3,
+   "y": 5,
+   "sprite": "sprites/iso-village/Isometric_Assets_4.png",
+   "region": [
+    1,
+    1,
+    2,
+    2
+   ],
+   "anchor": [
+    0.5,
+    0.7
+   ]
+  },
+  {
+   "type": "crate",
+   "x": 6,
+   "y": 6,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    5,
+    2,
+    1,
+    1
+   ],
+   "anchor": [
+    0.5,
+    0.5
+   ]
+  },
+  {
+   "type": "barrel",
+   "x": 7,
+   "y": 6,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    6,
+    2,
+    1,
+    1
+   ],
+   "anchor": [
+    0.5,
+    0.5
+   ]
+  },
+  {
+   "type": "pot",
+   "x": 3,
+   "y": 3,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    1,
+    2,
+    1,
+    1
+   ],
+   "anchor": [
+    0.5,
+    0.5
+   ]
+  },
+  {
+   "type": "rock",
+   "x": 0,
+   "y": 8,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "anchor": [
+    0.5,
+    0.5
+   ]
+  },
+  {
+   "type": "bush",
+   "x": 8,
+   "y": 0,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    8,
+    2,
+    1,
+    1
+   ],
+   "anchor": [
+    0.5,
+    0.5
+   ]
+  },
+  {
+   "type": "lamp",
+   "x": 5,
+   "y": 3,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    10,
+    6,
+    1,
+    2
+   ],
+   "anchor": [
+    0.5,
+    0.75
+   ]
+  },
+  {
+   "type": "sign",
+   "x": 3,
+   "y": 4,
+   "sprite": "sprites/iso-village/Isometric_Assets_2.png",
+   "region": [
+    5,
+    4,
+    1,
+    1
+   ],
+   "anchor": [
+    0.5,
+    0.5
+   ]
+  },
+  {
+   "type": "spawn",
+   "x": 4,
+   "y": 8
+  }
+ ]
+}

@@ -47,8 +47,16 @@
   sprites/&lt;pack&gt;/...                              PNG sheets and frames (width/height in the manifest)
   models/&lt;pack&gt;/...                               glTF / GLB with textures beside them
   music/…  fonts/…                                  the odd track and font</pre>
+<section id="maps" hidden>
+  <h2 style="font-size:16px;margin:18px 0 6px">Starter maps</h2>
+  <p class="meta" style="margin:0 0 10px">One ready-made level per tileset pack, drawn live by <code>aha-assets.js</code> from the same files a game would load. Drag to pan.</p>
+  <div id="maplist" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(440px,1fr));padding:0"></div>
+</section>
 <div id="packs"></div>
 </main>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/0.186.0/build/three.module.js", "three/addons/": "./vendor/three/0.186.0/examples/jsm/" } }
+</script>
 <script>
 const base = location.origin + location.pathname.replace(/\/[^/]*$/, '');
 document.getElementById('base').textContent = base;
@@ -88,6 +96,67 @@ function render(m) {
   }
   const q = document.getElementById('q');
   q.addEventListener('input', () => filter(q.value.trim().toLowerCase(), byPack, m.packs));
+  showMaps(m.entries.filter((e) => e.kind === 'map' || e.kind === 'scene'), m.generated);
+}
+
+async function showMaps(maps, version) {
+  if (!maps.length) return;
+  document.getElementById('maps').hidden = false;
+  const list = document.getElementById('maplist');
+  const { assets } = await import(`./aha-assets.js?v=${encodeURIComponent(version)}`);
+  for (const e of maps) {
+    const tile = document.createElement('div'); tile.className = 'tile';
+    tile.innerHTML = `<canvas width="880" height="520" style="width:100%;height:auto;display:block;background:#222;cursor:grab;image-rendering:auto"></canvas>
+      <div class="n" style="font-size:13px;margin-top:6px"><b>${esc(e.name || e.path)}</b> · <code>${esc(e.path)}</code>${e.basedOn ? ' · tiles from <code>' + esc(e.basedOn) + '</code>' : ''}</div>
+      <div class="d">${esc(e.description || '')}</div>`;
+    list.appendChild(tile);
+    const canvas = tile.querySelector('canvas');
+    try { if (e.kind === 'scene') await showScene(assets, e, canvas); else await showMap(assets, e, canvas); }
+    catch (err) { tile.querySelector('.d').textContent = 'failed: ' + (err.message || err); console.error(err); }
+  }
+}
+
+async function showMap(assets, e, canvas) {
+  const map = await assets.map(`${e.path}?v=${e.sha1}`);
+  const ctx = canvas.getContext('2d');
+  const b = map.bounds();
+  const scale = Math.min(canvas.width / b.w, canvas.height / b.h, 4);
+  let camera = [b.x - (canvas.width / scale - b.w) / 2, b.y - (canvas.height / scale - b.h) / 2];
+  let drag = null;
+  canvas.addEventListener('pointerdown', (ev) => { drag = [ev.clientX, ev.clientY, ...camera]; canvas.setPointerCapture(ev.pointerId); });
+  canvas.addEventListener('pointermove', (ev) => { if (!drag) return; const k = canvas.width / canvas.clientWidth / scale; camera = [drag[2] - (ev.clientX - drag[0]) * k, drag[3] - (ev.clientY - drag[1]) * k]; });
+  canvas.addEventListener('pointerup', () => { drag = null; });
+  const t0 = performance.now();
+  (function frame(now) {
+    if (!canvas.isConnected) return;
+    ctx.fillStyle = map.spec.background || '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    map.draw(ctx, { camera, scale, t: now - t0, smooth: map.iso });
+    requestAnimationFrame(frame);
+  })(t0);
+}
+
+async function showScene(assets, e, canvas) {
+  const [THREE, { GLTFLoader }, scene] = await Promise.all([import('three'), import('three/addons/loaders/GLTFLoader.js'), assets.scene(`${e.path}?v=${e.sha1}`)]);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(canvas.width, canvas.height, false);
+  const world = new THREE.Scene(); world.background = new THREE.Color('#9fc7e8'); world.fog = new THREE.Fog('#9fc7e8', 70, 140);
+  const cam = new THREE.PerspectiveCamera(45, canvas.width / canvas.height, 0.1, 100);
+  const c = scene.data.camera || { position: [0, 9, 16], lookAt: [0, 1, 0] };
+  world.add(new THREE.HemisphereLight('#ffffff', '#557744', 1.6));
+  const sun = new THREE.DirectionalLight('#fff4d6', 2.2); sun.position.set(8, 14, 6); world.add(sun);
+  world.add(await scene.build({ THREE, GLTFLoader }));
+  let angle = 0, drag = null;
+  canvas.addEventListener('pointerdown', (ev) => { drag = [ev.clientX, angle]; canvas.setPointerCapture(ev.pointerId); });
+  canvas.addEventListener('pointermove', (ev) => { if (drag) angle = drag[1] + (ev.clientX - drag[0]) * 0.01; });
+  canvas.addEventListener('pointerup', () => { drag = null; });
+  const r = Math.hypot(c.position[0], c.position[2]);
+  (function frame() {
+    if (!canvas.isConnected) return;
+    if (!drag) angle += 0.0025;
+    cam.position.set(Math.sin(angle) * r, c.position[1], Math.cos(angle) * r); cam.lookAt(...c.lookAt);
+    renderer.render(world, cam);
+    requestAnimationFrame(frame);
+  })();
 }
 
 function fill(body, p, entries) {

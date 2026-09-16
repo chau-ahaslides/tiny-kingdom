@@ -1,0 +1,766 @@
+{
+ "name": "Glade",
+ "kind": "scene",
+ "basedOn": "kaykit-forest",
+ "description": "A 3D forest clearing: a ring of 26 trees around open ground, with bushes, rocks and grass tufts; a green ground plane 56 units square. Build it with assets.scene(url).build({ THREE, GLTFLoader }).",
+ "models": "models/kaykit-forest/Assets/gltf/",
+ "ground": {
+  "size": [
+   56,
+   56
+  ],
+  "color": "#4f8a3d"
+ },
+ "camera": {
+  "position": [
+   0,
+   34,
+   30
+  ],
+  "lookAt": [
+   0,
+   0,
+   -2
+  ]
+ },
+ "objects": [
+  {
+   "type": "spawn",
+   "at": [
+    0,
+    0,
+    4
+   ]
+  }
+ ],
+ "placements": [
+  {
+   "model": "Tree_2_A_Color1",
+   "at": [
+    17.84,
+    0,
+    0.77
+   ],
+   "rotate": 254,
+   "scale": 1.16
+  },
+  {
+   "model": "Tree_1_B_Color1",
+   "at": [
+    17.25,
+    0,
+    6.19
+   ],
+   "rotate": 45,
+   "scale": 0.97
+  },
+  {
+   "model": "Tree_2_D_Color1",
+   "at": [
+    15.81,
+    0,
+    8.78
+   ],
+   "rotate": 25,
+   "scale": 0.9
+  },
+  {
+   "model": "Tree_4_A_Color1",
+   "at": [
+    12.95,
+    0,
+    11.7
+   ],
+   "rotate": 69,
+   "scale": 1.25
+  },
+  {
+   "model": "Tree_1_A_Color1",
+   "at": [
+    10.24,
+    0,
+    14.89
+   ],
+   "rotate": 46,
+   "scale": 0.99
+  },
+  {
+   "model": "Tree_2_D_Color1",
+   "at": [
+    4.99,
+    0,
+    19.33
+   ],
+   "rotate": 52,
+   "scale": 1.17
+  },
+  {
+   "model": "Tree_4_B_Color1",
+   "at": [
+    0.81,
+    0,
+    19.28
+   ],
+   "rotate": 121,
+   "scale": 1.09
+  },
+  {
+   "model": "Tree_3_B_Color1",
+   "at": [
+    -4.4,
+    0,
+    19.05
+   ],
+   "rotate": 52,
+   "scale": 1.16
+  },
+  {
+   "model": "Tree_3_B_Color1",
+   "at": [
+    -8.92,
+    0,
+    17.27
+   ],
+   "rotate": 281,
+   "scale": 1.06
+  },
+  {
+   "model": "Tree_2_D_Color1",
+   "at": [
+    -12.82,
+    0,
+    13.96
+   ],
+   "rotate": 333,
+   "scale": 1.11
+  },
+  {
+   "model": "Tree_2_B_Color1",
+   "at": [
+    -14.32,
+    0,
+    9.73
+   ],
+   "rotate": 33,
+   "scale": 1.11
+  },
+  {
+   "model": "Tree_4_A_Color1",
+   "at": [
+    -18.03,
+    0,
+    6.34
+   ],
+   "rotate": 244,
+   "scale": 1.02
+  },
+  {
+   "model": "Tree_3_B_Color1",
+   "at": [
+    -17.77,
+    0,
+    2.92
+   ],
+   "rotate": 207,
+   "scale": 1.14
+  },
+  {
+   "model": "Tree_3_B_Color1",
+   "at": [
+    -17.69,
+    0,
+    -1.76
+   ],
+   "rotate": 138,
+   "scale": 1.17
+  },
+  {
+   "model": "Tree_2_D_Color1",
+   "at": [
+    -18.01,
+    0,
+    -5.8
+   ],
+   "rotate": 22,
+   "scale": 1.3
+  },
+  {
+   "model": "Tree_2_C_Color1",
+   "at": [
+    -17.31,
+    0,
+    -9.93
+   ],
+   "rotate": 20,
+   "scale": 1.26
+  },
+  {
+   "model": "Tree_2_B_Color1",
+   "at": [
+    -12.4,
+    0,
+    -11.78
+   ],
+   "rotate": 354,
+   "scale": 1.06
+  },
+  {
+   "model": "Tree_1_C_Color1",
+   "at": [
+    -8.61,
+    0,
+    -16.4
+   ],
+   "rotate": 75,
+   "scale": 1.24
+  },
+  {
+   "model": "Tree_1_A_Color1",
+   "at": [
+    -5.63,
+    0,
+    -16.45
+   ],
+   "rotate": 268,
+   "scale": 1.27
+  },
+  {
+   "model": "Tree_2_C_Color1",
+   "at": [
+    -0.76,
+    0,
+    -17.19
+   ],
+   "rotate": 189,
+   "scale": 0.99
+  },
+  {
+   "model": "Tree_1_B_Color1",
+   "at": [
+    3.57,
+    0,
+    -18.32
+   ],
+   "rotate": 31,
+   "scale": 1.17
+  },
+  {
+   "model": "Tree_1_A_Color1",
+   "at": [
+    9.51,
+    0,
+    -17.41
+   ],
+   "rotate": 124,
+   "scale": 0.9
+  },
+  {
+   "model": "Tree_2_D_Color1",
+   "at": [
+    12.43,
+    0,
+    -15.51
+   ],
+   "rotate": 118,
+   "scale": 0.92
+  },
+  {
+   "model": "Tree_4_B_Color1",
+   "at": [
+    15.71,
+    0,
+    -12.29
+   ],
+   "rotate": 322,
+   "scale": 0.91
+  },
+  {
+   "model": "Tree_1_C_Color1",
+   "at": [
+    17.16,
+    0,
+    -7.09
+   ],
+   "rotate": 125,
+   "scale": 0.96
+  },
+  {
+   "model": "Tree_2_C_Color1",
+   "at": [
+    16.96,
+    0,
+    -2.37
+   ],
+   "rotate": 206,
+   "scale": 1.06
+  },
+  {
+   "model": "Bush_2_A_Color1",
+   "at": [
+    1.26,
+    0,
+    -8.62
+   ],
+   "rotate": 334
+  },
+  {
+   "model": "Bush_2_A_Color1",
+   "at": [
+    -0.02,
+    0,
+    -7.62
+   ],
+   "rotate": 182
+  },
+  {
+   "model": "Bush_1_C_Color1",
+   "at": [
+    3.54,
+    0,
+    9.34
+   ],
+   "rotate": 320
+  },
+  {
+   "model": "Bush_2_A_Color1",
+   "at": [
+    4.85,
+    0,
+    3.92
+   ],
+   "rotate": 23
+  },
+  {
+   "model": "Bush_1_C_Color1",
+   "at": [
+    -8.64,
+    0,
+    -1.42
+   ],
+   "rotate": 22
+  },
+  {
+   "model": "Bush_2_C_Color1",
+   "at": [
+    2.19,
+    0,
+    6.92
+   ],
+   "rotate": 108
+  },
+  {
+   "model": "Bush_4_B_Color1",
+   "at": [
+    -5.56,
+    0,
+    2.73
+   ],
+   "rotate": 154
+  },
+  {
+   "model": "Bush_3_A_Color1",
+   "at": [
+    1.37,
+    0,
+    4.86
+   ],
+   "rotate": 114
+  },
+  {
+   "model": "Bush_3_A_Color1",
+   "at": [
+    -6.41,
+    0,
+    0.05
+   ],
+   "rotate": 359
+  },
+  {
+   "model": "Bush_3_A_Color1",
+   "at": [
+    -5.43,
+    0,
+    3.99
+   ],
+   "rotate": 292
+  },
+  {
+   "model": "Bush_1_C_Color1",
+   "at": [
+    -5.52,
+    0,
+    1.18
+   ],
+   "rotate": 189
+  },
+  {
+   "model": "Bush_1_C_Color1",
+   "at": [
+    -6.99,
+    0,
+    -5.3
+   ],
+   "rotate": 288
+  },
+  {
+   "model": "Bush_3_A_Color1",
+   "at": [
+    -2.06,
+    0,
+    4.83
+   ],
+   "rotate": 201
+  },
+  {
+   "model": "Bush_1_C_Color1",
+   "at": [
+    -1.34,
+    0,
+    -6.65
+   ],
+   "rotate": 210
+  },
+  {
+   "model": "Rock_1_D_Color1",
+   "at": [
+    -1.97,
+    0,
+    5
+   ],
+   "rotate": 115
+  },
+  {
+   "model": "Rock_2_A_Color1",
+   "at": [
+    5.67,
+    0,
+    -1.77
+   ],
+   "rotate": 181
+  },
+  {
+   "model": "Rock_3_B_Color1",
+   "at": [
+    -7.4,
+    0,
+    2.58
+   ],
+   "rotate": 77
+  },
+  {
+   "model": "Rock_1_A_Color1",
+   "at": [
+    2.01,
+    0,
+    1.55
+   ],
+   "rotate": 188
+  },
+  {
+   "model": "Rock_1_D_Color1",
+   "at": [
+    -0.68,
+    0,
+    3.11
+   ],
+   "rotate": 0
+  },
+  {
+   "model": "Rock_2_C_Color1",
+   "at": [
+    4.15,
+    0,
+    7.22
+   ],
+   "rotate": 96
+  },
+  {
+   "model": "Rock_2_A_Color1",
+   "at": [
+    0.29,
+    0,
+    2.82
+   ],
+   "rotate": 181
+  },
+  {
+   "model": "Rock_1_D_Color1",
+   "at": [
+    -5.37,
+    0,
+    0.4
+   ],
+   "rotate": 257
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    -2.67,
+    0,
+    -1.03
+   ],
+   "rotate": 94
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    -6.15,
+    0,
+    3.47
+   ],
+   "rotate": 264
+  },
+  {
+   "model": "Grass_2_A_Color1",
+   "at": [
+    0,
+    0,
+    -0.02
+   ],
+   "rotate": 305
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    -1.35,
+    0,
+    3.59
+   ],
+   "rotate": 44
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    7.1,
+    0,
+    -2.68
+   ],
+   "rotate": 64
+  },
+  {
+   "model": "Grass_2_A_Color1",
+   "at": [
+    4.79,
+    0,
+    -0.09
+   ],
+   "rotate": 74
+  },
+  {
+   "model": "Grass_1_A_Color1",
+   "at": [
+    -0.14,
+    0,
+    -8.58
+   ],
+   "rotate": 287
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    0.29,
+    0,
+    -0.84
+   ],
+   "rotate": 12
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    -6.92,
+    0,
+    -2.19
+   ],
+   "rotate": 78
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    -4.28,
+    0,
+    0.78
+   ],
+   "rotate": 351
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    5.02,
+    0,
+    0.18
+   ],
+   "rotate": 349
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    0.37,
+    0,
+    7.55
+   ],
+   "rotate": 266
+  },
+  {
+   "model": "Grass_1_A_Color1",
+   "at": [
+    -6.05,
+    0,
+    5.16
+   ],
+   "rotate": 243
+  },
+  {
+   "model": "Grass_2_A_Color1",
+   "at": [
+    6.69,
+    0,
+    3.03
+   ],
+   "rotate": 83
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    7.04,
+    0,
+    -6.75
+   ],
+   "rotate": 298
+  },
+  {
+   "model": "Grass_1_A_Color1",
+   "at": [
+    0.61,
+    0,
+    -1.5
+   ],
+   "rotate": 271
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    -0.89,
+    0,
+    -4.67
+   ],
+   "rotate": 260
+  },
+  {
+   "model": "Grass_2_A_Color1",
+   "at": [
+    -5.03,
+    0,
+    -3.85
+   ],
+   "rotate": 18
+  },
+  {
+   "model": "Grass_1_A_Color1",
+   "at": [
+    -2.08,
+    0,
+    -5.9
+   ],
+   "rotate": 1
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    -0.35,
+    0,
+    -8.13
+   ],
+   "rotate": 192
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    1.68,
+    0,
+    9.15
+   ],
+   "rotate": 91
+  },
+  {
+   "model": "Grass_2_A_Color1",
+   "at": [
+    4.38,
+    0,
+    -4.39
+   ],
+   "rotate": 121
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    -0.88,
+    0,
+    2.9
+   ],
+   "rotate": 330
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    3.78,
+    0,
+    -0.09
+   ],
+   "rotate": 1
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    -8.73,
+    0,
+    2.85
+   ],
+   "rotate": 182
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    6.31,
+    0,
+    -1.57
+   ],
+   "rotate": 143
+  },
+  {
+   "model": "Grass_2_A_Color1",
+   "at": [
+    3.44,
+    0,
+    6.15
+   ],
+   "rotate": 160
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    0.23,
+    0,
+    1.82
+   ],
+   "rotate": 11
+  },
+  {
+   "model": "Grass_1_B_Color1",
+   "at": [
+    0.08,
+    0,
+    -0.4
+   ],
+   "rotate": 99
+  },
+  {
+   "model": "Grass_2_C_Color1",
+   "at": [
+    -6.43,
+    0,
+    -0.53
+   ],
+   "rotate": 276
+  }
+ ]
+}

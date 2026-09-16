@@ -16,6 +16,7 @@ LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
 | `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. **Gated.** |
 | `LIB/` | The catalog: every pack, its licence, thumbnails, play buttons, a filter box. **Gated**: open it once as `LIB/?key=<token>`. |
 | `LIB/vendor/…` | three.js and PixiJS, pinned by version (see "Libraries on the CDN"). |
+| `LIB/maps/<pack>/…` | A starter map per tileset pack, in the library's map format (see "Maps"). |
 | `library/packs.json` in this repo | The same pack index, plus the build rules. Edit this to add or change a pack. |
 
 **Reference, never inline.** Game code points at these URLs. Do not copy assets into a game's
@@ -88,6 +89,90 @@ has no cell for an image (single pictures, previews, the large RPG Maker battler
 `assets.sheet(path, { cell: [150, 150] })`, or an ad-hoc animation:
 `sheet.draw(ctx, { row: 2, frames: 6 }, t, x, y)`. Playback rates default to the pack's `fps`;
 override per call with `{ fps: 12 }`. Pixel art is drawn unsmoothed unless `{ smooth: true }`.
+
+## Maps and other game data
+
+A map is content that belongs to one game, so it is a data file the game loads, never a layout
+typed into code. The library provides the loader, the format, and a starter map per tileset pack;
+each game keeps its own maps in its own folder (`public/maps/<game>/<level>.json`), not on the CDN.
+
+**Start from a starter map.** Every tileset pack has one under `maps/<pack>/`, drawn live on the
+catalog page:
+
+| map | tiles | what |
+|---|---|---|
+| `maps/32rogues/crypt.json` | 32rogues | four dungeon rooms, doors, animated torches and water, chest, stairs, enemies as objects |
+| `maps/brackeys-platformer/meadow.json` | Brackeys | a side-scrolling level: rises, pits, floating platforms, coins, fruit, slimes |
+| `maps/gandalf-city-tiles/street.json` | GandalfHardcore city | parallax skyline, six facades, sidewalk and road, props |
+| `maps/mana-seed-forest-winter/clearing.json` | Mana Seed winter | top-down snow clearing with a tree, a cave, a frozen pond |
+| `maps/iso-village/hamlet.json` | Xilurus isometric | isometric square with cottages, a well, trees, a cart (props as objects) |
+| `maps/kaykit-forest/glade.json` | KayKit forest (3D) | a scene file: 78 glTF placements around a clearing |
+
+The three steps for a new game: copy the closest starter into the game's folder, edit the data
+(rows, stamps, objects), and load it. The code stays generic.
+
+```js
+const map = await assets.map('maps/32rogues/crypt.json');      // or the game's own file
+map.width, map.height, map.cell                                 // 26, 18, [32, 32]
+map.solid(x, y)                                                 // true on a wall or outside the map
+map.tile('props', x, y)                                         // cell index, 0 = empty
+map.find('enemy')                                               // objects by type; map.objects has them all
+const spawn = map.find('spawn')[0];
+function frame(now) {
+  map.draw(ctx, { camera: [camX, camY], scale: 2, t: now });   // layers, animated tiles, props
+}
+```
+
+**The format** (`GameMap` reads this or Tiled JSON, see below):
+
+```jsonc
+{
+  "name": "Crypt",
+  "tilesets": { "tiles": "sprites/32rogues/tiles.png", "anim": "sprites/32rogues/animated-tiles.png" },
+  "size": [26, 18],                       // tiles; cell size comes from each tileset's sidecar
+  "background": "#0e0c12",                // for the page to fill behind the map
+  "legend": { "#": "3a", ".": "7b" },     // optional: one character per cell in string rows
+  "layers": [
+    { "name": "floor", "tileset": "tiles", "fill": "7b", "rows": ["7b 7c 7b …", "…"] },
+    { "name": "walls", "tileset": "tiles", "solid": true, "rows": "###..##\n#.....#" },
+    { "name": "fire", "tileset": "anim", "animate": { "frames": 6, "fps": 9 }, "rows": [] }
+  ],
+  "stamps": [ { "layer": "props", "at": [3, 2], "from": "26d", "size": [1, 2] } ],   // copy a block of cells
+  "images": [ { "src": "sprites/…/sky.png", "parallax": [0.2, 0], "repeat": "x" } ], // behind the layers
+  "objects": [
+    { "type": "spawn", "x": 3, "y": 4 },
+    { "type": "enemy", "kind": "goblin", "x": 7, "y": 3, "sprite": "sprites/32rogues/monsters.png", "frame": "1c" },
+    { "type": "coin", "x": 8, "y": 9, "sprite": "sprites/brackeys-platformer/coin.png", "anim": "play" },
+    { "type": "house", "x": 1, "y": 1, "sprite": "sprites/iso-village/Isometric_Assets_3.png", "region": [1, 1, 4, 4], "anchor": [0.5, 0.78] }
+  ],
+  "iso": false                            // true for isometric (with "isoHeight": diamond height, default half the cell)
+}
+```
+
+Cells are written the way the packs' `.txt` legends count: `"7b"` is row 7, column b (1-based);
+`"7.2"` is the same; a plain number is a 1-based row-major index (Tiled's convention); `"."`, `0`
+or `""` is empty and `"~"` keeps the layer's `fill`. A row is a space-separated string, an array, or
+(with a `legend`) one character per cell. `stamps` copy a rectangle of sheet cells into a layer, which
+is how multi-tile things (a tree, a building facade, a cave mouth) go in. `animate` steps a layer's
+cells along their row (the 32rogues torches are six frames per row). Objects are the game's data,
+whatever fields it likes; those with a `sprite` (plus `frame`, `anim`, or a `region` of cells) are
+drawn as props, sorted by depth, with `anchor` [ax, ay] against the tile's base. The build refuses a
+map whose tilesets, cells or sprites do not exist.
+
+Tiled (`.tmj`) files load too, with embedded tilesets whose image paths resolve relative to the map
+file, tile layers (a `solid` custom property marks collision), object groups, and isometric
+orientation. External `.tsx` tilesets are not supported: embed them.
+
+**3D scenes** work the same way with glTF: a JSON list of placements, built into a `THREE.Group`.
+
+```js
+const scene = await assets.scene('maps/kaykit-forest/glade.json');
+world.add(await scene.build({ THREE, GLTFLoader }));             // one load per model, cloned per placement
+// { "models": "models/kaykit-forest/Assets/gltf/", "ground": { "size": [32, 32], "color": "#4f8a3d" },
+//   "placements": [ { "model": "Tree_1_A_Color1", "at": [3, 0, -8], "rotate": 120, "scale": 1.1 }, … ] }
+```
+
+Enemy tables, wave scripts, dialogue: same rule. Data file per game, loaded by URL.
 
 ## Libraries on the CDN: three.js and PixiJS
 

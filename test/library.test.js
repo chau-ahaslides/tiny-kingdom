@@ -84,3 +84,29 @@ test('originAllowed: AhaSlides sites, the games account, localhost', async () =>
   for (const ok of ['https://ahaslides.com', 'https://app.ahaslides.com', 'https://presenter.staging.ahaslides.com', 'https://ahaslides.io', 'https://live-deck.ahaslides.ai', 'https://tiny-kingdom.ahaslides-game.workers.dev', 'http://localhost:8791', 'http://127.0.0.1']) assert.equal(originAllowed(ok), true, ok);
   for (const no of ['http://ahaslides.com', 'https://ahaslides.com.evil.io', 'https://notahaslides.com', 'https://ahaslides.net', 'https://evil.workers.dev', 'https://localhost', 'null', undefined]) assert.equal(originAllowed(no), false, String(no));
 });
+
+test('map helpers: parseCell, expandRows, iso projection', async () => {
+  const { parseCell, expandRows, isoToScreen, screenToIso, tiledToGrid } = await import('../library/aha-assets.js');
+  assert.equal(parseCell('7b', 17), 6 * 17 + 2);
+  assert.equal(parseCell('7.2', 17), 6 * 17 + 2);
+  assert.equal(parseCell('1a', 17), 1);
+  assert.equal(parseCell(42, 17), 42);
+  assert.equal(parseCell('.', 17), 0);
+  assert.equal(parseCell('', 17), 0);
+  assert.throws(() => parseCell('x9', 17));
+  const cells = expandRows(['1a 2a .', '3a'], 3, 2, 4, { fill: '4d' });
+  assert.deepEqual([...cells], [1, 5, 0, 9, 16, 16]);
+  const legend = expandRows(['#.#', '.~.'], 3, 2, 4, { legend: { '#': '1a' }, fill: '2b' });
+  assert.deepEqual([...legend], [1, 0, 1, 0, 6, 0]);
+  assert.deepEqual(isoToScreen(2, 1, 256, 128), [128, 192]);
+  const [tx, ty] = screenToIso(128, 192, 256, 128);
+  assert.ok(Math.abs(tx - 2) < 1e-9 && Math.abs(ty - 1) < 1e-9);
+  const g = tiledToGrid({ width: 2, height: 1, tilewidth: 16, tileheight: 16, orientation: 'orthogonal',
+    tilesets: [{ name: 'world', firstgid: 1, image: '../../sprites/p/world.png', tilewidth: 16, tileheight: 16 }],
+    layers: [{ type: 'tilelayer', name: 'ground', width: 2, height: 1, data: [1, 0x80000000 | 3], properties: [{ name: 'solid', value: true }] },
+             { type: 'objectgroup', objects: [{ name: 'spawn', x: 16, y: 32 }] }] }, 'maps/p/a.json');
+  assert.equal(g.tilesets.world.url, 'sprites/p/world.png');
+  assert.deepEqual(g.layers[0].rows, [[1, 3]]);
+  assert.equal(g.layers[0].solid, true);
+  assert.deepEqual(g.objects[0], { type: 'spawn', name: 'spawn', x: 1, y: 2 });
+});

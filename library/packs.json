@@ -1,5 +1,5 @@
 {
-  "$comment": "Source of truth for the asset library. One entry per pack. `from` says where the pack comes from inside LIB_SRC (a zip, a directory, or loose files); `dest` is the URL prefix on the CDN (a string, or a map of source-prefix -> dest-prefix, longest prefix wins); `skip` are regexes on the source path; `only` keeps just those source prefixes; `handler` picks a special build routine. url/author/license/price are the facts from the pack's page (checked 15 Sep 2026); `licenseFile` quotes the licence shipped inside the zip; `commercial` is yes | credit (yes, attribution required): packs whose free tier is personal-use only or whose origin is unknown are not in the library; `credit` is the attribution line to ship when required. Frame metadata: `cell` [w,h] is the pack-wide grid cell, `cells` maps a path regex (relative to dest) to a cell for files that differ, `animations` maps a name to {row, frames} for sheets laid out one animation per row, `fps` is the intended playback rate, `sequences: true` means one PNG per frame named <Anim>_<n>.png (the build groups them into <Anim>.json). `from.npm` + `from.version` stages a package from npm (npm pack), for libraries hosted under vendor/.",
+  "$comment": "Source of truth for the asset library. One entry per pack. `from` says where the pack comes from inside LIB_SRC (a zip, a directory, or loose files); `dest` is the URL prefix on the CDN (a string, or a map of source-prefix -> dest-prefix, longest prefix wins); `skip` are regexes on the source path; `only` keeps just those source prefixes; `handler` picks a special build routine. url/author/license/price are the facts from the pack's page (checked 15 Sep 2026); `licenseFile` quotes the licence shipped inside the zip; `commercial` is yes | credit (yes, attribution required): packs whose free tier is personal-use only or whose origin is unknown are not in the library; `credit` is the attribution line to ship when required. Frame metadata: `cell` [w,h] is the pack-wide grid cell, `cells` maps a path regex (relative to dest) to a cell for files that differ, `animations` maps a name to {row, frames} for sheets laid out one animation per row, `fps` is the intended playback rate, `sequences: true` means one PNG per frame named <Anim>_<n>.png (the build groups them into <Anim>.json). `from.npm` + `from.version` stages a package from npm (npm pack), for libraries hosted under vendor/. `from.repo` points inside library/ (the starter maps live in library/maps).",
   "packs": [
     {
       "id": "pixel-combat",
@@ -750,6 +750,30 @@
       "licenseFile": null,
       "description": "PixiJS 8 bundles: pixi.min.mjs / pixi.mjs (ES module) and pixi.min.js / pixi.js (script tag, global PIXI).",
       "notes": null
+    },
+    {
+      "id": "starter-maps",
+      "title": "Starter maps",
+      "author": "AhaSlides",
+      "authorUrl": null,
+      "url": null,
+      "source": "this repo",
+      "price": "free",
+      "kind": "maps",
+      "dest": "maps",
+      "from": {
+        "repo": "maps"
+      },
+      "handler": "maps",
+      "skip": [
+        "\\.mjs$"
+      ],
+      "license": "CC0: our own layouts; the tiles they reference keep their packs' licences.",
+      "commercial": "yes",
+      "credit": null,
+      "licenseFile": null,
+      "description": "One ready-made level per tileset pack, in the library's map format: a 32rogues crypt, a Brackeys platformer meadow, a GandalfHardcore city street, a Mana Seed winter clearing, an isometric village hamlet, and a KayKit 3D forest glade (a scene file). Load with assets.map(path) or assets.scene(path); copy into a game and edit the data.",
+      "notes": "Authored by library/maps/make-starters.mjs; the build validates every tileset, cell and sprite a map refers to."
     }
   ]
 }

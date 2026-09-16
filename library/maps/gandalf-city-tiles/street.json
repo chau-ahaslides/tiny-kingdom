@@ -1,0 +1,228 @@
+{
+ "name": "Street",
+ "basedOn": "gandalf-city-tiles",
+ "description": "A side-scrolling city block: sky and two parallax skyline layers, six building facades (offices, arches, brick, a shop), sidewalk and road, with bins, bags, a lamp post and signs.",
+ "tilesets": {
+  "buildings": "sprites/gandalf-city-tiles/Building_Tiles_32x32.png",
+  "city": "sprites/gandalf-city-tiles/GandalfHardcore_city_tiles_32x32.png",
+  "deco": "sprites/gandalf-city-tiles/Decoration_32x32.png"
+ },
+ "size": [
+  48,
+  12
+ ],
+ "background": "#7fb2e5",
+ "images": [
+  {
+   "src": "sprites/gandalf-city-tiles/City_background_sky.png",
+   "parallax": [
+    0,
+    0
+   ],
+   "repeat": "x",
+   "y": 0
+  },
+  {
+   "src": "sprites/gandalf-city-tiles/City_background_layer2.png",
+   "parallax": [
+    0.2,
+    0
+   ],
+   "repeat": "x",
+   "y": 0
+  },
+  {
+   "src": "sprites/gandalf-city-tiles/City_background_layer1.png",
+   "parallax": [
+    0.45,
+    0
+   ],
+   "repeat": "x",
+   "y": 0
+  }
+ ],
+ "layers": [
+  {
+   "name": "buildings",
+   "tileset": "buildings",
+   "rows": []
+  },
+  {
+   "name": "ground",
+   "tileset": "city",
+   "solid": true,
+   "rows": [
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    "4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a 4a",
+    "4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c 4c"
+   ]
+  },
+  {
+   "name": "deco",
+   "tileset": "deco",
+   "rows": [
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . 3a . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . 1a 1b . . . . . 2a . . . . . . . . . . . 1c 1d . . . . . . . . . . 1e . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ."
+   ]
+  }
+ ],
+ "stamps": [
+  {
+   "layer": "buildings",
+   "at": [
+    1,
+    6
+   ],
+   "from": "1a",
+   "size": [
+    9,
+    4
+   ]
+  },
+  {
+   "layer": "buildings",
+   "at": [
+    10,
+    6
+   ],
+   "from": "1j",
+   "size": [
+    6,
+    4
+   ]
+  },
+  {
+   "layer": "buildings",
+   "at": [
+    16,
+    8
+   ],
+   "from": "1p",
+   "size": [
+    3,
+    2
+   ]
+  },
+  {
+   "layer": "buildings",
+   "at": [
+    19,
+    6
+   ],
+   "from": "5a",
+   "size": [
+    9,
+    4
+   ]
+  },
+  {
+   "layer": "buildings",
+   "at": [
+    28,
+    6
+   ],
+   "from": "1s",
+   "size": [
+    4,
+    4
+   ]
+  },
+  {
+   "layer": "buildings",
+   "at": [
+    32,
+    6
+   ],
+   "from": "9a",
+   "size": [
+    9,
+    4
+   ]
+  },
+  {
+   "layer": "buildings",
+   "at": [
+    41,
+    6
+   ],
+   "from": "1j",
+   "size": [
+    6,
+    4
+   ]
+  },
+  {
+   "layer": "deco",
+   "at": [
+    24,
+    7
+   ],
+   "from": "2e",
+   "size": [
+    2,
+    3
+   ]
+  },
+  {
+   "layer": "deco",
+   "at": [
+    4,
+    7
+   ],
+   "from": "1g",
+   "size": [
+    2,
+    2
+   ]
+  }
+ ],
+ "objects": [
+  {
+   "type": "spawn",
+   "x": 2,
+   "y": 9,
+   "sprite": "sprites/gandalf-warrior/GandalfHardcore_Warrior.png",
+   "frame": "1a",
+   "scale": 1
+  },
+  {
+   "type": "shop",
+   "x": 36,
+   "y": 9
+  },
+  {
+   "type": "enemy",
+   "kind": "thug",
+   "x": 20,
+   "y": 9,
+   "patrol": [
+    19,
+    27
+   ]
+  },
+  {
+   "type": "goal",
+   "x": 46,
+   "y": 9
+  }
+ ]
+}

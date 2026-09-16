@@ -1,0 +1,173 @@
+{
+ "name": "Winter clearing",
+ "basedOn": "mana-seed-forest-winter",
+ "description": "A top-down snow clearing: a bare tree, a cave mouth in a cliff, a frozen pond with rocks, two thawed dirt patches, stones and dead grass.",
+ "tilesets": {
+  "winter": "sprites/mana-seed-forest-winter/seasonal_sample_winter.png"
+ },
+ "size": [
+  26,
+  18
+ ],
+ "background": "#dfe6ee",
+ "layers": [
+  {
+   "name": "ground",
+   "tileset": "winter",
+   "rows": [
+    "2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 5a 5a 6a 6a 2a 4a 5a 4a 2a 2a 2a 2a 2a 2a 2a 2a",
+    "2a 5a 2a 4a 3a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 3a 2a 2a 2a 3a 2a 2a 2a 2a 2a",
+    "3a 2a 2a 2a 2a 2a 2a 6a 2a 4a 2a 2a 2a 3a 5a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a",
+    "2a 2a 2a 2a 4a 2a 2a 2a 2a 5a 2a 2a 2a 2a 2a 2a 6a 3a 2a 2a 2a 5a 2a 2a 4a 2a",
+    "5a 2a 3a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 3a 2a 6a 2a 2a 5a 2a 2a 5a 5a 2a 2a",
+    "2a 3a 3a 3a 2a 4a 6a 4a 6a 2a 4a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 4a 2a",
+    "2a 2a 4a 2a 2a 2a 2a 2a 2a 2a 2a 2a 6a 2a 2a 4a 2a 2a 2a 2a 2a 2a 2a 2a 2a 3a",
+    "2a 2a 2a 2a 2a 4a 4a 3a 2a 3a 2a 5a 2a 2a 2a 2a 2a 2a 2a 2a 2a 3a 4a 2a 2a 2a",
+    "2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 4a 2a 6a 2a 2a 2a 5a 2a 4a 4a 2a",
+    "2a 2a 3a 5a 2a 2a 2a 2a 4a 2a 2a 5a 2a 4a 2a 2a 4a 2a 2a 2a 2a 2a 2a 2a 3a 2a",
+    "2a 2a 3a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 3a 4a 2a 2a 2a 2a 2a 2a",
+    "2a 2a 2a 2a 6a 2a 2a 2a 2a 3a 2a 2a 2a 3a 2a 4a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a",
+    "2a 2a 2a 2a 2a 3a 3a 2a 2a 2a 2a 2a 2a 2a 2a 3a 3a 2a 2a 2a 2a 2a 2a 6a 2a 2a",
+    "2a 2a 2a 2a 2a 2a 3a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 5a 2a 2a 2a 2a 2a 2a 2a 2a",
+    "2a 2a 6a 6a 2a 2a 2a 2a 2a 2a 3a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 6a 2a 2a 2a 2a",
+    "2a 2a 2a 2a 2a 2a 2a 3a 2a 2a 2a 2a 2a 6a 2a 4a 2a 2a 2a 2a 3a 5a 2a 2a 2a 2a",
+    "2a 2a 3a 4a 6a 2a 2a 2a 2a 2a 2a 2a 4a 2a 2a 2a 2a 2a 2a 2a 2a 2a 4a 2a 2a 6a",
+    "2a 2a 2a 2a 2a 2a 2a 2a 3a 2a 2a 2a 6a 2a 5a 2a 2a 2a 2a 2a 2a 6a 2a 4a 4a 3a"
+   ]
+  },
+  {
+   "name": "detail",
+   "tileset": "winter",
+   "rows": [
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . 7b . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . 9b . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . 8a .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". 8a . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . 10b . . .",
+    ". . 9b . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . 8b . . . . . . . . . . 7b . . . . .",
+    ". . . . . . . 10a . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . ."
+   ]
+  },
+  {
+   "name": "features",
+   "tileset": "winter",
+   "rows": []
+  }
+ ],
+ "stamps": [
+  {
+   "layer": "features",
+   "at": [
+    3,
+    2
+   ],
+   "from": "1b",
+   "size": [
+    3,
+    3
+   ]
+  },
+  {
+   "layer": "features",
+   "at": [
+    14,
+    12
+   ],
+   "from": "4b",
+   "size": [
+    3,
+    3
+   ]
+  },
+  {
+   "layer": "features",
+   "at": [
+    18,
+    0
+   ],
+   "from": "1l",
+   "size": [
+    5,
+    7
+   ]
+  },
+  {
+   "layer": "features",
+   "at": [
+    20,
+    9
+   ],
+   "from": "8l",
+   "size": [
+    5,
+    5
+   ]
+  },
+  {
+   "layer": "features",
+   "at": [
+    4,
+    10
+   ],
+   "from": "12f",
+   "size": [
+    6,
+    5
+   ]
+  },
+  {
+   "layer": "features",
+   "at": [
+    10,
+    4
+   ],
+   "from": "11c",
+   "size": [
+    3,
+    3
+   ]
+  }
+ ],
+ "solid": [
+  "features"
+ ],
+ "objects": [
+  {
+   "type": "spawn",
+   "x": 12,
+   "y": 9,
+   "sprite": "sprites/fantasy-dreamland/16x16/Char_001.png",
+   "anim": "down"
+  },
+  {
+   "type": "npc",
+   "kind": "villager",
+   "x": 2,
+   "y": 6,
+   "sprite": "sprites/fantasy-dreamland/16x16/Char_003.png",
+   "anim": "right"
+  },
+  {
+   "type": "cave",
+   "x": 22,
+   "y": 12
+  },
+  {
+   "type": "enemy",
+   "kind": "mushroom",
+   "x": 16,
+   "y": 6
+  }
+ ]
+}

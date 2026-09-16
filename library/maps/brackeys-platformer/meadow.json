@@ -1,0 +1,281 @@
+{
+ "name": "Meadow",
+ "basedOn": "brackeys-platformer",
+ "description": "A 48-tile platformer level: two rises, two pits, floating platforms in the four colours, trees, mushrooms and crates; coins, fruit and slimes as objects.",
+ "tilesets": {
+  "world": "sprites/brackeys-platformer/world_tileset.png",
+  "plat": "sprites/brackeys-platformer/platforms.png"
+ },
+ "size": [
+  48,
+  14
+ ],
+ "background": "#8fd3f4",
+ "layers": [
+  {
+   "name": "ground",
+   "tileset": "world",
+   "solid": true,
+   "rows": [
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . 1a 1a 1a 1a 1a . . . . . . . . . . . . . . . . .",
+    ". . . . . . 1a 1a 1a 1a . . . . . . . . . . . . . . . . 2a 2a 2a 2a 2a . . . . . . . . . . . . . . . . .",
+    "1a 1a 1a 1a 1a 1a 2a 2a 2a 2a 1a 1a 1a 1a 1a 1a 1a 1a . . . 1a 1a 1a 1a 1a 2a 2a 2a 2a 2a 1a 1a 1a 1a 1a 1a 1a . . . 1a 1a 1a 1a 1a 1a 1a",
+    "2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a . . . 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a 2a . . . 2a 2a 2a 2a 2a 2a 2a"
+   ]
+  },
+  {
+   "name": "platforms",
+   "tileset": "plat",
+   "solid": true,
+   "rows": [
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . 3a 3b 3c . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4a 4b 4c . . . . . .",
+    ". . . . . . . . . . . . 1a 1b 1c . . . . 3a 3b 3c . . . . . . . . . . . . . . . . . . . . . . 1a 1b 1c .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 2a 2b 2c . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ."
+   ]
+  },
+  {
+   "name": "deco",
+   "tileset": "world",
+   "rows": [
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . 3a 3b . . . . . . . . . . . . . . . . . . . . . 5b . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . 4g . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". 4i 4i 5b . . . . . . . . . . 4g 6b . . . . . . 6h . . . . . . . . . . . . 4h 7h . . . . . 8h 6b . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+    ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ."
+   ]
+  }
+ ],
+ "stamps": [
+  {
+   "layer": "deco",
+   "at": [
+    4,
+    9
+   ],
+   "from": "4a",
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "layer": "deco",
+   "at": [
+    11,
+    9
+   ],
+   "from": "4f",
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "layer": "deco",
+   "at": [
+    28,
+    6
+   ],
+   "from": "6c",
+   "size": [
+    3,
+    4
+   ]
+  },
+  {
+   "layer": "deco",
+   "at": [
+    45,
+    9
+   ],
+   "from": "4g",
+   "size": [
+    1,
+    3
+   ]
+  }
+ ],
+ "objects": [
+  {
+   "type": "spawn",
+   "x": 1,
+   "y": 11,
+   "sprite": "sprites/brackeys-platformer/knight.png",
+   "frame": "1a",
+   "scale": 1
+  },
+  {
+   "type": "coin",
+   "x": 7,
+   "y": 9,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 0
+  },
+  {
+   "type": "coin",
+   "x": 8,
+   "y": 9,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 90
+  },
+  {
+   "type": "coin",
+   "x": 13,
+   "y": 7,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 180
+  },
+  {
+   "type": "coin",
+   "x": 14,
+   "y": 7,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 270
+  },
+  {
+   "type": "coin",
+   "x": 20,
+   "y": 5,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 360
+  },
+  {
+   "type": "coin",
+   "x": 24,
+   "y": 5,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 450
+  },
+  {
+   "type": "coin",
+   "x": 25,
+   "y": 5,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 540
+  },
+  {
+   "type": "coin",
+   "x": 29,
+   "y": 6,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 630
+  },
+  {
+   "type": "coin",
+   "x": 34,
+   "y": 6,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 720
+  },
+  {
+   "type": "coin",
+   "x": 40,
+   "y": 6,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 810
+  },
+  {
+   "type": "coin",
+   "x": 41,
+   "y": 6,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 900
+  },
+  {
+   "type": "coin",
+   "x": 45,
+   "y": 6,
+   "sprite": "sprites/brackeys-platformer/coin.png",
+   "anim": "play",
+   "phase": 990
+  },
+  {
+   "type": "fruit",
+   "kind": "apple",
+   "x": 24,
+   "y": 5,
+   "sprite": "sprites/brackeys-platformer/fruit.png",
+   "frame": "1a"
+  },
+  {
+   "type": "fruit",
+   "kind": "banana",
+   "x": 45,
+   "y": 7,
+   "sprite": "sprites/brackeys-platformer/fruit.png",
+   "frame": "1b"
+  },
+  {
+   "type": "enemy",
+   "kind": "slime",
+   "x": 16,
+   "y": 11,
+   "patrol": [
+    15,
+    17
+   ],
+   "sprite": "sprites/brackeys-platformer/slime_green.png",
+   "frame": "1a",
+   "scale": 1
+  },
+  {
+   "type": "enemy",
+   "kind": "slime",
+   "x": 32,
+   "y": 11,
+   "patrol": [
+    31,
+    37
+   ],
+   "sprite": "sprites/brackeys-platformer/slime_purple.png",
+   "frame": "1a",
+   "scale": 1
+  },
+  {
+   "type": "goal",
+   "x": 46,
+   "y": 11
+  }
+ ]
+}
