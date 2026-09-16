@@ -78,6 +78,23 @@ async function stage(zipName) {
   return unwrap(dir);
 }
 
+/** A library from npm: `npm pack name@version` once into .stage/npm/, extracted; the pack's `only`/`skip` pick the files. */
+async function stageNpm(name, version) {
+  const dir = path.join(STAGE, 'npm', `${name.replace(/[@/]/g, '-')}-${version}`);
+  if (!fs.existsSync(path.join(dir, 'package'))) {
+    fs.mkdirSync(dir, { recursive: true });
+    const tgz = await new Promise((resolve, reject) => {
+      const p = spawn('npm', ['pack', `${name}@${version}`, '--pack-destination', dir], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = '', err = '';
+      p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
+      p.on('error', reject);
+      p.on('close', (code) => (code === 0 ? resolve(out.trim().split('\n').pop()) : reject(new Error(`npm pack ${name}@${version} failed: ${err.trim()}`))));
+    });
+    await run('tar', ['xzf', path.join(dir, tgz), '-C', dir]);
+  }
+  return path.join(dir, 'package');
+}
+
 function findSource(name) {
   for (const c of [path.join(SRC, name), path.join(SRC, 'Game Assets', name)]) if (fs.existsSync(c)) return c;
   throw new Error(`source not found: ${name}`);
@@ -193,6 +210,7 @@ for (const pack of packsFile.packs) {
   let root, rels;
   if (from.zip) { root = await stage(from.zip); rels = walk(root); }
   else if (from.dir) { root = unwrap(findSource(from.dir)); rels = walk(root); }
+  else if (from.npm) { root = await stageNpm(from.npm, from.version); rels = walk(root); }
   else if (from.files) {
     for (const [srcName, dstName] of Object.entries(from.files)) add({ src: findSource(srcName), dst: `${pack.dest}/${dstName}`, pack: pack.id, convert: false, meta: {} });
     continue;
@@ -340,7 +358,7 @@ const LIB_URL = (process.env.LIB_URL || 'https://tiny-kingdom-lib.ahaslides-game
 const guide = fs.readFileSync(path.join(HERE, '..', 'docs', 'asset-library.md'), 'utf8').replace(/https:\/\/tiny-kingdom-lib\.[^\s`]+/g, LIB_URL);
 fs.writeFileSync(path.join(OUT, 'llms.txt'), `# AhaSlides games asset library
 
-> Free game art, sound effects and 3D models (${files.length} files, ${(manifest.bytes / 1048576).toFixed(0)} MB, ${Object.keys(packs).length} packs), all licensed for commercial use, served with open CORS for AhaSlides games. Files live at ${LIB_URL}/<path>; exact paths and metadata are in ${LIB_URL}/manifest.json, pack licences and credits in ${LIB_URL}/packs.json, a browsable catalog at ${LIB_URL}/. The full guide follows.
+> Free game art, sound effects and 3D models (${files.length} files, ${(manifest.bytes / 1048576).toFixed(0)} MB, ${Object.keys(packs).length} packs), all licensed for commercial use, plus three.js and PixiJS under ${LIB_URL}/vendor/, served for AhaSlides games (CORS for *.ahaslides.com/.io/.ai). Reference these URLs from game code; never inline assets or libraries. Files live at ${LIB_URL}/<path>; exact paths and metadata are in ${LIB_URL}/manifest.json, pack licences and credits in ${LIB_URL}/packs.json, a browsable catalog at ${LIB_URL}/. The full guide follows.
 
 ${guide.replace(/^# AhaSlides games asset library\n/, "")}`);
 

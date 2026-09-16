@@ -71,7 +71,7 @@ function render(m) {
   const byPack = {};
   for (const e of m.entries) (byPack[e.pack] ||= []).push(e);
   const root = document.getElementById('packs');
-  const order = ['sfx', 'sprites', 'models', 'mixed'];
+  const order = ['sfx', 'sprites', 'models', 'mixed', 'vendor'];
   const packs = Object.values(m.packs).sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.title.localeCompare(b.title));
   for (const p of packs) {
     const entries = byPack[p.id] || [];

@@ -1,5 +1,5 @@
 {
-  "$comment": "Source of truth for the asset library. One entry per pack. `from` says where the pack comes from inside LIB_SRC (a zip, a directory, or loose files); `dest` is the URL prefix on the CDN (a string, or a map of source-prefix -> dest-prefix, longest prefix wins); `skip` are regexes on the source path; `only` keeps just those source prefixes; `handler` picks a special build routine. url/author/license/price are the facts from the pack's page (checked 15 Sep 2026); `licenseFile` quotes the licence shipped inside the zip; `commercial` is yes | credit (yes, attribution required): packs whose free tier is personal-use only or whose origin is unknown are not in the library; `credit` is the attribution line to ship when required. Frame metadata: `cell` [w,h] is the pack-wide grid cell, `cells` maps a path regex (relative to dest) to a cell for files that differ, `animations` maps a name to {row, frames} for sheets laid out one animation per row, `fps` is the intended playback rate, `sequences: true` means one PNG per frame named <Anim>_<n>.png (the build groups them into <Anim>.json).",
+  "$comment": "Source of truth for the asset library. One entry per pack. `from` says where the pack comes from inside LIB_SRC (a zip, a directory, or loose files); `dest` is the URL prefix on the CDN (a string, or a map of source-prefix -> dest-prefix, longest prefix wins); `skip` are regexes on the source path; `only` keeps just those source prefixes; `handler` picks a special build routine. url/author/license/price are the facts from the pack's page (checked 15 Sep 2026); `licenseFile` quotes the licence shipped inside the zip; `commercial` is yes | credit (yes, attribution required): packs whose free tier is personal-use only or whose origin is unknown are not in the library; `credit` is the attribution line to ship when required. Frame metadata: `cell` [w,h] is the pack-wide grid cell, `cells` maps a path regex (relative to dest) to a cell for files that differ, `animations` maps a name to {row, frames} for sheets laid out one animation per row, `fps` is the intended playback rate, `sequences: true` means one PNG per frame named <Anim>_<n>.png (the build groups them into <Anim>.json). `from.npm` + `from.version` stages a package from npm (npm pack), for libraries hosted under vendor/.",
   "packs": [
     {
       "id": "pixel-combat",
@@ -689,6 +689,66 @@
       "credit": "Dragons by Stephen 'Redshrike' Challener, MrBeast, Surt, Blarumyrran, Sharm, Zabin (opengameart.org), CC BY 3.0",
       "licenseFile": null,
       "description": "Eleven pixel-art RPG battle dragons on one 428x377 sheet.",
+      "notes": null
+    },
+    {
+      "id": "three",
+      "title": "three.js 0.186.0",
+      "author": "three.js authors",
+      "authorUrl": "https://threejs.org/",
+      "url": "https://github.com/mrdoob/three.js",
+      "source": "npm",
+      "price": "free",
+      "kind": "vendor",
+      "dest": "vendor/three/0.186.0",
+      "from": {
+        "npm": "three",
+        "version": "0.186.0"
+      },
+      "only": [
+        "build/",
+        "examples/jsm/"
+      ],
+      "skip": [
+        "\\.map$",
+        "\\.d\\.ts$",
+        "\\.cjs$"
+      ],
+      "license": "MIT",
+      "commercial": "yes",
+      "credit": null,
+      "licenseFile": null,
+      "description": "three.js as ES modules: build/three.module.js (+ three.core.js), build/three.webgpu.js, and every addon under examples/jsm/ (GLTFLoader, OrbitControls, postprocessing, ...).",
+      "notes": "Addons import the bare specifier \"three\": declare an import map mapping \"three\" to build/three.module.js and \"three/addons/\" to examples/jsm/."
+    },
+    {
+      "id": "pixi",
+      "title": "PixiJS 8.20.1",
+      "author": "PixiJS team",
+      "authorUrl": "https://pixijs.com/",
+      "url": "https://github.com/pixijs/pixijs",
+      "source": "npm",
+      "price": "free",
+      "kind": "vendor",
+      "dest": {
+        "dist/": "vendor/pixi/8.20.1"
+      },
+      "from": {
+        "npm": "pixi.js",
+        "version": "8.20.1"
+      },
+      "only": [
+        "dist/pixi."
+      ],
+      "skip": [
+        "\\.map$",
+        "\\.d\\.ts$"
+      ],
+      "license": "MIT",
+      "commercial": "yes",
+      "credit": null,
+      "licenseFile": null,
+      "description": "PixiJS 8 bundles: pixi.min.mjs / pixi.mjs (ES module) and pixi.min.js / pixi.js (script tag, global PIXI).",
       "notes": null
     }
   ]

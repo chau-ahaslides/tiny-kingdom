@@ -15,7 +15,12 @@ LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
 | `LIB/manifest.json` | Every file (3,650 assets, 1,298 metadata) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `cell`/`cols`/`rows`/`frames`/`fps`/`animations`, `duration`, `category`, `variant`, `tags`. **Gated.** |
 | `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. **Gated.** |
 | `LIB/` | The catalog: every pack, its licence, thumbnails, play buttons, a filter box. **Gated**: open it once as `LIB/?key=<token>`. |
+| `LIB/vendor/…` | three.js and PixiJS, pinned by version (see "Libraries on the CDN"). |
 | `library/packs.json` in this repo | The same pack index, plus the build rules. Edit this to add or change a pack. |
+
+**Reference, never inline.** Game code points at these URLs. Do not copy assets into a game's
+folder, embed them as data URIs, or bundle three.js/PixiJS into the page; the CDN caches them for
+a day at the edge and in the browser, and a pinned version path never changes.
 
 **Gated** means the request needs the library read token, either as a header
 `Authorization: Bearer <token>` or as `?key=<token>`. The token is `TINY_KINGDOM_LIB_READ_TOKEN` in
@@ -84,12 +89,58 @@ has no cell for an image (single pictures, previews, the large RPG Maker battler
 `sheet.draw(ctx, { row: 2, frames: 6 }, t, x, y)`. Playback rates default to the pack's `fps`;
 override per call with `{ fps: 12 }`. Pixel art is drawn unsmoothed unless `{ smooth: true }`.
 
+## Libraries on the CDN: three.js and PixiJS
+
+The two engines the games use are hosted here too, pinned by version, so a game page references
+them from this host and never bundles, copies or inlines them (the same rule as for assets: link the
+URL, never paste bytes or base64 into game code):
+
+```
+vendor/three/0.186.0/build/three.module.js         three.js core (ES module; three.core.js is imported by it)
+vendor/three/0.186.0/build/three.webgpu.js         the WebGPU renderer build, if wanted
+vendor/three/0.186.0/examples/jsm/…                every addon: loaders/GLTFLoader.js, controls/OrbitControls.js, …
+vendor/pixi/8.20.1/pixi.min.mjs                    PixiJS 8 as an ES module (pixi.mjs unminified; pixi.min.js / pixi.js for a <script> tag)
+```
+
+three.js addons import the bare specifier `three`, so the page declares an import map once:
+
+```html
+<script type="importmap">
+{ "imports": {
+    "three": "https://tiny-kingdom-lib.ahaslides-game.workers.dev/vendor/three/0.186.0/build/three.module.js",
+    "three/addons/": "https://tiny-kingdom-lib.ahaslides-game.workers.dev/vendor/three/0.186.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+  const LIB = 'https://tiny-kingdom-lib.ahaslides-game.workers.dev';
+  // models load straight from the CDN; textures and buffers resolve next to the .gltf
+  new GLTFLoader().load(`${LIB}/models/kaykit-adventurers/Characters/gltf/Knight.glb`, (g) => scene.add(g.scene));
+</script>
+```
+
+```html
+<script type="module">
+  import * as PIXI from 'https://tiny-kingdom-lib.ahaslides-game.workers.dev/vendor/pixi/8.20.1/pixi.min.mjs';
+  const LIB = 'https://tiny-kingdom-lib.ahaslides-game.workers.dev';
+  const app = new PIXI.Application(); await app.init({ width: 640, height: 360 }); document.body.append(app.canvas);
+  const sheet = await PIXI.Assets.load(`${LIB}/sprites/gandalf-characters/Character_skin_colors/Male_Skin1.png.atlas.json`);
+  const guy = new PIXI.AnimatedSprite(sheet.animations.walk);
+  guy.animationSpeed = 10 / 60; guy.play(); app.stage.addChild(guy);
+</script>
+```
+
+Both are MIT-licensed. To add a version, add a pack with `"from": { "npm": "three", "version": "…" }`
+to `library/packs.json` and rebuild; old versions stay so existing games keep working.
+
 ## Other engines
 
 `aha-assets.js` draws with the 2D canvas and Web Audio, which is what the tiny-kingdom games use.
 Every sheet with a known grid also has `<image>.atlas.json`, a TexturePacker-style JSON hash
 (frames named `r<row>c<col>`, plus `animations`), and every Pixel Combat sound has `<sound>.json`
-listing its variants, so the common web engines load the library with their own loaders:
+listing its variants, so engines load the library with their own loaders (PixiJS and three.js
+above):
 
 ```js
 // Phaser 3
@@ -101,18 +152,6 @@ this.anims.create({ key: 'walk', frames: this.anims.generateFrameNames('guy', { 
 this.add.sprite(x, y, 'guy').play('walk');
 // or, without the atlas, straight from the numbers in <image>.json:
 this.load.spritesheet('boom', `${LIB}/sprites/pixel-effects/explosions/epic_explosion_001_small_orange.png`, { frameWidth: 64, frameHeight: 64 });
-```
-
-```js
-// PixiJS 7 / 8
-const sheet = await PIXI.Assets.load(`${LIB}/sprites/gandalf-characters/Character_skin_colors/Male_Skin1.png.atlas.json`);
-const guy = new PIXI.AnimatedSprite(sheet.animations.walk);
-guy.animationSpeed = 10 / 60; guy.play(); app.stage.addChild(guy);
-```
-
-```js
-// three.js: models load straight from the CDN; textures and buffers resolve next to the .gltf
-new GLTFLoader().load(`${LIB}/models/kaykit-adventurers/Characters/gltf/Knight.glb`, (g) => scene.add(g.scene));
 ```
 
 Godot, Unity and other native engines are not web-facing: download the files (a pack's paths are in
