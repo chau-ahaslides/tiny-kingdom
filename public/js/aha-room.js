@@ -48,7 +48,7 @@ const store = {
 export class RelayTransport extends Emitter {
   constructor(opts = {}) {
     super();
-    this.origin = opts.origin || (hasDOM ? location.origin : '');
+    this.origin = opts.origin || (hasDOM ? defaultRelayOrigin() : '');
     this.embed = !!opts.embed;
     const q = hasDOM ? new URLSearchParams(location.search) : new URLSearchParams();
     this._q = q;
@@ -180,6 +180,15 @@ export class MemoryHub {
   rejoin(me) { const ep = me._t; ep.open = true; this._connect(ep); }
 }
 
+/* The room backend is play.ahaslides.io. A page served by that worker itself (play.ahaslides.io, a
+   workers.dev copy, wrangler dev on localhost) talks to its own origin; any other page, an artifact on
+   agent-fleet.ahaslides.io for instance, talks to play.ahaslides.io. Pass { origin } to override. */
+const RELAY = 'https://play.ahaslides.io';
+function defaultRelayOrigin() {
+  const o = location.origin, h = location.hostname;
+  if (o === RELAY || /\.workers\.dev$/i.test(h) || h === 'localhost' || h === '127.0.0.1') return o;
+  return RELAY;
+}
 function defaultTransport() {
   if (!hasDOM) throw new Error('aha-room: no transport given and no DOM; pass { transport }');
   const embed = new URLSearchParams(location.search).get('embed') === '1';
@@ -216,20 +225,18 @@ export class Room extends Emitter {
   }
   static async open(opts = {}) {
     const t = endpointOf(opts.transport || defaultTransport(), 'host');
-    // The page phones open from /j/CODE: this site's path when the page lives on the relay's origin, the
-    // page's own URL when it lives elsewhere (an artifact on agent-fleet, say). A sandboxed page has no
-    // usable location, so it must say where it is: host({ page: 'https://…/artifacts/<id>' }).
-    let page = opts.page;
+    // The page phones open from /j/CODE: this site's path when the page is on the relay, the page's own
+    // URL when it is elsewhere (an artifact), or nothing when the page is sandboxed and cannot tell
+    // (then there is no join link; the audience joins by code, or the page builds its own link).
+    let page = opts.page || '';
     if (!page && hasDOM) {
       const relayOrigin = t.origin || location.origin;
       if (location.origin === relayOrigin) page = location.pathname;
       else if (/^https:\/\//.test(location.origin)) page = location.origin + location.pathname;
-      else throw new Error('aha-room: this page is sandboxed; pass host({ page }) with the public URL phones should open');
     }
-    page = page || '/';
     let code = null, joinUrl = null;
     if (t.caps.providesRoom) { code = t.roomCode() || null; }
-    else { const r = await t.createRoom({ page, code: opts.code ? String(opts.code).toUpperCase() : undefined }); code = r.code; joinUrl = r.joinUrl; }
+    else { const r = await t.createRoom({ page: page || undefined, code: opts.code ? String(opts.code).toUpperCase() : undefined }); code = r.code; joinUrl = page ? r.joinUrl : null; }
     const room = new Room(t, { code, joinUrl, page });
     t.connect('host', { room: code });
     return room;
@@ -529,61 +536,9 @@ function blendRows(A, B, t, idx) {
   });
 }
 
-/* ------------------------------------------------------------------ one page, both roles
-   auto() works out where the page runs and how it was opened, then hosts or joins:
-     const { role, room, me } = await AhaRoom.auto({ askName });
-   Opened plainly it is the big screen (host); opened from a join link (?join=CODE, #join=CODE, or a
-   code handed in by the page that frames it) it is a phone (audience). The relay is this site when the
-   page is on it, play.ahaslides.io otherwise. The join link points at the page's own URL: read from
-   the location on a normal page; on a sandboxed page (an artifact in a viewer) it comes from the
-   framing page, as window.name = 'aha:{"url":…,"join":…}' or a postMessage { aha: 'page', url, join }. */
-const DEFAULT_RELAY = 'https://play.ahaslides.io';
-
-/** Pure decision: where the relay is, which page phones open, which code (if any) this page joins. */
-export function decide({ origin = '', pathname = '/', search = '', hash = '', hostname = '', referrer = '', name = '', parent = null, opts = {} } = {}) {
-  const q = new URLSearchParams(search), h = new URLSearchParams(hash.replace(/^#/, ''));
-  let hint = null;
-  if (typeof name === 'string' && name.startsWith('aha:')) { try { hint = JSON.parse(name.slice(4)); } catch (e) {} }
-  if (parent && typeof parent === 'object') hint = Object.assign({}, hint || {}, parent);
-  const sandboxed = !origin || origin === 'null';
-  const own = !sandboxed && (origin === DEFAULT_RELAY || /\.workers\.dev$/i.test(hostname) || hostname === 'localhost' || hostname === '127.0.0.1');
-  const relay = opts.origin || (own ? origin : DEFAULT_RELAY);
-  const join = String(opts.code || q.get('join') || h.get('join') || (hint && hint.join) || '').toUpperCase() || null;
-  let page = opts.page || (hint && hint.url) || null;
-  if (!page && !sandboxed) page = origin === relay ? pathname : origin + pathname;
-  if (!page && referrer && /^https:\/\/[^/]+\/.+/.test(referrer)) page = referrer.split('#')[0];
-  const role = opts.role || (join ? 'audience' : 'host');
-  return { relay, page, join, role, sandboxed };
-}
-
-/** Ask the framing page (if any) for { aha: 'page', url, join }; resolves null after `wait` ms without one. */
-function askParent(wait = 400) {
-  if (!hasDOM || window.parent === window) return Promise.resolve(null);
-  return new Promise(resolve => {
-    const done = v => { window.removeEventListener('message', on); clearTimeout(t); resolve(v); };
-    const on = ev => { const m = ev.data; if (m && m.aha === 'page') done({ url: m.url, join: m.join }); };
-    const t = setTimeout(() => done(null), wait);
-    window.addEventListener('message', on);
-    try { window.parent.postMessage({ aha: 'ready', version: VERSION }, '*'); } catch (e) {}
-  });
-}
-
-export async function auto(opts = {}) {
-  const loc = hasDOM ? location : {};
-  const parent = opts.transport ? null : await askParent(opts.wait);
-  const d = decide({ origin: loc.origin, pathname: loc.pathname, search: loc.search, hash: loc.hash, hostname: loc.hostname, referrer: hasDOM ? document.referrer : '', name: hasDOM ? window.name : '', parent, opts });
-  const transport = opts.transport || new RelayTransport({ origin: d.relay, embed: hasDOM && new URLSearchParams(location.search).get('embed') === '1' });
-  if (d.role === 'audience') return { role: 'audience', me: new Me(Object.assign({}, opts, { transport, code: d.join })), relay: d.relay };
-  if (!d.page) throw new Error('aha-room: this page is sandboxed and nothing told it its URL; the framing page must set window.name = \'aha:{"url":"…"}\' or postMessage { aha: "page", url }, or pass auto({ page })');
-  const room = await Room.open(Object.assign({}, opts, { transport, page: d.page }));
-  return { role: 'host', room, relay: d.relay };
-}
-
 /* ------------------------------------------------------------------ entry points */
 export const AhaRoom = {
   VERSION,
-  auto,
-  decide,
   host: opts => Room.open(opts),
   join: opts => new Me(opts),
   memory: () => new MemoryHub(),

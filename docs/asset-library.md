@@ -189,26 +189,27 @@ POST https://play.ahaslides.io/api/room      mints a room code and join URL (COR
 https://play.ahaslides.io/j/<CODE>           the join link phones open; /ws/<CODE> the socket
 ```
 
-One page is both the big screen and the phone. Write no host-or-join logic and no addresses:
+The backend is always `play.ahaslides.io`; the SDK talks to it from any page without being told.
+The host mints a room, the audience joins it, no addresses in the game code:
 
 ```html
 <script src="https://play.ahaslides.io/js/aha-room.js"></script>
 <script>
-const { role, room, me } = await AhaRoom.auto({ askName: () => prompt('Your name') });
-if (role === 'host') { drawQr(room.joinUrl); room.on('join', p => …); room.state.set({ … }); }
-else                 { me.on('state', (doc, mine) => render(doc, mine)); me.send({ t: 'tap' }); }
+// big screen
+const room = await AhaRoom.host();                     // room.code to show; room.joinUrl for a QR when there is one
+room.on('join', p => …); room.state.set({ phase: 'ask' });
+// phone (the same page opened with ?join=CODE or #join=CODE, or a code typed in)
+const me = AhaRoom.join({ code, askName: () => prompt('Your name') });
+me.on('state', (doc, mine) => render(doc, mine)); me.send({ t: 'tap' });
 </script>
 ```
 
-`auto()` hosts when the page is opened plainly and joins when it is opened from the join link
-(`?join=CODE`, `#join=CODE`, or a code the framing page hands in). It picks the relay
-(`play.ahaslides.io`, or the page's own site when the page lives there) and the URL phones open
-(the page's own URL, so an artifact's audience joins on the artifact). The only thing a sandboxed
-page (an artifact in a viewer) cannot find alone is its address; the viewer supplies it with
-`<iframe name='aha:{"url":"…","join":"…"}'>` or `postMessage({ aha: 'page', url, join })`, and
-passes its own `?join=` along the same way. `host()` and `join()` still exist for pages that want to
-decide themselves. Details at `https://play.ahaslides.io/sdk#auto`. This library only supplies the
-art, sound, maps and libraries; the room service is `play.ahaslides.io`.
+`room.joinUrl` (`https://play.ahaslides.io/j/CODE`) redirects phones to the hosting page with
+`?join=CODE`, so an artifact's audience joins on the artifact itself when the page can read its own
+URL. A sandboxed frame cannot, so there `joinUrl` is `null`: show `room.code` and let people type
+it, or pass `host({ page: 'https://…/artifacts/<id>' })` to get a link. Details at
+`https://play.ahaslides.io/sdk#elsewhere`. This library only supplies the art, sound, maps and
+libraries; the room service is `play.ahaslides.io`.
 
 ## Libraries on the CDN: three.js and PixiJS
 
