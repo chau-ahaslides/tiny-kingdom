@@ -32,6 +32,57 @@ const explosions = m.entries.filter(e => e.pack === 'pixel-combat' && e.category
 const strips     = m.entries.filter(e => e.pack === 'pixel-effects' && e.category === 'impacts');
 ```
 
+## Fastest path: aha-assets.js
+
+`LIB/aha-assets.js` is a dependency-free ES module (open, like the assets) that does the loading,
+decoding, sheet splitting and frame timing, so a game needs none of that code:
+
+```js
+import { assets } from 'https://tiny-kingdom-lib.ahaslides-game.workers.dev/aha-assets.js';
+
+// Sounds: a Pixel Combat name loads all its variants; play() picks one at random.
+const hit  = await assets.sound('sfx/pixel-combat/explosion/bass-hit');
+const coin = await assets.sound('sfx/brackeys-platformer/coin');        // a single file works too
+button.onclick = () => { assets.unlock(); hit.play({ gain: 0.8 }); };    // unlock() inside a gesture, for iOS
+
+// A sheet with one animation per row: the sheet knows its cells, rows and frame counts.
+const guy = await assets.sheet('sprites/gandalf-characters/Character_skin_colors/Male_Skin1.png');
+const hair = await assets.sheet('sprites/gandalf-characters/Male_Hair/Male_Hair1.png');
+function frame(now) {
+  guy.draw(ctx, 'walk', now, x, y, { scale: 3, flip: facingLeft });     // layers share rows, so
+  hair.draw(ctx, 'walk', now, x, y, { scale: 3, flip: facingLeft });    // draw them in the same call order
+  requestAnimationFrame(frame);
+}
+
+// A strip (frames left to right), played once: draw() returns true when it has finished.
+const boom = await assets.sheet('sprites/pixel-effects/explosions/epic_explosion_001_small_orange.png');
+const done = boom.draw(ctx, null, now - startedAt, x, y, { loop: false });
+
+// A 4x4 top-down character: rows are facings.
+const hero = await assets.sheet('sprites/fantasy-dreamland/16x16/Char_001.png');
+hero.draw(ctx, 'left', now, x, y, { scale: 4 });
+
+// One PNG per frame (the GameArt2D packs): the animation name loads every frame.
+const run = await assets.sequence('sprites/adventure-girl/Run');
+run.draw(ctx, now, x, y, { scale: 0.25 });
+
+// Any cell by hand, e.g. the 32rogues monster at row 5 column 2 (the .txt legend counts from 1).
+const mobs = await assets.sheet('sprites/32rogues/monsters.png');
+mobs.drawFrame(ctx, 1, 4, x, y, { scale: 2 });
+
+// Warm everything before the first frame.
+await assets.preload(['sfx/pixel-combat/hit/bit-kick', 'sprites/32rogues/tiles.png', 'sprites/ninja-girl/Jump']);
+```
+
+The module reads a small JSON that sits next to each asset: `<image>.json` (cell size, columns,
+rows, frame count, fps, named animations), `<Animation>.json` for per-frame packs (the ordered
+frame list), and `<sound>.json` for Pixel Combat (the variant list). Those files are open, so the
+runtime never needs the token; the same fields are in the manifest for authoring. Where the library
+has no cell for an image (single pictures, previews, the large RPG Maker battler sheets), pass one:
+`assets.sheet(path, { cell: [150, 150] })`, or an ad-hoc animation:
+`sheet.draw(ctx, { row: 2, frames: 6 }, t, x, y)`. Playback rates default to the pack's `fps`;
+override per call with `{ fps: 12 }`. Pixel art is drawn unsmoothed unless `{ smooth: true }`.
+
 ## URL scheme
 
 ```
@@ -110,7 +161,7 @@ Remember iOS: create or resume the `AudioContext` inside a user gesture.
 | pack | path | what | cell / frame size | licence |
 |---|---|---|---|---|
 | `32rogues` | `sprites/32rogues/` | 32x32 roguelike: rogues, monsters, animals, items, tiles, autotiles, animated tiles; a `.txt` legend per sheet (row.column) | 32x32 grid | commercial OK, no redistribution |
-| `pixel-effects` | `sprites/pixel-effects/<category>/` | 192 VFX strips (explosions, fantasy-spells, impacts, lightning, magic-bursts, sci-fi, smoke-bursts, splatters, symbols), 15 fps | in manifest: `frames`, `frameWidth`, `frameHeight` | **credit unTied Games** |
+| `pixel-effects` | `sprites/pixel-effects/<category>/` | 192 VFX strips (explosions, fantasy-spells, impacts, lightning, magic-bursts, sci-fi, smoke-bursts, splatters, symbols), 15 fps | per strip: `cell`, `frames` | **credit unTied Games** |
 | `brackeys-platformer` | `sprites/brackeys-platformer/` | 16x16 knight (32x32 frames), slimes, coin, fruit, platforms, world tileset | 16 / 32 | CC0 |
 | `fantasy-dreamland` | `sprites/fantasy-dreamland/<16x16|32x32|48x48>/` | six top-down characters, 4-direction walk + idle, plus RPG Maker sheets | folder name | **credit ELV Games** |
 | `female-adventurer` | `sprites/female-adventurer/<Idle|Walk|Jump|Dash|Death>/` | 8-direction top-down adventurer, one sheet per facing per animation, matching shadow sheets | see `frame_dimensions.png` at the pack root | commercial OK |
@@ -125,20 +176,22 @@ Remember iOS: create or resume the `AudioContext` inside a user gesture.
 | `iso-village` | `sprites/iso-village/` | 150+ isometric tiles on four sheets | 256x256 | **credit Xilurus (CC BY 4.0)** |
 | `mana-seed-farmer` | `sprites/mana-seed-farmer/` | paper-doll farmer sample: walk + jump, guides, colour ramps | 64x64 cells | commercial OK (sample) |
 | `mana-seed-forest-winter` | `sprites/mana-seed-forest-winter/` | three 16x16 winter forest tile sheets | 16x16 | commercial OK (sample) |
-| `adventure-girl`, `ninja-girl` | `sprites/adventure-girl/png/`, `sprites/ninja-girl/png/` | cartoon side-scroller heroines as per-frame PNGs (about 640x540, 524x565) | per frame | CC0 |
+| `adventure-girl`, `ninja-girl` | `sprites/adventure-girl/<Anim>_<n>.png`, `sprites/ninja-girl/<Anim>_<nnn>.png` | cartoon side-scroller heroines as per-frame PNGs (about 640x540, 376x520); `<Anim>.json` lists each animation's frames | per frame | CC0 |
 | `dragons` | `sprites/dragons/dragons.png` | eleven pixel dragons on one 428x377 sheet | irregular | **credit Redshrike et al. (CC BY 3.0)** |
 
-Strips animate by stepping a source rectangle across the sheet:
+Manifest entries for images carry `width`, `height` and, where the grid is known, `cell` `[w, h]`,
+`cols`, `rows`, `frames` (one-row strips), `fps` and `animations` (`{ name: { row, frames } }`).
+Without `aha-assets.js`, a strip animates by stepping a source rectangle across the sheet:
 
 ```js
-// Any pixel-effects strip: frames are laid out left to right, one row.
 const e = m.entries.find(x => x.path === 'sprites/pixel-effects/impacts/directional_impact_001_small_blue.png');
 const img = new Image(); img.src = `${LIB}/${e.path}`;
 let t0;
 function draw(ctx2d, x, y, now) {
   t0 ??= now;
   const f = Math.floor((now - t0) / 1000 * e.fps) % e.frames;
-  ctx2d.drawImage(img, f * e.frameWidth, 0, e.frameWidth, e.frameHeight, x, y, e.frameWidth, e.frameHeight);
+  const [w, h] = e.cell;
+  ctx2d.drawImage(img, f * w, 0, w, h, x, y, w, h);
 }
 ```
 
@@ -230,6 +283,7 @@ library/build.mjs       LIB_SRC -> library/out  (unzip, clean names, wav -> m4a,
 library/lib.mjs         pure helpers (tests in test/library.test.js)
 library/upload.mjs      library/out -> the worker (only changed files, by sha1)
 library/catalog.html    the page served at LIB/
+library/aha-assets.js   the runtime served at LIB/aha-assets.js (sheet, sequence, sound helpers)
 library/worker/         the CDN worker (R2 bucket `tiny-kingdom-lib`)
 ```
 
@@ -241,7 +295,10 @@ library/worker/         the CDN worker (R2 bucket `tiny-kingdom-lib`)
    dest prefix for mixed packs), optional `skip` regexes, and the page facts: `url`, `author`,
    `license`, `commercial`, `credit`, `description`. Look the page up; do not guess the licence, and
    do not add a pack unless its page allows commercial use (`commercial` is `yes` or `credit`).
-   Sound packs laid out as `<Folder>/<name>.wav` take `"handler": "sfx-folders"`.
+   Sound packs laid out as `<Folder>/<name>.wav` take `"handler": "sfx-folders"`. For sheets, add
+   `cell` `[w, h]` (or `cells`, a map of path regex to cell), `fps`, and `animations`
+   (`{ name: { row, frames } }`) when the rows are animations; `"sequences": true` for one-PNG-per-frame
+   packs. The build records them in the manifest and writes the `.json` sidecars the runtime reads.
 3. `npm run lib:build` (incremental; `--clean` to start over). Needs macOS `afconvert` or `ffmpeg`.
    It refuses two files landing on one path and warns about glTF files whose textures went missing.
 4. `npm test` still passes; check `library/out/index.html` in a browser via `npm run lib:dev`
@@ -272,5 +329,7 @@ deploys on its own, and a game deploy never touches it (and vice versa).
 
 **Why these formats.** WAV became AAC-LC in `.m4a` because it decodes in every browser (Safari
 included) through both `<audio>` and `decodeAudioData`, keeps gapless timing for one-shots, and is
-about 70x smaller than the 96 kHz sources (the whole sound library is 47 MB). PNG stays PNG:
+about 70x smaller than the 96 kHz sources (the whole sound library is 47 MB). The one exception is
+Chromium built without proprietary codecs (chrome-headless-shell, some Linux distro builds), where
+`decodeAudioData` never resolves for AAC; real Chrome, Safari, Firefox and Edge all decode it. PNG stays PNG:
 pixel art needs lossless and the sheets are small. 3D ships as glTF/GLB only, the web format.

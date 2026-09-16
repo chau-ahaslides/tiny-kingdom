@@ -68,3 +68,13 @@ test('mimeOf', () => {
   assert.equal(mimeOf('x.GLB'), 'model/gltf-binary');
   assert.equal(mimeOf('x.unknown'), 'application/octet-stream');
 });
+
+test('aha-assets frame math', async () => {
+  const { frameAt, cellRect } = await import('../library/aha-assets.js');
+  assert.equal(frameAt(0, 8, 10), 0);
+  assert.equal(frameAt(150, 8, 10), 1);
+  assert.equal(frameAt(850, 8, 10), 0, 'loops after 8 frames at 10 fps');
+  assert.equal(frameAt(5000, 8, 10, false), 7, 'holds the last frame when not looping');
+  assert.equal(frameAt(999, 1, 10), 0);
+  assert.deepEqual(cellRect(3, 2, 80, 64), { sx: 240, sy: 128, sw: 80, sh: 64 });
+});

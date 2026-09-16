@@ -1,5 +1,5 @@
 {
-  "$comment": "Source of truth for the asset library. One entry per pack. `from` says where the pack comes from inside LIB_SRC (a zip, a directory, or loose files); `dest` is the URL prefix on the CDN (a string, or a map of source-prefix -> dest-prefix, longest prefix wins); `skip` are regexes on the source path; `only` keeps just those source prefixes; `handler` picks a special build routine. url/author/license/price are the facts from the pack's page (checked 15 Sep 2026); `licenseFile` quotes the licence shipped inside the zip; `commercial` is yes | credit (yes, attribution required): packs whose free tier is personal-use only or whose origin is unknown are not in the library; `credit` is the attribution line to ship when required.",
+  "$comment": "Source of truth for the asset library. One entry per pack. `from` says where the pack comes from inside LIB_SRC (a zip, a directory, or loose files); `dest` is the URL prefix on the CDN (a string, or a map of source-prefix -> dest-prefix, longest prefix wins); `skip` are regexes on the source path; `only` keeps just those source prefixes; `handler` picks a special build routine. url/author/license/price are the facts from the pack's page (checked 15 Sep 2026); `licenseFile` quotes the licence shipped inside the zip; `commercial` is yes | credit (yes, attribution required): packs whose free tier is personal-use only or whose origin is unknown are not in the library; `credit` is the attribution line to ship when required. Frame metadata: `cell` [w,h] is the pack-wide grid cell, `cells` maps a path regex (relative to dest) to a cell for files that differ, `animations` maps a name to {row, frames} for sheets laid out one animation per row, `fps` is the intended playback rate, `sequences: true` means one PNG per frame named <Anim>_<n>.png (the build groups them into <Anim>.json).",
   "packs": [
     {
       "id": "pixel-combat",
@@ -67,7 +67,22 @@
       "credit": null,
       "licenseFile": "All assets in the pack have been repackaged and many have been modified by Brackeys. LICENSE for all assets: Creative Commons Zero (CC0). Sprites by analogStudios_ and RottingPixels, sounds and music by Brackeys / Thirslund, fonts Pixel Operator by Jayvee Enaguas.",
       "description": "Starter 16x16 platformer kit: knight (256x256 sheet of 32x32 frames), two slimes, coin, fruit, platforms, world tileset; 6 sound effects (hurt, tap, jump, power_up, coin, explosion); one music track (time_for_adventure.mp3); Pixel Operator 8 fonts.",
-      "notes": null
+      "notes": null,
+      "cells": {
+        "^knight\\.png$": [
+          32,
+          32
+        ],
+        "^(coin|fruit|platforms|world_tileset)\\.png$": [
+          16,
+          16
+        ],
+        "^slime_": [
+          24,
+          24
+        ]
+      },
+      "fps": 10
     },
     {
       "id": "32rogues",
@@ -92,7 +107,11 @@
       "credit": "32rogues by Seth Boyles (sethbb.itch.io)",
       "licenseFile": "\"32rogues\" may be used in both non-commercial and commercial projects, excluding those relating to or containing non-fungible tokens (\"NFT\"), blockchain-related projects. It may not be used in conjunction with generative artificial intelligence projects or machine learning projects. You may modify it to suit your needs. You may not redistribute or resell it. Credit is not necessary, but very much appreciated. Copyright 2024 Seth Boyles",
       "description": "32x32 fantasy roguelike tileset: rogues (player classes), monsters, animals, items (+palette swaps), dungeon tiles, autotiles (water, poison), animated tiles (fire, torches). Each sheet has a .txt legend listing what is in every cell (row.column).",
-      "notes": "Sheets are 32x32 grids; monsters.png is 384x416 = 12x13 cells. tiled/ holds the page's Tiled water autotile example (it references 32rogues-watertiles.png, which was not downloaded)."
+      "notes": "Sheets are 32x32 grids; monsters.png is 384x416 = 12x13 cells. tiled/ holds the page's Tiled water autotile example (it references 32rogues-watertiles.png, which was not downloaded).",
+      "cell": [
+        32,
+        32
+      ]
     },
     {
       "id": "kaykit-adventurers",
@@ -165,7 +184,8 @@
       "credit": "Effects: Super Pixel Effects Gigapack by unTied Games (untiedgames.itch.io)",
       "licenseFile": null,
       "description": "96 free hand-pixelled VFX animations (192 sheets counting large/small size variants) in 9 categories: explosions, fantasy-spells, impacts, lightning, magic-bursts, sci-fi, smoke-bursts, splatters, symbols. Every animation plays at 15 fps (66.7 ms per frame); rotate or flip for variety.",
-      "notes": "Hosted as one horizontal strip per animation; the manifest carries frames, frameWidth and frameHeight for each. The per-frame PNG folder in the zip is not hosted. guide.txt describes every category; asset_list.txt lists sizes."
+      "notes": "Hosted as one horizontal strip per animation; the manifest carries frames, frameWidth and frameHeight for each. The per-frame PNG folder in the zip is not hosted. guide.txt describes every category; asset_list.txt lists sizes.",
+      "fps": 15
     },
     {
       "id": "hd-knight",
@@ -185,7 +205,12 @@
       "credit": null,
       "licenseFile": null,
       "description": "High-resolution (non-pixel) 8-direction top-down knight, 128x128 sprites, 29 animation sheets with shadows (idle, walk, run, strafe, melee x3, spin, kick, pummel, shield block, roll, front flip, slide, cast spell, unsheath, take damage, die). Sheets are 1920x1024 = 15 columns x 8 direction rows.",
-      "notes": null
+      "notes": "Rows are the 8 facings; 15 columns per row, animations shorter than 15 frames are padded with empty cells.",
+      "cell": [
+        128,
+        128
+      ],
+      "fps": 12
     },
     {
       "id": "iso-village",
@@ -205,7 +230,11 @@
       "credit": "Isometric village tiles by Xilurus (xilurus.itch.io), CC BY 4.0",
       "licenseFile": null,
       "description": "150+ hand-made isometric tiles at 256x256 on four sheets: ground sets, slopes, slabs, decorative tiles, minerals, flora, structures.",
-      "notes": null
+      "notes": null,
+      "cell": [
+        256,
+        256
+      ]
     },
     {
       "id": "autobattlers-crew",
@@ -225,7 +254,17 @@
       "credit": "AutoBattlers Crew by RafaelMatos (rafaelmatos.itch.io)",
       "licenseFile": null,
       "description": "Cute pixel-art auto-battler creature roster: battler sheet (plain and 2x with white outline), UI sheet, collection-screen background and mockups.",
-      "notes": null
+      "notes": null,
+      "cells": {
+        "^Battlers\\.png$": [
+          64,
+          64
+        ],
+        "^Battlers-2x-white_outline\\.png$": [
+          128,
+          128
+        ]
+      }
     },
     {
       "id": "card-rpg-monsters",
@@ -265,7 +304,12 @@
       "credit": null,
       "licenseFile": "You can use this asset in any game project, personal or commercial. DO NOT resell or redistribute AS A GAME ASSET, it has to be part of a project. Credit is not required but it is appreciated. Modify to suit your needs. You are NOT allowed to turn any of my assets to an NFT.",
       "description": "48x64 side-view pixel-art kobold warrior: 7 animation strips in the free set (idle, run, attacks, jump, death, hurt).",
-      "notes": null
+      "notes": "Strips in Sprites/with_outline and Sprites/without_outline; one animation per file, 148x96 cells (the character is about 48x64 inside).",
+      "cell": [
+        148,
+        96
+      ],
+      "fps": 10
     },
     {
       "id": "forest-monsters",
@@ -285,7 +329,12 @@
       "credit": null,
       "licenseFile": null,
       "description": "80x64 pixel-art mushroom enemy with idle, run, attack, attack-with-stun, stun, hit and die strips, with and without white hit VFX (Mushroom-Idle.png is 560x64 = 7 frames).",
-      "notes": null
+      "notes": null,
+      "cell": [
+        80,
+        64
+      ],
+      "fps": 10
     },
     {
       "id": "fantasy-dreamland",
@@ -305,7 +354,40 @@
       "credit": "Characters by ELV Games (elvgames.itch.io)",
       "licenseFile": "License: You are free to use, personal or commercial projects. You can edit/modify to fit your game. Credits are appreciated. You cannot: Sell this asset pack, not even modified. Claim this asset is yours. Artwork created by ElvGames.",
       "description": "Six top-down RPG characters with 4-direction walk and idle sheets at 16x16 (96x96 sheets), 32x32 and 48x48, plus RPG Maker MV/MZ formatted versions.",
-      "notes": "Folder names are the tile size."
+      "notes": "Folder names are the tile size. Each sheet is 4 columns x 4 rows; rows are facings (down, left, right, up), columns the walk or idle frames. Cells are 1.5x the folder size (24, 48, 72 px).",
+      "cells": {
+        "^16x16/": [
+          24,
+          24
+        ],
+        "^32x32/": [
+          48,
+          48
+        ],
+        "^48x48/": [
+          72,
+          72
+        ]
+      },
+      "animations": {
+        "down": {
+          "row": 0,
+          "frames": 4
+        },
+        "left": {
+          "row": 1,
+          "frames": 4
+        },
+        "right": {
+          "row": 2,
+          "frames": 4
+        },
+        "up": {
+          "row": 3,
+          "frames": 4
+        }
+      },
+      "fps": 8
     },
     {
       "id": "free-foes",
@@ -325,7 +407,13 @@
       "credit": "Enemy sprites by Robert Pinero (robertpinero.itch.io)",
       "licenseFile": null,
       "description": "16 hand-drawn cartoon animated side-view enemy sheets sized for RPG Maker MV/MZ (about 2700 px wide each): slime, wolf, bat, goblin, kobold, sahuagin, troll, crab, gnoll, skeleton, rat, training dummy, turnip, werewolf, 8-direction zombies (NPC, VS8, battler), 4-direction German shepherd (+ battler, RPG Maker version).",
-      "notes": null
+      "notes": "RPG Maker MV layouts: *_sheet.png battlers are 9 columns x 6 rows (cell = width/9 by height/6); zombie_sprite sheets are 12 x 8 of 100x100.",
+      "cells": {
+        "^Zombies/zombie_sprite/": [
+          100,
+          100
+        ]
+      }
     },
     {
       "id": "gandalf-characters",
@@ -345,7 +433,42 @@
       "credit": null,
       "licenseFile": "LICENSE: Permitted uses for the assets include incorporating them into commercial and non-commercial video games and projects, modifying them as needed, and displaying work featuring the assets on designated websites. Restrictions include not reselling, repackaging (selling the edited pixel art), or redistributing the assets, using them for AI training, incorporating them in game tools, NFT projects, or printed materials.",
       "description": "80x64 pixel-art sidescroller male and female base characters (idle 5, walk 8, run 8, jump 4, fall 4, use item/attack 6, death 10) with paper-doll layers: skin colours, hair, clothing, hats, hand items, masks.",
-      "notes": null
+      "notes": "Every layer sheet (skin, hair, clothes, hand) is 10 columns x 7 rows of 80x64 with the same row order, so layers stack frame for frame.",
+      "cell": [
+        80,
+        64
+      ],
+      "fps": 10,
+      "animations": {
+        "idle": {
+          "row": 0,
+          "frames": 5
+        },
+        "walk": {
+          "row": 1,
+          "frames": 8
+        },
+        "run": {
+          "row": 2,
+          "frames": 8
+        },
+        "jump": {
+          "row": 3,
+          "frames": 4
+        },
+        "fall": {
+          "row": 4,
+          "frames": 4
+        },
+        "attack": {
+          "row": 5,
+          "frames": 6
+        },
+        "death": {
+          "row": 6,
+          "frames": 10
+        }
+      }
     },
     {
       "id": "gandalf-city-tiles",
@@ -369,7 +492,13 @@
       "credit": null,
       "licenseFile": "You are allowed to use the assets for commercial and non-commercial video games and projects, modify them as needed and display them on designated websites. Prohibited: reselling, repackaging, or redistributing the assets; AI training or NFT projects; incorporating them into game development tools or printed materials.",
       "description": "32x32 pixel-art modern-city sidescroller tiles: floor, wall, asphalt, building facades in several glass and brick colours, shop tiles, props (trash, traffic lights, signs) and 3 parallax background layers.",
-      "notes": "Aseprite source files are not hosted."
+      "notes": "Aseprite source files are not hosted.",
+      "cells": {
+        "32x32": [
+          32,
+          32
+        ]
+      }
     },
     {
       "id": "gandalf-warrior",
@@ -389,7 +518,12 @@
       "credit": null,
       "licenseFile": null,
       "description": "Extra download on the character page: a fully animated 80x64 pixel-art warrior sheet plus a preview gif.",
-      "notes": null
+      "notes": "10 columns x 17 rows of 80x64, one animation per row.",
+      "cell": [
+        80,
+        64
+      ],
+      "fps": 10
     },
     {
       "id": "gandalf-effects",
@@ -409,7 +543,12 @@
       "credit": null,
       "licenseFile": null,
       "description": "Extra download on the character page: 25 small pixel-art effect strips (hits, sparkles, dust, status effects) matching the 80x64 characters.",
-      "notes": null
+      "notes": null,
+      "cell": [
+        80,
+        64
+      ],
+      "fps": 12
     },
     {
       "id": "mana-seed-farmer",
@@ -429,7 +568,13 @@
       "credit": null,
       "licenseFile": "You can use the included sheets and visible frames to test out the system in your game (you may even use it commercially if you wish). If you like it, you can purchase the full version to unlock a wide variety of new animations, outfits, and hairstyles.",
       "description": "Free sample of the 32 px-tall (64x64 cell) paper-doll farmer: walk cycle and jump only, with the animation guide, cell reference and Mana Seed colour ramps.",
-      "notes": "Deliberately limited sample."
+      "notes": "Deliberately limited sample.",
+      "cells": {
+        "^farmer_base_sheets/": [
+          64,
+          64
+        ]
+      }
     },
     {
       "id": "mana-seed-forest-winter",
@@ -449,7 +594,11 @@
       "credit": null,
       "licenseFile": null,
       "description": "Three 16x16 SNES-style winter forest tile sheets (ground, trees, cliffs, water) from the seasonal forest tileset.",
-      "notes": null
+      "notes": null,
+      "cell": [
+        16,
+        16
+      ]
     },
     {
       "id": "female-adventurer",
@@ -469,7 +618,12 @@
       "credit": null,
       "licenseFile": null,
       "description": "Top-down pixel-art female adventurer with 8-direction 8-frame animations: idle, walk, jump, dash, death (sheets per facing: Idle_Down, Idle_Right_Up, ...), a shadow sprite and 'frame dimensions.png'. Idle.png is 384x384.",
-      "notes": null
+      "notes": "Per-facing strips (Idle_Down.png ...) are 8 frames of 48x64; the combined Idle.png / Walk.png stack the 6 facings as rows.",
+      "cell": [
+        48,
+        64
+      ],
+      "fps": 10
     },
     {
       "id": "adventure-girl",
@@ -489,7 +643,9 @@
       "credit": null,
       "licenseFile": null,
       "description": "Cartoon side-scroller adventurer girl (temple theme) as individual frames (about 640x540 each): Dead, Idle, Jump, Melee, Run, Shoot, Slide.",
-      "notes": "Per-frame PNGs named Run_1.png ... (spaces and parentheses in the original names became underscores)."
+      "notes": "One PNG per frame at the pack root (Run_1.png ... Run_8.png); Run.json etc. list each animation's frames in order.",
+      "sequences": true,
+      "fps": 10
     },
     {
       "id": "ninja-girl",
@@ -509,7 +665,9 @@
       "credit": null,
       "licenseFile": null,
       "description": "Cartoon side-scroller ninja girl as individual frames (about 524x565), 10 frames per state: Attack, Climb, Dead, Glide, Idle, Jump, Jump_Attack, Jump_Throw, Run, Slide, Throw.",
-      "notes": "Per-frame PNGs named Attack_000.png etc."
+      "notes": "One PNG per frame at the pack root (Attack_000.png ...), 10 per animation, plus Kunai.png; Attack.json etc. list each animation's frames in order.",
+      "sequences": true,
+      "fps": 12
     },
     {
       "id": "dragons",

@@ -176,7 +176,7 @@ function planPixelEffects(pack, root, rels) {
       const txt = path.join(root, rel.replace(/\.png$/, '.txt'));
       const sheet = fs.existsSync(txt) ? parseEffectSheet(fs.readFileSync(txt, 'utf8')) : null;
       add({ src: path.join(root, rel), dst: `${pack.dest}/${slug(m[1])}/${cleanName(m[3])}.png`, pack: pack.id, convert: false,
-        meta: { category: slug(m[1]), animation: m[2], fps: 15, ...(sheet ? { frames: sheet.frames, frameWidth: sheet.width, frameHeight: sheet.height } : {}) } });
+        meta: { category: slug(m[1]), animation: m[2], fps: 15, ...(sheet ? { frames: sheet.frames, cell: [sheet.width, sheet.height] } : {}) } });
     } else if (/^[^/]+\.txt$/.test(rel)) {
       add({ src: path.join(root, rel), dst: `${pack.dest}/${cleanName(rel)}`, pack: pack.id, convert: false, meta: {} });
     }
@@ -214,13 +214,6 @@ await pool(items, JOBS, async (it) => {
 console.log(`converted ${converted} wav, copied ${copied} files, ${failed} failed, ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 if (failed) process.exit(1);
 
-// Remove stale output (files no longer planned).
-const planned = new Set(items.map((i) => i.dst));
-for (const rel of walk(OUT)) {
-  if (['manifest.json', 'packs.json', 'index.html', 'llms.txt'].includes(rel)) continue;
-  if (!planned.has(rel)) { fs.rmSync(path.join(OUT, rel)); console.log(`  removed stale ${rel}`); }
-}
-
 // glTF sanity: every relative uri must exist next to the file.
 let brokenRefs = 0;
 for (const it of items) {
@@ -248,9 +241,73 @@ for (const it of items.sort((a, b) => a.dst.localeCompare(b.dst))) {
   const s = (packStats[it.pack] ||= { files: 0, bytes: 0 });
   s.files++; s.bytes += buf.length;
 }
+
+// ---------- frame metadata: grid cells, animations, per-frame sequences, sound variants ----------
+// Each image with a known cell gets `cell`, `cols`, `rows` (and `frames` for a one-row strip), `fps`,
+// `animations`, and a sidecar <path>.json carrying the same so aha-assets.js can read it without the
+// (gated) manifest. Per-frame packs get <Animation>.json listing the frames; Pixel Combat sounds get
+// <stem>.json listing the variants.
+const packById = Object.fromEntries(packsFile.packs.map((p) => [p.id, p]));
+const relInPack = (e, p) => { const d = typeof p.dest === 'string' ? p.dest : Object.values(p.dest)[0]; return e.path.startsWith(`${d}/`) ? e.path.slice(d.length + 1) : e.path; };
+const cellFor = (e, p) => { const rel = relInPack(e, p); for (const [re, cell] of Object.entries(p.cells || {})) if (new RegExp(re).test(rel)) return cell; return p.cell || null; };
+const derived = [];
+function writeDerived(rel, obj, pack) {
+  const text = JSON.stringify(obj);
+  fs.mkdirSync(path.dirname(path.join(OUT, rel)), { recursive: true });
+  fs.writeFileSync(path.join(OUT, rel), text);
+  derived.push({ path: rel, pack, bytes: Buffer.byteLength(text), sha1: createHash('sha1').update(text).digest('hex'), type: 'application/json', kind: 'meta' });
+}
+const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
+for (const e of files) {
+  const p = packById[e.pack];
+  if (!p || !e.type.startsWith('image/')) continue;
+  if (!e.cell) {
+    const cell = cellFor(e, p);
+    if (cell) {
+      if (e.width % cell[0] === 0 && e.height % cell[1] === 0) e.cell = cell;
+      else console.warn(`  ${e.path}: ${e.width}x${e.height} is not a grid of ${cell.join('x')} cells, no cell recorded`);
+    }
+  }
+  if (!e.cell) continue;
+  e.cols = e.width / e.cell[0];
+  e.rows = e.height / e.cell[1];
+  if (e.rows === 1 && !e.frames) e.frames = e.cols;
+  if (p.fps) e.fps ??= p.fps;
+  if (p.animations && e.rows > 1) e.animations = p.animations;
+  writeDerived(`${e.path}.json`, pick(e, ['path', 'width', 'height', 'cell', 'cols', 'rows', 'frames', 'fps', 'animations', 'animation']), e.pack);
+}
+for (const p of packsFile.packs.filter((x) => x.sequences)) {
+  const groups = {};
+  for (const e of files) {
+    if (e.pack !== p.id || !e.type.startsWith('image/')) continue;
+    const m = /^([^/]+?)_+(\d+)\.png$/.exec(relInPack(e, p));
+    if (m) (groups[m[1]] ||= []).push({ n: +m[2], e });
+  }
+  for (const [name, list] of Object.entries(groups)) {
+    list.sort((a, b) => a.n - b.n);
+    for (const { e } of list) e.animation = name;
+    writeDerived(`${p.dest}/${name}.json`, { animation: name, sequence: list.map((x) => x.e.path), frames: list.length, fps: p.fps || 10, width: list[0].e.width, height: list[0].e.height }, p.id);
+  }
+}
+{
+  const groups = {};
+  for (const e of files) if (e.type === 'audio/mp4' && e.variant != null) (groups[e.path.replace(/-\d+\.m4a$/, '')] ||= []).push(e);
+  for (const [stem, list] of Object.entries(groups)) {
+    list.sort((a, b) => a.variant - b.variant);
+    writeDerived(`${stem}.json`, { name: list[0].name, category: list[0].category, tags: list[0].tags, variants: list.map((e) => e.path), duration: list[0].duration }, list[0].pack);
+  }
+}
+for (const d of derived) { files.push(d); const s = packStats[d.pack]; s.files++; s.bytes += d.bytes; }
+files.sort((a, b) => a.path.localeCompare(b.path));
+fs.copyFileSync(path.join(HERE, 'aha-assets.js'), path.join(OUT, 'aha-assets.js'));
+
+// Remove stale output (files neither planned nor derived this run).
+const keep = new Set([...items.map((i) => i.dst), ...derived.map((d) => d.path), 'manifest.json', 'packs.json', 'index.html', 'llms.txt', 'aha-assets.js']);
+for (const rel of walk(OUT)) if (!keep.has(rel)) { fs.rmSync(path.join(OUT, rel)); console.log(`  removed stale ${rel}`); }
+
 const packs = {};
 for (const p of packsFile.packs) {
-  const { from, skip, only, handler, $comment, ...pub } = p;
+  const { from, skip, only, handler, cells, ...pub } = p;
   packs[p.id] = { ...pub, ...(packStats[p.id] || { files: 0, bytes: 0 }) };
 }
 const manifest = { version: 1, generated: new Date().toISOString(), files: files.length, bytes: files.reduce((a, f) => a + f.bytes, 0), packs, entries: files };
@@ -268,5 +325,5 @@ fs.writeFileSync(path.join(OUT, 'llms.txt'), `# AhaSlides games asset library
 
 ${guide.replace(/^# AhaSlides games asset library\n/, "")}`);
 
-console.log(`\nmanifest: ${files.length} files, ${(manifest.bytes / 1048576).toFixed(1)} MB`);
+console.log(`\nmanifest: ${files.length} files (${derived.length} metadata), ${(manifest.bytes / 1048576).toFixed(1)} MB`);
 for (const [id, s] of Object.entries(packStats)) console.log(`  ${id.padEnd(26)} ${String(s.files).padStart(5)} files ${(s.bytes / 1048576).toFixed(1).padStart(7)} MB`);
