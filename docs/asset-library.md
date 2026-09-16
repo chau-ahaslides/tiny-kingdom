@@ -190,10 +190,21 @@ https://play.ahaslides.io/j/<CODE>           the join link phones open; /ws/<COD
 ```
 
 A game page served from `play.ahaslides.io` calls `AhaRoom.host()` and `AhaRoom.join()` with no
-configuration. A page on another origin passes the relay explicitly:
-`AhaRoom.host({ transport: new AhaRoom.RelayTransport({ origin: 'https://play.ahaslides.io' }) })`.
-The join link always opens the game's page on `play.ahaslides.io`, so a multiplayer game's page
-belongs on that host; this library only supplies its art, sound, maps and libraries.
+configuration. A page anywhere else (an artifact, for example) names the relay and the URL phones
+should open, which may be the page itself:
+
+```js
+const relay = AhaRoom.relay({ origin: 'https://play.ahaslides.io' });
+const room = await AhaRoom.host({ transport: relay, page: 'https://agent-fleet.ahaslides.io/artifacts/<id>' });
+// room.joinUrl is https://play.ahaslides.io/j/<CODE>; it redirects phones to the page above with ?join=<CODE>
+const me = AhaRoom.join({ transport: relay });   // on the phone: reads ?join= (or #join=) from the URL
+```
+
+`page` must be an https URL on an AhaSlides origin (`*.ahaslides.com` / `.io` / `.ai`); a sandboxed
+page cannot discover its own address, so it passes it. The page opened with `?join=<CODE>` runs the
+same code in join mode. When a viewer renders the page in an iframe it has to forward that query (or
+`#join=<CODE>`) to the iframe for the phone side to find its room. This library only supplies the
+art, sound, maps and libraries; the room service is `play.ahaslides.io`.
 
 ## Libraries on the CDN: three.js and PixiJS
 

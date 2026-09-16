@@ -216,7 +216,17 @@ export class Room extends Emitter {
   }
   static async open(opts = {}) {
     const t = endpointOf(opts.transport || defaultTransport(), 'host');
-    const page = opts.page || (hasDOM ? location.pathname : '/');
+    // The page phones open from /j/CODE: this site's path when the page lives on the relay's origin, the
+    // page's own URL when it lives elsewhere (an artifact on agent-fleet, say). A sandboxed page has no
+    // usable location, so it must say where it is: host({ page: 'https://…/artifacts/<id>' }).
+    let page = opts.page;
+    if (!page && hasDOM) {
+      const relayOrigin = t.origin || location.origin;
+      if (location.origin === relayOrigin) page = location.pathname;
+      else if (/^https:\/\//.test(location.origin)) page = location.origin + location.pathname;
+      else throw new Error('aha-room: this page is sandboxed; pass host({ page }) with the public URL phones should open');
+    }
+    page = page || '/';
     let code = null, joinUrl = null;
     if (t.caps.providesRoom) { code = t.roomCode() || null; }
     else { const r = await t.createRoom({ page, code: opts.code ? String(opts.code).toUpperCase() : undefined }); code = r.code; joinUrl = r.joinUrl; }
@@ -388,7 +398,8 @@ export class Me extends Emitter {
   async _start(opts) {
     const t = this._t;
     const q = hasDOM ? new URLSearchParams(location.search) : new URLSearchParams();
-    this.code = String(opts.code || (t.caps.providesRoom && t.roomCode()) || q.get('join') || '').toUpperCase();
+    const h = hasDOM ? new URLSearchParams(location.hash.replace(/^#/, '')) : new URLSearchParams();   // a viewer may hand the code over in the hash
+    this.code = String(opts.code || (t.caps.providesRoom && t.roomCode()) || q.get('join') || h.get('join') || '').toUpperCase();
     if (!this.code) { this.status = 'no-room'; this.emit('status', 'no-room'); return; }
     let identity;
     if (t.caps.providesIdentity) {

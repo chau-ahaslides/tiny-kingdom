@@ -81,7 +81,10 @@ export class RoomDir {
     const url = new URL(req.url);
     if (url.pathname === '/claim' && req.method === 'POST') {
       let body = {}; try { body = await req.json(); } catch (e) {}
-      const page = typeof body.page === 'string' && /^\/[a-z0-9\-\/]{0,80}$/i.test(body.page) ? body.page : '';
+      // page: a path on this site, or the absolute https URL of a page on an AhaSlides origin (an artifact,
+      // for instance): /j/CODE sends phones there. Anything else is dropped, so /j never redirects off-brand.
+      const page = pageOf(body.page);
+      if (body.page && !page) return Response.json({ error: 'bad page: a path on this site, or an https URL on an AhaSlides origin' }, { status: 400 });
       let code = typeof body.code === 'string' ? body.code.toUpperCase() : '';
       if (code) {
         if (!CODE_RE.test(code)) return Response.json({ error: 'bad code' }, { status: 400 });
@@ -119,6 +122,25 @@ async function lookup(env, code, touch) {
    call it from another site. Same-origin pages need none of this; the socket routes and /j/CODE are not
    subject to CORS, so joining a room works from anywhere. */
 const AHASLIDES_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*ahaslides\.(com|io|ai)$/i;
+
+/** The page a room belongs to: a path here ("/idea-map"), or an https URL on an AhaSlides origin (an artifact). '' if neither. */
+function pageOf(page) {
+  if (typeof page !== 'string') return '';
+  if (/^\/[a-z0-9\-\/]{0,80}$/i.test(page)) return page;
+  if (page.length > 512) return '';
+  try {
+    const u = new URL(page);
+    if (u.protocol !== 'https:' || !AHASLIDES_ORIGIN.test(u.origin)) return '';
+    u.hash = '';
+    u.searchParams.delete('join'); u.searchParams.delete('host');
+    return u.toString();
+  } catch (e) { return ''; }
+}
+/** Where /j/CODE sends a phone: the page with ?join=CODE, on this site or on the page's own origin. */
+function joinTarget(origin, page, code) {
+  if (/^https:\/\//.test(page)) { const u = new URL(page); u.searchParams.set('join', code); return u.toString(); }
+  return origin + page + '?join=' + code;
+}
 // "null" is what a sandboxed iframe sends (the artifact viewer on agent-fleet.ahaslides.io renders games
 // that way); minting a room is public and unauthenticated, so echoing it back gives nothing away.
 function cors(req, headers = new Headers()) {
@@ -150,7 +172,7 @@ export default {
     const j = url.pathname.match(/^\/j\/([A-Za-z0-9-]{4,32})$/);
     if (j) {
       const r = await lookup(env, j[1]);
-      if (r && r.page) return Response.redirect(url.origin + r.page + '?join=' + j[1].toUpperCase(), 302);
+      if (r && r.page) return Response.redirect(joinTarget(url.origin, r.page, j[1].toUpperCase()), 302);
       return new Response('This room has ended. Ask the big screen for a new code.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     }
     const ws = url.pathname.match(/^\/ws\/([A-Za-z0-9-]{4,32})$/);

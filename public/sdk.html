@@ -548,6 +548,14 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
   <tr><td><code>bridge</code></td><td><span class="pill later">phase 3</span></td><td>no unicast, no fast lanes, small messages</td><td>The parent forwards messages over the presentation's own realtime channel. The document survives it by design; fast lanes do not, and stay on the relay.</td></tr>
 </table></div>
 
+<h2 id="elsewhere">Hosting from a page on another site</h2>
+<p>A game page does not have to live on <code>play.ahaslides.io</code>. An artifact on <code>agent-fleet.ahaslides.io</code> (or any page on an AhaSlides origin) can host a room and have the phones join <em>on that same page</em>: it names the relay and the public URL phones should open, and the join link redirects there.</p>
+<pre><code>const relay = AhaRoom.relay({ origin: 'https://play.ahaslides.io' });
+const room = await AhaRoom.host({ transport: relay, page: 'https://agent-fleet.ahaslides.io/artifacts/&lt;id&gt;' });
+// room.joinUrl = https://play.ahaslides.io/j/&lt;CODE&gt;  →  302 to the page above with ?join=&lt;CODE&gt;
+const me = AhaRoom.join({ transport: relay });      // the same page, opened with ?join=&lt;CODE&gt; (or #join=&lt;CODE&gt;)</code></pre>
+<p>Rules: <code>page</code> must be an https URL on <code>*.ahaslides.com</code>, <code>.io</code> or <code>.ai</code> (anything else is refused with 400, so <code>/j</code> never redirects off-brand); a sandboxed page cannot read its own address, so it has to pass <code>page</code>; a viewer that renders the page inside an iframe must forward the <code>join</code> query or hash to that iframe, or the phone side will see no room. Sockets and the room API accept the <code>null</code> origin a sandboxed iframe sends.</p>
+
 <h2 id="embed">Embedding in the presenter and audience apps</h2>
 <p>The audience app already mounts a game per active slide and remounts on slide change; the presenter app already knows every participant's id and name. Embedding a room game means giving both apps an iframe and telling the SDK what it no longer has to do. Two steps, in this order.</p>
 
