@@ -12,7 +12,7 @@ LIB = https://tiny-kingdom-lib.ahaslides-game.workers.dev
 |---|---|
 | `LIB/<path>` | Any file: open to everyone, so games load them from any origin. |
 | `LIB/llms.txt` | This guide, served from the CDN. Start here. **Gated.** |
-| `LIB/manifest.json` | Every file (3,650) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `duration`, `frames`/`frameWidth`/`frameHeight`, `category`, `variant`, `tags`. **Gated.** |
+| `LIB/manifest.json` | Every file (3,650 assets, 1,298 metadata) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `cell`/`cols`/`rows`/`frames`/`fps`/`animations`, `duration`, `category`, `variant`, `tags`. **Gated.** |
 | `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. **Gated.** |
 | `LIB/` | The catalog: every pack, its licence, thumbnails, play buttons, a filter box. **Gated**: open it once as `LIB/?key=<token>`. |
 | `library/packs.json` in this repo | The same pack index, plus the build rules. Edit this to add or change a pack. |
