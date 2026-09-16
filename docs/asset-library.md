@@ -117,7 +117,7 @@ new GLTFLoader().load(`${LIB}/models/kaykit-adventurers/Characters/gltf/Knight.g
 
 Godot, Unity and other native engines are not web-facing: download the files (a pack's paths are in
 the manifest) and use the cell sizes from `<image>.json`. Whatever the engine, the page has to be on
-an AhaSlides origin (`*.ahaslides.com`, `*.ahaslides-game.workers.dev`, or localhost while
+an AhaSlides origin (`*.ahaslides.com`, `*.ahaslides.io`, `*.ahaslides.ai`, `*.ahaslides-game.workers.dev`, or localhost while
 developing): cross-origin loading is allowed for those origins only.
 
 ## URL scheme
@@ -135,7 +135,7 @@ Names are the pack's own names with spaces and punctuation turned into `_` (`Run
 `card-and-board`). The manifest's `path` is always the exact key, so copy from there.
 
 Responses carry an `ETag`, `Accept-Ranges: bytes`, and `Cache-Control: public, max-age=86400`.
-`Access-Control-Allow-Origin` is set only for AhaSlides origins (`https://*.ahaslides.com`,
+`Access-Control-Allow-Origin` is set only for AhaSlides origins (`https://*.ahaslides.com` / `.io` / `.ai`,
 `https://*.ahaslides-game.workers.dev`, `http://localhost:*`): from those, `fetch`, Web Audio,
 canvas readback and `import` of `aha-assets.js` all work; from anywhere else only plain `<img>` and
 `<audio>` tags do. A file at a given path is only ever replaced when a pack is rebuilt; append

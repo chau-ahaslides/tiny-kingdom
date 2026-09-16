@@ -115,9 +115,10 @@ async function lookup(env, code, touch) {
   try { return await (await dir(env).fetch('https://dir/lookup?code=' + encodeURIComponent(code) + (touch ? '&touch=1' : ''))).json(); }
   catch (e) { return null; }
 }
-/* CORS for the HTTP API: only AhaSlides origins (https://ahaslides.com and any subdomain) may call it
-   from another site. Same-origin pages need none of this, and the socket routes are not subject to CORS. */
-const AHASLIDES_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*ahaslides\.com$/i;
+/* CORS for the HTTP API: only AhaSlides origins (https://ahaslides.com, .io, .ai and any subdomain) may
+   call it from another site. Same-origin pages need none of this; the socket routes and /j/CODE are not
+   subject to CORS, so joining a room works from anywhere. */
+const AHASLIDES_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*ahaslides\.(com|io|ai)$/i;
 function cors(req, headers = new Headers()) {
   const origin = req.headers.get('origin');
   if (origin && AHASLIDES_ORIGIN.test(origin)) {

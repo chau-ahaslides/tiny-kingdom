@@ -115,10 +115,11 @@ export function parseEffectSheet(text) {
 }
 
 /**
- * Origins that may load library files cross-origin: AhaSlides sites (any subdomain of ahaslides.com),
- * the games on the ahaslides-game workers.dev account, and localhost for development.
+ * Origins that may load library files cross-origin (fetch, Web Audio, import): AhaSlides sites (any
+ * subdomain of ahaslides.com, ahaslides.io, ahaslides.ai), the games on the ahaslides-game workers.dev
+ * account, and localhost for development.
  */
-export const ALLOWED_ORIGIN = /^(https:\/\/([a-z0-9-]+\.)*(ahaslides\.com|ahaslides-game\.workers\.dev)|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/i;
+export const ALLOWED_ORIGIN = /^(https:\/\/([a-z0-9-]+\.)*(ahaslides\.(com|io|ai)|ahaslides-game\.workers\.dev)|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/i;
 export function originAllowed(origin) {
   return typeof origin === 'string' && ALLOWED_ORIGIN.test(origin);
 }
