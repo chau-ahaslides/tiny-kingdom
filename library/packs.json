@@ -774,6 +774,72 @@
       "notes": null
     },
     {
+      "id": "rapier2d",
+      "title": "Rapier 2d 0.20.0",
+      "author": "Dimforge",
+      "authorUrl": "https://rapier.rs/",
+      "url": "https://github.com/dimforge/rapier.js",
+      "source": "npm",
+      "price": "free",
+      "kind": "vendor",
+      "dest": {
+        "dist/": "vendor/rapier2d/0.20.0",
+        "": "vendor/rapier2d/0.20.0"
+      },
+      "from": {
+        "npm": "@dimforge/rapier2d-compat",
+        "version": "0.20.0"
+      },
+      "only": [
+        "dist/rapier.mjs",
+        "LICENSE"
+      ],
+      "skip": [
+        "\\.map$",
+        "\\.d\\.ts$",
+        "\\.cjs$"
+      ],
+      "license": "Apache-2.0",
+      "commercial": "yes",
+      "credit": null,
+      "licenseFile": "vendor/rapier2d/0.20.0/LICENSE",
+      "description": "Rapier 2d, the Rust physics engine compiled to WebAssembly: rigid bodies, colliders, joints, character controllers, sensors and ray casts, deterministic across machines. This is the -compat build, one ES module with the WebAssembly inlined, so it loads from a URL with no bundler: `import RAPIER from '.../rapier.mjs'; await RAPIER.init();`.",
+      "notes": "Call RAPIER.init() once and await it before touching any other API."
+    },
+    {
+      "id": "rapier3d",
+      "title": "Rapier 3d 0.20.0",
+      "author": "Dimforge",
+      "authorUrl": "https://rapier.rs/",
+      "url": "https://github.com/dimforge/rapier.js",
+      "source": "npm",
+      "price": "free",
+      "kind": "vendor",
+      "dest": {
+        "dist/": "vendor/rapier3d/0.20.0",
+        "": "vendor/rapier3d/0.20.0"
+      },
+      "from": {
+        "npm": "@dimforge/rapier3d-compat",
+        "version": "0.20.0"
+      },
+      "only": [
+        "dist/rapier.mjs",
+        "LICENSE"
+      ],
+      "skip": [
+        "\\.map$",
+        "\\.d\\.ts$",
+        "\\.cjs$"
+      ],
+      "license": "Apache-2.0",
+      "commercial": "yes",
+      "credit": null,
+      "licenseFile": "vendor/rapier3d/0.20.0/LICENSE",
+      "description": "Rapier 3d, the Rust physics engine compiled to WebAssembly: rigid bodies, colliders, joints, character controllers, sensors and ray casts, deterministic across machines. This is the -compat build, one ES module with the WebAssembly inlined, so it loads from a URL with no bundler: `import RAPIER from '.../rapier.mjs'; await RAPIER.init();`.",
+      "notes": null
+    },
+    {
       "id": "starter-maps",
       "title": "Starter maps",
       "author": "AhaSlides",

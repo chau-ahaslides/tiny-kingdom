@@ -17,7 +17,7 @@ LIB = https://games.ahaslides.io
 | `LIB/manifest.json` | The same for every pack at once: 32,000 entries, 8 MB. Only worth fetching to search across packs. **Gated.** |
 | `LIB/catalog` | The catalog: every pack, its licence, thumbnails, play buttons, the starter maps, a filter box. Sign in with your AhaSlides Google account. |
 | `LIB/` | The same catalog for agents and scripts: open it once as `LIB/?key=<token>`. |
-| `LIB/vendor/…` | three.js and PixiJS, pinned by version (see "Libraries on the CDN"). |
+| `LIB/vendor/…` | three.js, PixiJS and Rapier (physics), pinned by version (see "Libraries on the CDN"). |
 | `LIB/maps/<pack>/…` | A starter map per tileset pack, in the library's map format (see "Maps"). |
 | `library/packs.json` in this repo | The same pack index, plus the build rules. Edit this to add or change a pack. |
 
@@ -231,17 +231,19 @@ it, or pass `host({ page: 'https://…/artifacts/<id>' })` to get a link. Detail
 `https://play.ahaslides.io/sdk#elsewhere`. This library only supplies the art, sound, maps and
 libraries; the room service is `play.ahaslides.io`.
 
-## Libraries on the CDN: three.js and PixiJS
+## Libraries on the CDN: three.js, PixiJS and Rapier
 
-The two engines the games use are hosted here too, pinned by version, so a game page references
-them from this host and never bundles, copies or inlines them (the same rule as for assets: link the
-URL, never paste bytes or base64 into game code):
+The engines the games use are hosted here too, pinned by version, so a game page references them
+from this host and never bundles, copies or inlines them (the same rule as for assets: link the URL,
+never paste bytes or base64 into game code):
 
 ```
 vendor/three/0.186.0/build/three.module.js         three.js core (ES module; three.core.js is imported by it)
 vendor/three/0.186.0/build/three.webgpu.js         the WebGPU renderer build, if wanted
 vendor/three/0.186.0/examples/jsm/…                every addon: loaders/GLTFLoader.js, controls/OrbitControls.js, …
 vendor/pixi/8.20.1/pixi.min.mjs                    PixiJS 8 as an ES module (pixi.mjs unminified; pixi.min.js / pixi.js for a <script> tag)
+vendor/rapier2d/0.20.0/rapier.mjs                  Rapier 2D physics (Rust, compiled to WebAssembly), one ES module
+vendor/rapier3d/0.20.0/rapier.mjs                  Rapier 3D physics, the same
 ```
 
 three.js addons import the bare specifier `three`, so the page declares an import map once:
@@ -273,8 +275,58 @@ three.js addons import the bare specifier `three`, so the page declares an impor
 </script>
 ```
 
-Both are MIT-licensed. To add a version, add a pack with `"from": { "npm": "three", "version": "…" }`
-to `library/packs.json` and rebuild; old versions stay so existing games keep working.
+### Rapier: physics
+
+Use it for anything that should fall, collide, stack, swing or topple — a tower that can really
+collapse, a ragdoll, a ball rolling round a maze, a vehicle. Rapier is Rust compiled to WebAssembly,
+so a few hundred bodies step in well under a frame, and it is deterministic: the same inputs give
+the same result on every machine, which is what makes a host-authoritative room work (the big screen
+steps the world and broadcasts positions; phones only send input, and never run their own physics).
+
+The build hosted here is the `-compat` one: a single ES module with the WebAssembly inlined, so it
+loads from a URL with no bundler and no second request. **`await RAPIER.init()` once before touching
+any other API** — everything else throws until the WebAssembly is ready.
+
+```html
+<script type="module">
+  import RAPIER from 'https://games.ahaslides.io/vendor/rapier2d/0.20.0/rapier.mjs';
+  await RAPIER.init();
+
+  const world = new RAPIER.World({ x: 0, y: -9.81 });           // metres and seconds, y up
+  const ground = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, 0));
+  world.createCollider(RAPIER.ColliderDesc.cuboid(10, 0.1), ground);   // half-extents, so 20 x 0.2
+
+  const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 8));
+  world.createCollider(RAPIER.ColliderDesc.ball(0.5).setRestitution(0.7).setDensity(1), body);
+
+  const PX = 32;                                                 // 32 screen px to the metre
+  (function frame() {
+    world.step();                                                // a fixed 1/60 s step; call it once per frame
+    const p = body.translation(), a = body.rotation();           // 3D: rotation() is a quaternion
+    sprite.x = p.x * PX; sprite.y = -p.y * PX; sprite.rotation = -a;
+    requestAnimationFrame(frame);
+  })();
+</script>
+```
+
+3D is the same module with `z` in every vector: `new RAPIER.World({ x: 0, y: -9.81, z: 0 })`,
+`ColliderDesc.cuboid(hx, hy, hz)`, `body.translation()` giving `{x, y, z}` and `body.rotation()` a
+quaternion you can hand straight to three.js (`mesh.quaternion.copy(q)`).
+
+Things worth knowing before the first bug: work in metres, not pixels (a 600-pixel-tall box falling
+under 9.81 m/s² behaves like a skyscraper — pick a scale like 32 px per metre and keep bodies roughly
+0.1–10 m); `world.step()` advances a fixed 1/60 s, so call it once per animation frame and, if a
+frame is late, step it at most a few times to catch up rather than passing a variable delta; give
+every collider a density or mass, or it weighs nothing; `world.step()` is the only place the
+simulation advances, so read positions after it; and events (contacts, sensors) arrive by passing a
+`RAPIER.EventQueue` to `step` and draining it.
+
+The WebAssembly runs inside a sandboxed iframe (the artifact viewer's `allow-scripts` frame, origin
+`null`) — checked, not assumed — so a game hosted as an artifact can use it.
+
+three.js and PixiJS are MIT, Rapier is Apache-2.0 (its LICENSE ships beside the module). To add a
+version, add a pack with `"from": { "npm": "three", "version": "…" }` to `library/packs.json` and
+rebuild; old versions stay so existing games keep working.
 
 ## Other engines
 
