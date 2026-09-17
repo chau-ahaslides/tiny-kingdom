@@ -11,6 +11,9 @@
      type:  'dynamic' (falls, the default) | 'fixed' (never moves) | 'kinematic' (the game moves it) */
 
 import { createHand, trackHand, dropHand, pointOn } from './hand.js';
+import { addJoint, removeJoint, forgetBody, checkJoints, describeJoints, collisionGroups, onGrab, onRelease, turn } from './phys-joints.js';
+import { normaliseControl } from './phys-control.js';
+import { pick, ray, area, collisionEvent } from './phys-query.js';
 
 export const LIMITS = { bodies: 400, shapeSize: 1000, speed: 1000, commandsPerSecond: 120 };
 
@@ -38,8 +41,10 @@ export function normalise(spec = {}) {
       gravity: spec.gravity ? [v3(spec.gravity).x, v3(spec.gravity).y, v3(spec.gravity).z] : [0, -9.81, 0],
       timestep: num(spec.timestep, 1 / 60, 1 / 240, 1 / 20),
       substeps: Math.round(num(spec.substeps, 1, 1, 4)),
+      iterations: Math.round(num(spec.iterations, 4, 1, 16)),   // solver iterations: more holds stacks and joints stiffer
       plane,
       floor: spec.floor === false ? false : num(spec.floor, -50, -10000, 10000),   // bodies below this are dropped
+      control: normaliseControl(spec.control, errors),   // who may send what (phys-control.js)
       events: !!spec.events,
       eventForce: num(spec.eventForce, 1, 0, 1e6),
       sleep: spec.sleep !== false,
@@ -98,10 +103,24 @@ function normaliseShape(shape, where, errors) {
 export function createWorld(R, spec) {
   const world = new R.World(v3(spec.gravity));
   world.timestep = spec.timestep;
+  world.numSolverIterations = spec.iterations;
   const sim = { R, world, spec, bodies: new Map(), hands: new Map(), events: [], nextId: 1, seq: 0, t: 0, queue: null };
   if (spec.events) sim.queue = new R.EventQueue(true);
   for (const b of spec.bodies) addBody(sim, b);
+  primeQueries(sim);
   return sim;
+}
+
+/**
+ * Rapier builds the structures behind pick/ray/area during step(), so a world that has never
+ * stepped answers no questions — and a game asking "what is here?" straight after building one is
+ * the normal case. A zero-length step builds them and moves nothing.
+ */
+function primeQueries(sim) {
+  const dt = sim.world.timestep;
+  sim.world.timestep = 0;
+  sim.world.step();
+  sim.world.timestep = dt;
 }
 
 export function addBody(sim, def) {
@@ -120,8 +139,11 @@ export function addBody(sim, def) {
   if (def.ccd) desc.setCcdEnabled(true);
   const body = world.createRigidBody(desc);
   if (def.lock) body.lockRotations(true, true);
-  else if (spec.plane === 'xy') { body.setEnabledTranslations(true, true, false, true); body.setEnabledRotations(false, false, true, true); }
-  else if (spec.plane === 'xz') { body.setEnabledTranslations(true, false, true, true); body.setEnabledRotations(false, true, false, true); }
+  // a plane locks the translation out of it, but NOT the two rotations out of it: Rapier 0.20 loses all
+  // contact friction on a body with both kinds of lock, so a 2D world's pieces skated across the floor
+  // forever. step() straightens those rotations after every substep instead (flatten()).
+  else if (spec.plane === 'xy') body.setEnabledTranslations(true, true, false, true);
+  else if (spec.plane === 'xz') body.setEnabledTranslations(true, false, true, true);
 
   const s = def.shape;
   const cd = s.ball != null ? R.ColliderDesc.ball(s.ball)
@@ -130,17 +152,60 @@ export function addBody(sim, def) {
     : R.ColliderDesc.cylinder(s.cylinder[0], s.cylinder[1]);
   cd.setDensity(def.density).setFriction(def.friction).setRestitution(def.restitution);
   if (def.sensor) cd.setSensor(true);
+  if (def.sensor && !sim.spec.events) cd.setActiveEvents(R.ActiveEvents.COLLISION_EVENTS);   // a zone always reports
+  cd.setCollisionGroups(collisionGroups(def.type));          // so a carried ghost can pass through (phys-joints.js)
   if (sim.spec.events) cd.setActiveEvents(R.ActiveEvents.COLLISION_EVENTS);
   const collider = sim.world.createCollider(cd, body);
   sim.bodies.set(id, { id, body, collider, def, tag: def.tag });
   sim.seq++;
+  sim.queriesStale = true;                     // pick/ray/area see it after the next step
   return { ok: true, id };
+}
+
+/* Call a world settled once it has stopped doing anything visible. Rapier's own sleep never comes for a
+   structure held together by spring joints (tape, glue): the springs keep it trembling at a few mm/s,
+   invisibly, forever — and body.sleep() is undone by the joints on the next step — so the room would step
+   it forever. So when nobody is holding anything and every body has been nearly still for SETTLE.seconds,
+   the world is settled: isBusy() says no, the room stops stepping it, and the next command unsettles it. */
+const SETTLE = { speed: 0.35, spin: 0.35, seconds: 1.5 };
+export function settle(sim, dt) {
+  let calm = !sim.hands.size, awake = 0;
+  if (calm) {
+    for (const rec of sim.bodies.values()) {
+      if (rec.def.type !== 'dynamic' || rec.body.isSleeping()) continue;
+      awake++;
+      const v = rec.body.linvel(), w = rec.body.angvel();
+      if (Math.hypot(v.x, v.y, v.z) > SETTLE.speed || Math.hypot(w.x, w.y, w.z) > SETTLE.spin) { calm = false; break; }
+    }
+  }
+  sim.calm = calm && awake ? (sim.calm || 0) + dt : 0;
+  sim.settled = sim.calm >= SETTLE.seconds;
+}
+
+/* Keep every dynamic body flat on its plane: no spin about the two axes in the plane, and an orientation
+   that is a pure turn about the plane's normal. Done by hand after each substep because the engine's own
+   rotation lock costs friction (see addBody). Only past a whisker, so a settled body is left alone. */
+export function flatten(sim) {
+  const n = sim.spec.plane === 'xy' ? 'z' : sim.spec.plane === 'xz' ? 'y' : null;
+  if (!n) return;
+  const [a, b] = n === 'z' ? ['x', 'y'] : ['x', 'z'];
+  for (const rec of sim.bodies.values()) {
+    if (rec.def.type !== 'dynamic' || rec.def.lock || rec.body.isSleeping()) continue;
+    const w = rec.body.angvel();
+    if (Math.abs(w[a]) > 1e-4 || Math.abs(w[b]) > 1e-4) { w[a] = 0; w[b] = 0; rec.body.setAngvel(w, false); }
+    const q = rec.body.rotation();
+    if (Math.abs(q[a]) > 1e-5 || Math.abs(q[b]) > 1e-5) {
+      const l = Math.hypot(q[n], q.w) || 1;
+      rec.body.setRotation({ x: 0, y: 0, z: 0, w: q.w / l, [n]: q[n] / l }, false);
+    }
+  }
 }
 
 export function removeBody(sim, id) {
   const rec = sim.bodies.get(id);
   if (!rec) return { ok: false, msg: `no body "${id}"` };
   for (const [hid, h] of sim.hands) if (h.id === id) release(sim, hid);
+  forgetBody(sim, id);
   sim.world.removeRigidBody(rec.body);
   sim.bodies.delete(id);
   sim.seq++;
@@ -152,6 +217,7 @@ const cap = (v, m) => { const l = Math.hypot(v.x, v.y, v.z); return l > m ? { x:
 /** One command from a client. Returns { ok } or { ok: false, msg }. */
 export function apply(sim, m) {
   const rec = m.id ? sim.bodies.get(m.id) : null;
+  if (m.t !== 'pick' && m.t !== 'ray' && m.t !== 'area') { sim.calm = 0; sim.settled = false; }   // anything but a question stirs the world
   switch (m.t) {
     case 'add': {
       const errors = [];
@@ -189,7 +255,15 @@ export function apply(sim, m) {
       sim.spec.gravity = [sim.world.gravity.x, sim.world.gravity.y, sim.world.gravity.z];
       wakeAll(sim);
       return { ok: true };
-    case 'grab': return grab(sim, m.hand, m.id, m.at, m.strength);
+    case 'grab': return grab(sim, m.hand, m.id, m.at, m.strength, m);
+    case 'turn': return turn(sim, sim.hands.get(String(m.hand || 'h').slice(0, 32)), m.angle, m.axis);
+    case 'joint': return addJoint(sim, m);
+    case 'unjoint': return removeJoint(sim, m.id);
+    // reads: they answer the asking connection and leave a settled world settled (phys-query.js)
+    case 'pick': case 'ray': case 'area': {
+      if (sim.queriesStale) { primeQueries(sim); sim.queriesStale = false; }
+      return m.t === 'pick' ? pick(sim, m) : m.t === 'ray' ? ray(sim, m) : area(sim, m);
+    }
     case 'drag': return drag(sim, m.hand, m.pos);
     case 'release': return release(sim, m.hand);
     default: return { ok: false, msg: `unknown command "${m.t}"` };
@@ -203,7 +277,7 @@ export function wakeAll(sim) { for (const r of sim.bodies.values()) r.body.wakeU
    any size, where Marshmallow's are all spaghetti. ---- */
 const HAND = { k: 3e3, d: 90, track: 22, speed: 40 };
 
-export function grab(sim, hand, id, at, strength) {
+export function grab(sim, hand, id, at, strength, opts = {}) {
   const hid = String(hand || 'h').slice(0, 32);
   const rec = sim.bodies.get(id);
   if (!rec) return { ok: false, msg: `no body "${id}"` };
@@ -214,7 +288,9 @@ export function grab(sim, hand, id, at, strength) {
     k: num(strength, 1, 0.05, 20) * HAND.k * mass,
     d: HAND.d * mass,
   });
-  sim.hands.set(hid, { ...h, id });
+  const held = { ...h, id };
+  sim.hands.set(hid, held);
+  onGrab(sim, held, rec, opts);
   return { ok: true, hand: hid };
 }
 
@@ -233,6 +309,7 @@ export function release(sim, hand) {
   if (!h) return { ok: true };
   sim.hands.delete(hid);
   dropHand(sim.world, h);
+  onRelease(sim, h);
   return { ok: true, id: h.id };
 }
 
@@ -244,9 +321,12 @@ export function step(sim, dt = 1 / 60) {
     if (sim.queue) for (const rec of sim.bodies.values()) rec.vel = rec.body.linvel();
     for (const h of sim.hands.values()) trackHand(h, sim.spec.timestep, HAND);
     sim.world.step(sim.queue || undefined);
+    flatten(sim);
     sim.t += sim.spec.timestep;
     if (sim.queue) drainEvents(sim);
+    checkJoints(sim);
   }
+  settle(sim, n * sim.spec.timestep);
   if (sim.spec.floor !== false) {
     for (const rec of [...sim.bodies.values()]) {
       if (rec.def.type !== 'dynamic') continue;
@@ -260,13 +340,10 @@ function drainEvents(sim) {
   const byHandle = new Map();
   for (const rec of sim.bodies.values()) byHandle.set(rec.collider.handle, rec);
   sim.queue.drainCollisionEvents((h1, h2, started) => {
-    if (!started) return;
     const a = byHandle.get(h1), b = byHandle.get(h2);
     if (!a || !b) return;
-    const va = a.vel || a.body.linvel(), vb = b.vel || b.body.linvel();
-    const speed = Math.hypot(va.x - vb.x, va.y - vb.y, va.z - vb.z);
-    if (speed < sim.spec.eventForce) return;
-    if (sim.events.length < 64) sim.events.push({ t: 'hit', a: a.id, b: b.id, tagA: a.tag, tagB: b.tag, speed: round(speed, 2) });
+    const e = collisionEvent(sim, a, b, started, sim.spec.eventForce);
+    if (e && sim.events.length < 64) sim.events.push(e);
   });
 }
 
@@ -289,6 +366,7 @@ export function snapshot(sim, { all = true } = {}) {
 /** Is anything still moving? A world where everything sleeps costs nothing until someone touches it. */
 export function isBusy(sim) {
   if (sim.hands.size) return true;
+  if (sim.settled) return false;                                   // trembling on its springs, but done (settle())
   // fixed and kinematic bodies never report sleep, and never move on their own either
   for (const rec of sim.bodies.values()) if (rec.def.type === 'dynamic' && !rec.body.isSleeping()) return true;
   return false;
@@ -297,7 +375,8 @@ export function isBusy(sim) {
 /** The public facts about a world, for a client that has just connected. */
 export function describe(sim) {
   return {
-    gravity: sim.spec.gravity, plane: sim.spec.plane, timestep: sim.spec.timestep,
+    gravity: sim.spec.gravity, plane: sim.spec.plane, timestep: sim.spec.timestep, control: sim.spec.control,
     bodies: [...sim.bodies.values()].map((r) => ({ id: r.id, type: r.def.type, shape: r.def.shape, tag: r.tag })),
+    joints: describeJoints(sim),
   };
 }

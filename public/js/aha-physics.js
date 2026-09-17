@@ -21,6 +21,10 @@
  *   const me = await AhaPhysics.join({ code });
  *   me.grab('crate'); me.drag([x, 2, z]); me.release();
  *
+ *   // tape two bodies together where they touch; it tears if stretched past breakAt
+ *   world.joint('a', 'b', [x, y], { kind: 'weld', breakAt: 0.2 });
+ *   world.joints;                                 // Map id -> { a, b, la, lb }; jointPoint(j) is where it is
+ *
  * The server owns the simulation (Rapier, the same engine the Marshmallow Challenge runs on), so
  * every screen sees one world, a phone needs no permission from the big screen, and a reload picks
  * the world up exactly where it is. Snapshots arrive 20 times a second; step() interpolates between
@@ -73,7 +77,11 @@ class World {
     this.closed = false;
     this.latest = null;                        // { at, bodies: Map<id, [x,y,z,qx,qy,qz,qw]> }
     this.previous = null;
-    this.handlers = { hello: [], snap: [], event: [], hit: [], fell: [], err: [], close: [], world: [], added: [], removed: [] };
+    this.joints = new Map();                   // id -> { id, a, b, kind, la, lb }: anchors in each body's frame
+    this.isHost = false;
+    this.hostKey = null;
+    this.permitted = [];                       // the commands this connection may send
+    this.handlers = { hello: [], can: [], snap: [], event: [], hit: [], fell: [], broke: [], err: [], close: [], world: [], added: [], removed: [], joined: [] };
     this._rid = 0;
     this._waiting = new Map();
   }
@@ -104,13 +112,60 @@ class World {
   place(id, pos, rot = null) { this.send({ t: 'place', id, pos: this._vec(pos), ...(rot ? { rot } : {}) }); }
   gravity(v) { this.send({ t: 'gravity', v: this._vec(v) }); }
 
-  /** Pick a body up — this connection's one hand — then drag it and let go. */
-  grab(id, at = null, strength = 1) { this.send({ t: 'grab', id, ...(at ? { at: this._vec(at) } : {}), strength }); }
+  /**
+   * Pick a body up — this connection's one hand — then drag it and let go.
+   * opts.ghost: it (and whatever is jointed to it) passes through other bodies while held.
+   * opts.hold: it keeps its angle instead of swinging; turn(angle) sets the angle.
+   */
+  grab(id, at = null, strength = 1, { ghost = false, hold = false } = {}) {
+    this.send({ t: 'grab', id, ...(at ? { at: this._vec(at) } : {}), strength, ...(ghost ? { ghost } : {}), ...(hold ? { hold } : {}) });
+  }
+  /** Turn what this hand holds to an angle (radians; about z, or about `axis` in 3D). */
+  turn(angle, axis = null) { this.send({ t: 'turn', angle, ...(axis ? { axis: this._vec(axis) } : {}) }); }
+
+  /**
+   * Join two bodies where they are now, at world point `at`. Resolves with the joint id.
+   * opts: kind 'weld' (resists bending, the default) | 'pin' (a hinge), stiffness, bend, arm, breakAt.
+   */
+  joint(a, b, at, opts = {}) { return this.ask({ t: 'joint', a, b, at: this._vec(at), ...opts }).then((r) => r.id); }
+  unjoint(id) { this.send({ t: 'unjoint', id }); }
+  /** Where a joint is right now, from its first body's interpolated pose. */
+  jointPoint(j) {
+    const b = this.bodies.get(j.a) || this.bodies.get(j.b);
+    if (!b) return null;
+    const l = b.id === j.a ? j.la : j.lb;
+    const [x, y, z] = rotateVec([b.qx, b.qy, b.qz, b.qw], l);
+    return { x: b.x + x, y: b.y + y, z: b.z + z };
+  }
   drag(pos) { this.send({ t: 'drag', pos: this._vec(pos) }); }
   release() { this.send({ t: 'release' }); }
 
-  /** Replace the world with a new spec (everything in it is thrown away). */
+  /** Replace the world with a new spec (everything in it is thrown away). Host only. */
   reset(spec) { this.send({ t: 'world', spec: this._spec(spec), reset: true }); }
+
+  /* ---- asking the world questions (each resolves with the room's answer) ---- */
+  /** What is at this point? `{ ok, id, tag, at, inside, distance }` — a tap becomes a body id. */
+  pick(at, radius) { return this.ask({ t: 'pick', at: this._vec(at), ...(radius != null ? { radius } : {}) }); }
+  /** The first body a line meets: `{ ok, id, tag, at, normal, distance }`. */
+  ray(from, dir, max) { return this.ask({ t: 'ray', from: this._vec(from), dir: this._vec(dir), ...(max != null ? { max } : {}) }); }
+  /** Everything within a radius, nearest first: `{ ok, hits: [{ id, tag, distance }] }`. */
+  area(at, radius) { return this.ask({ t: 'area', at: this._vec(at), ...(radius != null ? { radius } : {}) }); }
+
+  /* ---- who may do what (the world's `control`; open unless it says otherwise) ---- */
+  /** May this connection send this command? Use it to grey a button out rather than guess. */
+  may(command) { return this.permitted.includes(command); }
+  /** Narrow or open the world while it runs: 'open', 'host', or { players: [...] }. Host only. */
+  control(policy) { this.send({ t: 'control', control: policy }); }
+
+  _can(m) {
+    if (Array.isArray(m.may)) this.permitted = m.may;
+    if (typeof m.host === 'boolean') this.isHost = m.host;
+    if (m.hostKey) {
+      this.hostKey = m.hostKey;
+      // so a big screen that reloads comes back as the host rather than as a spectator
+      try { sessionStorage.setItem(`aha-phys-key:${this.code}`, m.hostKey); } catch {}
+    }
+  }
 
   close() { this.closed = true; try { this.ws.close(); } catch {} }
 
@@ -155,9 +210,12 @@ class World {
     switch (m.t) {
       case 'hello':
         this.you = m.you; this.role = m.role;
+        this._can(m);
         if (m.world) this._world(m.world);
         this._emit('hello', m);
         break;
+      case 'hostKey': this._can(m); this._emit('can', m); break;       // this connection built the world
+      case 'can': this._can(m); this._emit('can', m); break;           // the host changed the policy
       case 'world': this._world(m.world); this._emit('world', m.world); break;
       case 'snap': {
         const at = (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -178,12 +236,15 @@ class World {
       }
       case 'event':
         // something the world did: kind is 'hit' (two bodies met) or 'fell' (one left the world)
-        if (m.kind === 'fell') this.bodies.delete(m.id);
+        if (m.kind === 'fell') this._gone(m.id);
+        if (m.kind === 'broke') this.joints.delete(m.id);
         this._emit('event', m);
         if (m.kind) this._emit(m.kind, m);
         break;
       case 'added': this._emit('added', m); break;
-      case 'removed': this.bodies.delete(m.id); this._emit('removed', m); break;
+      case 'removed': this._gone(m.id); this._emit('removed', m); break;
+      case 'joined': if (m.joint) this.joints.set(m.joint.id, m.joint); this._emit('joined', m.joint); break;
+      case 'unjoined': this.joints.delete(m.id); this._emit('broke', { id: m.id, why: 'unjoined' }); break;
       case 'ok': { const w = this._waiting.get(m.rid); if (w) { this._waiting.delete(m.rid); w.resolve(m); } break; }
       case 'err': {
         const w = m.rid && this._waiting.get(m.rid);
@@ -194,15 +255,26 @@ class World {
     }
   }
 
+  _gone(id) {
+    this.bodies.delete(id);
+    for (const [jid, j] of this.joints) if (j.a === id || j.b === id) this.joints.delete(jid);
+  }
+
   _world(w) {
     this.spec = w;
     this.plane = w.plane || this.plane;
+    this.joints = new Map((w.joints || []).map((j) => [j.id, j]));
     for (const def of w.bodies || []) {
       const b = this.bodies.get(def.id) || new Body(def.id);
       b.tag = def.tag; b.type = def.type; b.shape = def.shape;
       this.bodies.set(def.id, b);
     }
   }
+}
+
+function rotateVec([qx, qy, qz, qw], [x, y, z]) {
+  const ix = qw * x + qy * z - qz * y, iy = qw * y + qz * x - qx * z, iz = qw * z + qx * y - qy * x, iw = -qx * x - qy * y - qz * z;
+  return [ix * qw + iw * -qx + iy * -qz - iz * -qy, iy * qw + iw * -qy + iz * -qx - ix * -qz, iz * qw + iw * -qz + ix * -qy - iy * -qx];
 }
 
 function slerp(a, b, k) {
@@ -216,11 +288,16 @@ function slerp(a, b, k) {
   return [x0 * ka + x1 * kb, y0 * ka + y1 * kb, z0 * ka + z1 * kb, w0 * ka + w1 * kb];
 }
 
-async function connect({ code, role, name, origin, id }) {
+async function connect({ code, role, name, origin, id, key }) {
   const base = origin || defaultOrigin();
+  // a host key from an earlier connection in this tab reclaims authority after a reload
+  let hostKey = key || '';
+  if (!hostKey && role === 'host') { try { hostKey = sessionStorage.getItem(`aha-phys-key:${code}`) || ''; } catch {} }
   const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/phys/${code}?role=${role}` +
-    (name ? `&name=${encodeURIComponent(name)}` : '') + (id ? `&id=${encodeURIComponent(id)}` : ''));
+    (name ? `&name=${encodeURIComponent(name)}` : '') + (id ? `&id=${encodeURIComponent(id)}` : '') +
+    (hostKey ? `&key=${encodeURIComponent(hostKey)}` : ''));
   const world = new World(ws);
+  world.code = code;                                   // _can() stores the key under it
   // hello and the first snapshot follow the handshake immediately, so listen before waiting for open
   ws.addEventListener('message', (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } world._message(m); });
   ws.addEventListener('close', () => { world.closed = true; world._emit('close', null); });
@@ -258,7 +335,7 @@ async function host(spec = {}, opts = {}) {
     const r = await res.json();
     code = r.code; joinUrl = page ? r.joinUrl : null;
   }
-  const world = await connect({ code, role: 'host', origin: base, id: opts.id });
+  const world = await connect({ code, role: 'host', origin: base, id: opts.id, key: opts.key });
   world.joinUrl = joinUrl;
   const built = new Promise((resolve, reject) => {
     world.on('world', resolve);
@@ -272,10 +349,10 @@ async function host(spec = {}, opts = {}) {
 }
 
 /** Join a world someone else set up. */
-function join({ code, name, origin, id } = {}) {
+function join({ code, name, origin, id, key } = {}) {
   const c = code || (hasDOM && (new URLSearchParams(location.search).get('join') || (location.hash.match(/join=([A-Za-z0-9-]+)/) || [])[1]));
   if (!c) throw new Error('join({ code }) needs the room code (or ?join=CODE in the URL)');
-  return connect({ code: String(c).toUpperCase(), role: 'player', name, origin, id });
+  return connect({ code: String(c).toUpperCase(), role: 'player', name, origin, id, key });
 }
 
 export const AhaPhysics = { VERSION, host, join, connect, Body, World };

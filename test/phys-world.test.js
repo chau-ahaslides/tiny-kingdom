@@ -146,3 +146,19 @@ test('the world is bounded: body count, sizes and speeds', () => {
   assert.ok(s2.bodies.get('x').body.linvel().x <= LIMITS.speed, 'a silly velocity is clamped');
   assert.equal(removeBody(s2, 'nope').ok, false);
 });
+
+test('a 2D world keeps its friction: a stick shoved along the floor stops', () => {
+  // Rapier 0.20 drops contact friction on a body with both a translation and a rotation lock, which is
+  // what plane: 'xy' used to set, so pieces in a 2D game skated across the table and never stopped
+  const sim = build({ plane: 'xy', gravity: [0, -98.1, 0], timestep: 1 / 240, substeps: 4, bodies: [
+    { id: 'floor', type: 'fixed', shape: { cuboid: [20, 0.5, 1] }, pos: [0, -0.5, 0], friction: 0.8 },
+    { id: 'stick', shape: { cuboid: [1.25, 0.035, 0.25] }, pos: [-4, 0.035, 0], density: 13.7, friction: 0.7 },
+  ] });
+  run(sim, 0.5);
+  apply(sim, { t: 'velocity', id: 'stick', lin: [8, 0, 0] });
+  run(sim, 1);
+  assert.ok(Math.abs(sim.bodies.get('stick').body.linvel().x) < 0.05, `stopped, still at ${sim.bodies.get('stick').body.linvel().x}`);
+  assert.ok(at(sim, 'stick').x < -2.5, `after a short slide, at x=${at(sim, 'stick').x}`);
+  const q = sim.bodies.get('stick').body.rotation(), p = at(sim, 'stick');
+  assert.ok(Math.abs(q.x) < 1e-4 && Math.abs(q.y) < 1e-4 && Math.abs(p.z) < 1e-6, 'and it is still flat on the plane');
+});

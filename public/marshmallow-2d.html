@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Marshmallow Challenge 2D</title>
+<meta name="description" content="The Marshmallow Challenge, side on: the room builds one spaghetti tower together from their phones, in a physics world the server runs. Tallest tower with the marshmallow on top wins.">
+<meta name="theme-color" content="#f6efe4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6efe4;         /* the wall behind the table */
+    --grid: #e6dccb;
+    --ink: #2b2118;           /* 14.9:1 on paper */
+    --muted: #6b5a48;         /* 5.9:1 on paper */
+    --surface: #fffaf3;
+    --line: #d8c9b3;
+    --accent: #c2410c;        /* 5.2:1 with white text */
+    --accent-ink: #fff;
+    --go: #1f7a4d;            /* 5.4:1 with white text */
+    --warn: #9a3412;
+    --focus: #1d4ed8;
+    --r: 14px;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+    --display: 'Fredoka', ui-rounded, system-ui, sans-serif;
+    --body: ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root.phone {
+      --paper: #1d1914; --grid: #2c261e; --ink: #f4ece0; --muted: #c4b5a2; --surface: #28221b; --line: #4a4034;
+      --accent: #fb923c; --accent-ink: #1d1914; --go: #4ade80; --warn: #fdba74; --focus: #93c5fd;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: var(--body); }
+  body { overflow: hidden; -webkit-tap-highlight-color: transparent; }
+  button { font: 600 16px/1.1 var(--display); color: var(--ink); background: var(--surface); border: 2px solid var(--line);
+    border-radius: 999px; min-height: 48px; min-width: 48px; padding: 0 var(--s4); cursor: pointer; touch-action: manipulation; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* ---------- big screen ---------- */
+  .top { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; justify-content: space-between;
+    gap: var(--s5); padding: var(--s5) var(--s6); pointer-events: none; }
+  .top > * { pointer-events: auto; }
+  .brand h1 { margin: 0; font: 700 clamp(26px, 2.4vw, 40px)/1 var(--display); letter-spacing: -.01em; }
+  .brand p { margin: var(--s2) 0 0; font: 500 clamp(16px, 1.3vw, 22px)/1.3 var(--display); color: var(--muted); max-width: 34ch; }
+  .clock { text-align: right; }
+  .clock b { display: block; font: 700 clamp(48px, 6vw, 104px)/.9 var(--display); font-variant-numeric: tabular-nums; }
+  .clock span { font: 500 clamp(16px, 1.3vw, 22px)/1.3 var(--display); color: var(--muted); }
+  .clock.low #time { color: var(--warn); }
+  .stats { display: flex; gap: var(--s6); margin-top: var(--s3); justify-content: flex-end; }
+  .stats div { text-align: right; }
+  .stats b { display: block; font: 600 clamp(24px, 2.4vw, 40px)/1 var(--display); font-variant-numeric: tabular-nums; }
+  .stats span { font: 500 15px/1.2 var(--display); color: var(--muted); }
+
+  .dockhost { position: fixed; right: var(--s6); bottom: var(--s6); display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .dockhost label { font: 500 16px var(--display); color: var(--muted); display: flex; gap: var(--s2); align-items: center; }
+  .dockhost select { font: 600 16px var(--display); min-height: 48px; border-radius: 999px; border: 2px solid var(--line); background: var(--surface); color: var(--ink); padding: 0 var(--s3); }
+  .dockhost button { min-height: 56px; font-size: 20px; padding: 0 var(--s5); }
+
+  .lobby { position: fixed; left: var(--s6); bottom: var(--s6); background: var(--surface); border: 2px solid var(--line); border-radius: 20px;
+    padding: var(--s5); display: grid; grid-template-columns: auto 1fr; gap: var(--s2) var(--s5); align-items: center; max-width: min(620px, 60vw); }
+  .lobby .aha-qr { grid-row: span 3; width: clamp(140px, 13vw, 220px); height: auto; image-rendering: pixelated; border-radius: 8px; }
+  .lobby .aha-code { font: 700 clamp(40px, 4vw, 64px)/1 var(--display); letter-spacing: .08em; }
+  .lobby .aha-url { font: 500 18px var(--display); color: var(--muted); }
+  .lobby .aha-who { font: 500 18px/1.35 var(--body); }
+  .lobby.small { padding: var(--s3) var(--s4); grid-template-columns: auto auto; }
+  .lobby.small .aha-qr { width: 88px; grid-row: span 2; }
+  .lobby.small .aha-code { font-size: 28px; }
+  .lobby.small .aha-who { display: none; }
+
+  .log { position: fixed; left: var(--s6); top: 150px; margin: 0; padding: 0; list-style: none; font: 500 17px/1.5 var(--body); color: var(--muted); max-width: 30ch; }
+  .log li:first-child { color: var(--ink); }
+
+  .result { position: fixed; left: 50%; top: var(--s5); transform: translateX(-50%); text-align: center; background: var(--surface); border: 2px solid var(--line);
+    border-radius: 24px; padding: var(--s4) var(--s7); max-width: calc(100vw - 2 * 620px); min-width: 420px; }
+  .result b { display: block; font: 700 clamp(56px, 7vw, 120px)/1 var(--display); font-variant-numeric: tabular-nums; }
+  .result p { margin: var(--s2) 0 0; font: 500 clamp(18px, 1.6vw, 26px)/1.3 var(--display); color: var(--muted); }
+  .result.fail b { font-size: clamp(36px, 4vw, 64px); }
+
+  /* ---------- phone ---------- */
+  .bar { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: var(--s3);
+    padding: calc(env(safe-area-inset-top) + var(--s2)) var(--s4) var(--s2); background: color-mix(in srgb, var(--paper) 88%, transparent);
+    border-bottom: 1px solid var(--line); font: 600 16px var(--display); }
+  .bar .t { font-size: 24px; font-variant-numeric: tabular-nums; min-width: 3.2ch; }
+  .bar .t.low { color: var(--warn); }
+  .bar .grow { flex: 1; min-width: 0; color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .fit { min-height: 44px; min-width: 44px; padding: 0 var(--s3); font-size: 15px; }
+  .tools { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: var(--s2); justify-content: center; flex-wrap: wrap;
+    padding: var(--s3) var(--s3) calc(env(safe-area-inset-bottom) + var(--s3)); background: color-mix(in srgb, var(--paper) 90%, transparent); border-top: 1px solid var(--line); }
+  .tools button { flex: 1 1 0; max-width: 200px; min-height: 56px; padding: 0 var(--s2); }
+  .tools button.icon { flex: 0 0 56px; font-size: 24px; }
+  .toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 72px); transform: translateX(-50%);   /* up top: the table, where new pieces land, is at the bottom */ background: var(--ink); color: var(--paper);
+    border-radius: 999px; padding: var(--s2) var(--s4); font: 600 16px var(--display); white-space: nowrap; pointer-events: none; }
+  .sheet { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--s5); background: var(--paper); overflow: auto; }
+  .sheet .inner { width: min(420px, 100%); }
+  .sheet h1 { font: 700 32px/1.05 var(--display); margin: 0 0 var(--s3); }
+  .sheet p { font: 400 17px/1.5 var(--body); color: var(--muted); margin: 0 0 var(--s4); }
+  .sheet ol { font: 400 17px/1.5 var(--body); margin: 0 0 var(--s5); padding-left: 1.3em; }
+  .sheet ol li + li { margin-top: var(--s2); }
+  .sheet label { display: block; font: 600 16px var(--display); margin-bottom: var(--s2); }
+  .sheet input { width: 100%; font: 500 20px var(--body); min-height: 52px; padding: 0 var(--s4); border-radius: var(--r); border: 2px solid var(--line);
+    background: var(--surface); color: var(--ink); margin-bottom: var(--s4); }
+  .sheet button { width: 100%; min-height: 56px; font-size: 20px; }
+  .banner { position: fixed; top: calc(env(safe-area-inset-top) + 64px); left: 50%; transform: translateX(-50%); background: var(--warn); color: #fff;
+    padding: var(--s2) var(--s4); border-radius: 999px; font: 600 15px var(--display); }
+  @media (prefers-reduced-motion: no-preference) {
+    .toast { animation: rise .2s ease-out; }
+    @keyframes rise { from { opacity: 0; transform: translate(-50%, -8px); } }
+  }
+</style>
+</head>
+<body>
+<canvas id="scene" role="img" aria-label="The build table, side on"></canvas>
+<p class="sr" id="live" aria-live="polite"></p>
+
+<!-- big screen -->
+<div id="host" hidden>
+  <header class="top">
+    <div class="brand">
+      <h1>🍡 Marshmallow Challenge</h1>
+      <p id="hint">Scan to join. Build one tower together: tallest with the marshmallow on top wins.</p>
+    </div>
+    <div class="clock" id="clock">
+      <b id="time">5:00</b>
+      <span id="phase">Waiting to start</span>
+      <div class="stats">
+        <div><b id="bag">20</b><span>sticks in the bag</span></div>
+        <div><b id="height">0 cm</b><span>tallest point</span></div>
+      </div>
+    </div>
+  </header>
+  <ul class="log" id="log" aria-label="What just happened"></ul>
+  <div class="lobby" id="card" hidden></div>
+  <div class="result" id="result" hidden role="status"><b id="rbig"></b><p id="rnote"></p></div>
+  <div class="dockhost">
+    <label id="minsWrap">Round <select id="mins" aria-label="Round length"><option value="3">3 min</option><option value="5" selected>5 min</option><option value="10">10 min</option><option value="18">18 min</option></select></label>
+    <button class="primary" id="start">Start building</button>
+    <button id="end" hidden>End round now</button>
+    <button id="again" hidden>New round</button>
+  </div>
+</div>
+
+<!-- phone -->
+<div id="phone" hidden>
+  <div class="bar">
+    <span class="t" id="ptime" aria-label="Time left">–:––</span>
+    <span class="grow" id="pstatus">Connecting…</span>
+    <button class="fit" id="fit" aria-label="Fit the whole table on screen">Fit</button>
+  </div>
+  <div class="banner" id="banner" hidden role="status">Reconnecting…</div>
+  <div class="tools" id="tools">
+    <button class="primary" id="take">Take a stick</button>
+    <button id="marsh">Marshmallow</button>
+  </div>
+  <div class="tools" id="holding" hidden>
+    <button class="icon" id="ccw" aria-label="Turn left">↺</button>
+    <button class="icon" id="cw" aria-label="Turn right">↻</button>
+    <button id="snap">Snap in half</button>
+    <button id="back">Put back</button>
+  </div>
+  <div class="toast" id="toast" hidden role="status"></div>
+  <div class="sheet" id="wait" hidden>
+    <div class="inner">
+      <h1>🍡 Marshmallow Challenge</h1>
+      <p id="waitNote">You're in. The round starts from the big screen.</p>
+      <ol>
+        <li><b>Take a stick</b>, then drag it. It floats through the tower until you let go.</li>
+        <li>Let an end go where it <b>touches</b> another stick and it tapes itself there.</li>
+        <li>Turn a stick with ↺ ↻, or twist two fingers.</li>
+        <li>Triangles stand up. Put the marshmallow on the very top.</li>
+      </ol>
+      <form id="nameForm" hidden>
+        <label for="name">Your name</label>
+        <input id="name" maxlength="16" autocomplete="nickname" enterkeyhint="go" required>
+        <button class="primary" type="submit">Join the build</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/js/m2d.js"></script>
+</body>
+</html>

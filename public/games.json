@@ -70,6 +70,18 @@
           }
         },
         {
+          "id": "marshmallow-2d",
+          "title": "Marshmallow Challenge 2D",
+          "icon": "📏",
+          "path": "/marshmallow-2d",
+          "blurb": "The same build, side on and quick to learn. The room tapes spaghetti into one tower from their phones in a physics world the server runs: carry a stick through the tower, let an end go where it touches, and hope the triangles hold when the clock stops.",
+          "tags": [
+            "team building",
+            "2D",
+            "physics"
+          ]
+        },
+        {
           "id": "idea-map",
           "title": "Idea Map",
           "icon": "💡",

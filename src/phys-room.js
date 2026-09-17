@@ -14,6 +14,7 @@
    public/js/aha-physics.js is the client; the protocol is small enough to speak by hand. */
 import RAPIER from '@dimforge/rapier3d';
 import { normalise, createWorld, apply, snapshot, describe, step, isBusy, LIMITS } from './phys-world.js';
+import { allowed, refusal, permissions, normaliseControl, READS } from './phys-control.js';
 
 const TICK_MS = 1000 / 60;
 const SNAP_HZ = 20;                       // snapshots per second; clients interpolate between them
@@ -32,6 +33,7 @@ export class PhysRoom {
     this.lastKey = 0;
     this.lastActive = Date.now();
     this.nextPlayer = 1;
+    this.hostKey = null;                  // minted with the world; the only thing that makes a host
   }
 
   async fetch(req) {
@@ -48,11 +50,19 @@ export class PhysRoom {
     const role = url.searchParams.get('role') === 'host' ? 'host' : 'player';
     const name = (url.searchParams.get('name') || '').slice(0, 24);
     const id = role === 'host' ? `host${this.nextPlayer++}` : (url.searchParams.get('id') || `p${this.nextPlayer++}`).replace(/[^\w.:-]/g, '').slice(0, 32);
-    const conn = { ws: server, role, id, name, budget: LIMITS.commandsPerSecond, second: Math.floor(Date.now() / 1000) };
+    // ?role=host is a claim anyone can make; the key the room minted is the evidence. A room with no
+    // world yet has no key, so whoever builds the world becomes its host.
+    const key = url.searchParams.get('key') || '';
+    const conn = { ws: server, role, id, name, budget: LIMITS.commandsPerSecond, second: Math.floor(Date.now() / 1000),
+                   host: !this.hostKey || (!!key && key === this.hostKey) };
     this.sockets.add(conn);
     this.lastActive = Date.now();
 
-    this.send(conn, { t: 'hello', you: id, role, world: this.sim ? describe(this.sim) : null });
+    this.send(conn, {
+      t: 'hello', you: id, role, world: this.sim ? describe(this.sim) : null,
+      ...permissions(this.sim?.spec?.control, conn.host),
+      ...(conn.host && this.hostKey ? { hostKey: this.hostKey } : {}),
+    });
     if (this.sim) this.send(conn, { t: 'snap', full: 1, ...snapshot(this.sim) });
 
     server.addEventListener('message', (ev) => {
@@ -78,11 +88,16 @@ export class PhysRoom {
     this.lastActive = Date.now();
 
     if (m.t === 'world') {
-      if (JSON.stringify(m.spec || {}).length > MAX_SPEC) return this.send(conn, { t: 'err', of: 'world', msg: 'world spec too large' });
+      if (this.sim && !conn.host) return this.send(conn, { t: 'err', of: 'world', rid: m.rid, msg: refusal(this.sim.spec.control, 'world') });
+      if (JSON.stringify(m.spec || {}).length > MAX_SPEC) return this.send(conn, { t: 'err', of: 'world', rid: m.rid, msg: 'world spec too large' });
       const { spec, errors } = normalise(m.spec);
-      if (errors.length) return this.send(conn, { t: 'err', of: 'world', msg: errors[0], errors });
+      if (errors.length) return this.send(conn, { t: 'err', of: 'world', rid: m.rid, msg: errors[0], errors });
       if (this.sim && !m.reset) return this.send(conn, { t: 'world', world: describe(this.sim), note: 'this room already has a world; send reset: true to replace it' });
       this.build(spec, m.spec);
+      conn.host = true;
+      if (!this.hostKey) this.hostKey = crypto.randomUUID().replace(/-/g, '');
+      this.send(conn, { t: 'hostKey', hostKey: this.hostKey, ...permissions(spec.control, true) });
+      for (const c of this.sockets) if (c !== conn) this.send(c, { t: 'can', ...permissions(spec.control, c.host) });
       this.broadcast({ t: 'world', world: describe(this.sim) });
       this.broadcast({ t: 'snap', full: 1, ...snapshot(this.sim) });
       this.run();
@@ -90,13 +105,31 @@ export class PhysRoom {
     }
     if (!this.sim) return this.send(conn, { t: 'err', of: m.t, msg: 'this room has no world yet: send { t: "world", spec }' });
 
+    if (m.t === 'control') {                                           // the host narrows or opens the world
+      if (!conn.host) return this.send(conn, { t: 'err', of: 'control', rid: m.rid, msg: refusal(this.sim.spec.control, 'control') });
+      const errors = [];
+      const next = normaliseControl(m.control, errors);
+      if (errors.length) return this.send(conn, { t: 'err', of: 'control', rid: m.rid, msg: errors[0], errors });
+      this.sim.spec.control = next;
+      for (const c of this.sockets) this.send(c, { t: 'can', ...permissions(next, c.host) });
+      return;
+    }
+    // Who may do what: open by default, so a phone acts without asking. A world that says otherwise
+    // gets a refusal naming the policy, rather than a command that silently does nothing.
+    if (!allowed(this.sim.spec.control, m.t, conn.host)) {
+      return this.send(conn, { t: 'err', of: m.t, rid: m.rid, msg: refusal(this.sim.spec.control, m.t) });
+    }
+
     // a hand belongs to the connection that owns it, so one phone cannot drop another's grip
-    if (m.t === 'grab' || m.t === 'drag' || m.t === 'release') m = { ...m, hand: conn.id };
+    if (m.t === 'grab' || m.t === 'drag' || m.t === 'release' || m.t === 'turn') m = { ...m, hand: conn.id };
     const r = apply(this.sim, m);
-    if (!r.ok) return this.send(conn, { t: 'err', of: m.t, msg: r.msg });
+    // a read that found nothing still answers: "nothing under your finger" is a fact, not a failure
+    if (!r.ok && !READS.includes(m.t)) return this.send(conn, { t: 'err', of: m.t, rid: m.rid, msg: r.msg });
     if (m.t === 'add') this.broadcast({ t: 'added', id: r.id, by: conn.id });
     if (m.t === 'remove') this.broadcast({ t: 'removed', id: m.id, by: conn.id });
-    if (m.rid) this.send(conn, { t: 'ok', rid: m.rid, id: r.id });
+    if (m.t === 'joint') this.broadcast({ t: 'joined', joint: r.joint, by: conn.id });
+    if (m.t === 'unjoint') this.broadcast({ t: 'unjoined', id: m.id, by: conn.id });
+    if (m.rid) this.send(conn, { ...r, t: 'ok', rid: m.rid });   // the whole answer: a query has more than an id
     this.run();                                                        // any command wakes the loop
   }
 
