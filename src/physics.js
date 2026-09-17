@@ -2,6 +2,8 @@
    Units: cm, grams, seconds. Sticks are thin boxes. There is no tape to handle: a stick end let go near another stick
    (or the marshmallow) glues itself there with a stiff point spring, soft enough to measure the load, so an overloaded
    or yanked joint tears. A hand is a kinematic finger with a stiff spring to the grabbed point. */
+import { createHand, trackHand, handLag, dropHand, pointOn } from './hand.js';
+
 export const PH = {
   STICK_LEN: 25, STICK_R: 0.3, STICK_MASS: 1.2, MARSH: 4.2, MARSH_MASS: 7,
   STICKS: 20, SNAP: 0.8, STICK_SNAP: 2,       // how close an end has to be to glue: to the marshmallow / to another stick (surface to surface)
@@ -155,14 +157,12 @@ export function breakStick(sim, id) {
 export function grab(sim, pid, id, local) {
   const rec = sim.bodies.get(id); if (!rec) return { ok: false };
   release(sim, pid, false);
-  const lp = v3(local[0], local[1], local[2]); const world = toWorld(rec.body, lp);
-  const finger = sim.world.createRigidBody(sim.R.RigidBodyDesc.kinematicPositionBased().setTranslation(world.x, world.y, world.z));
-  const j = sim.world.createImpulseJoint(sim.R.JointData.spring(0, PH.HAND_K, PH.HAND_D, v3(), lp), finger, rec.body, true);
-  rec.body.wakeUp(); rec.body.setLinearDamping(9); rec.body.setAngularDamping(rec.kind === 'stick' ? 5 : 9);
+  const hand = createHand(sim.R, sim.world, rec.body, v3(local[0], local[1], local[2]), { k: PH.HAND_K, d: PH.HAND_D });
+  rec.body.setLinearDamping(9); rec.body.setAngularDamping(rec.kind === 'stick' ? 5 : 9);
   // carried pieces pass through other pieces; welded partners follow the same rule. Fingers pinch the marshmallow firmly (keeps orientation); a stick pivots in the fingers
   for (const o of [rec, ...weldedWith(sim, rec.id)]) setMask(o, GROUP.TABLE);
   if (rec.kind !== 'stick') rec.body.lockRotations(true, true);
-  sim.hands.set(pid, { stick: id, local: lp, finger, j, target: world, ripT: 0 });
+  sim.hands.set(pid, { ...hand, stick: id, ripT: 0 });
   return { ok: true };
 }
 export function move(sim, pid, p) {
@@ -174,7 +174,7 @@ export function move(sim, pid, p) {
 export function release(sim, pid, tryTape = true) {
   const h = sim.hands.get(pid); if (!h) return { ok: true };
   sim.hands.delete(pid);
-  try { sim.world.removeImpulseJoint(h.j, true); } catch (e) {} try { sim.world.removeRigidBody(h.finger); } catch (e) {}
+  dropHand(sim.world, h);
   const rec = sim.bodies.get(h.stick); let taped = 0;
   wakeAll(sim);
   if (rec) {
@@ -277,17 +277,13 @@ export function step(sim, dt = 1 / 60) {
   const n = Math.max(1, Math.min(4, Math.round(dt / PH.DT))); const sdt = dt / n;
   for (let i = 0; i < n; i++) {
     // the finger chases the touch: spring-ish tracking, speed-capped
-    for (const h of sim.hands.values()) {
-      const p = h.finger.translation(); let d = scale(sub(h.target, p), Math.min(1, PH.HAND_TRACK * sdt));
-      const L = len(d), cap = PH.HAND_SPEED * sdt; if (L > cap) d = scale(d, cap / L);
-      h.finger.setNextKinematicTranslation(add(p, d));
-    }
+    for (const h of sim.hands.values()) trackHand(h, sdt, { track: PH.HAND_TRACK, speed: PH.HAND_SPEED });
     sim.world.step();
   }
   // pull a glued piece hard enough (drag it well past where it can go) and the joint gives
   for (const h of sim.hands.values()) {
     const r = sim.bodies.get(h.stick); if (!r) continue;
-    const lag = dist(h.finger.translation(), toWorld(r.body, h.local));
+    const lag = handLag(h, r.body);
     h.ripT = lag > PH.RIP ? h.ripT + dt : 0;
     if (h.ripT > 0.35) { h.ripT = 0; ripOne(sim, r); }
   }

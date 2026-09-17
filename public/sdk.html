@@ -580,6 +580,7 @@ world.on(<span class="s">'hit'</span>, (e) =&gt; thud(e.speed));           <span
 <span class="k">const</span> me = <span class="k">await</span> AhaPhysics.join({ code });
 me.impulse(<span class="s">'ball'</span>, [12, 2]);
 me.grab(<span class="s">'crate'</span>); me.drag([x, y]); me.release();</code></pre>
+<p>The grip is the Marshmallow Challenge's, not a lookalike: both games call <code>src/hand.js</code>, which creates a kinematic point at the spot that was grabbed, ties the body to it with a stiff spring, and chases the pointer at a limited speed. That is why carrying feels like carrying — the body swings, drags its neighbours, bumps into things and is left behind when it snags, none of which survives a teleport. A game tunes it with two numbers (spring stiffness and damping) plus how fast the finger may travel; Marshmallow adds its own layer on top (damping and collision masks while carrying, tearing a joint when you pull too hard).</p>
 <p>Why put physics in the room rather than the page: there is one world rather than one per device, a phone acts on it directly instead of asking the big screen to act for it, a reload rejoins mid-flight, and nothing depends on whichever laptop happens to be presenting. The cost is a round trip, which is why the client interpolates: snapshots arrive 20 times a second and <code>world.step(now)</code> renders 120 ms behind them, so motion is smooth at any frame rate.</p>
 <div class="tbl"><table>
   <tr><th>Piece</th><th>What</th></tr>

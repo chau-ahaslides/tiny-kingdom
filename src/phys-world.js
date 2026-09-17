@@ -10,6 +10,8 @@
             (half-extents, as Rapier takes them: a 2 x 1 x 2 m crate is { cuboid: [1, 0.5, 1] })
      type:  'dynamic' (falls, the default) | 'fixed' (never moves) | 'kinematic' (the game moves it) */
 
+import { createHand, trackHand, dropHand, pointOn } from './hand.js';
+
 export const LIMITS = { bodies: 400, shapeSize: 1000, speed: 1000, commandsPerSecond: 120 };
 
 const v3 = (a = [0, 0, 0]) => ({ x: +a[0] || 0, y: +a[1] || 0, z: +a[2] || 0 });
@@ -196,9 +198,9 @@ export function apply(sim, m) {
 
 export function wakeAll(sim) { for (const r of sim.bodies.values()) r.body.wakeUp(); }
 
-/* ---- hands: a kinematic point chases the pointer, a stiff spring ties the body to it. This is how a
-   phone drags something around a shared world without owning the physics, and the spring is what makes
-   it feel like holding rather than teleporting. ---- */
+/* ---- hands: see hand.js, which the Marshmallow Challenge and this room both grip with. The only
+   difference here is that stiffness scales with the body's mass, because this world's bodies can be
+   any size, where Marshmallow's are all spaghetti. ---- */
 const HAND = { k: 3e3, d: 90, track: 22, speed: 40 };
 
 export function grab(sim, hand, id, at, strength) {
@@ -207,14 +209,12 @@ export function grab(sim, hand, id, at, strength) {
   if (!rec) return { ok: false, msg: `no body "${id}"` };
   if (rec.def.type !== 'dynamic') return { ok: false, msg: `"${id}" is ${rec.def.type}, so nothing can pick it up` };
   release(sim, hid);
-  const local = at ? v3(at) : { x: 0, y: 0, z: 0 };
-  const p = rec.body.translation(), q = rec.body.rotation();
-  const world = rotateBy(q, local, p);
-  const finger = sim.world.createRigidBody(sim.R.RigidBodyDesc.kinematicPositionBased().setTranslation(world.x, world.y, world.z));
-  const k = num(strength, 1, 0.05, 20) * HAND.k * Math.max(0.2, rec.body.mass());
-  const j = sim.world.createImpulseJoint(sim.R.JointData.spring(0, k, HAND.d * Math.max(0.2, rec.body.mass()), v3(), local), finger, rec.body, true);
-  rec.body.wakeUp();
-  sim.hands.set(hid, { id, local, finger, j, target: world });
+  const mass = Math.max(0.2, rec.body.mass());
+  const h = createHand(sim.R, sim.world, rec.body, at ? v3(at) : v3(), {
+    k: num(strength, 1, 0.05, 20) * HAND.k * mass,
+    d: HAND.d * mass,
+  });
+  sim.hands.set(hid, { ...h, id });
   return { ok: true, hand: hid };
 }
 
@@ -232,19 +232,8 @@ export function release(sim, hand) {
   const h = sim.hands.get(hid);
   if (!h) return { ok: true };
   sim.hands.delete(hid);
-  try { sim.world.removeImpulseJoint(h.j, true); } catch (e) {}
-  try { sim.world.removeRigidBody(h.finger); } catch (e) {}
+  dropHand(sim.world, h);
   return { ok: true, id: h.id };
-}
-
-function rotateBy(q, v, offset) {
-  const ix = q.w * v.x + q.y * v.z - q.z * v.y, iy = q.w * v.y + q.z * v.x - q.x * v.z;
-  const iz = q.w * v.z + q.x * v.y - q.y * v.x, iw = -q.x * v.x - q.y * v.y - q.z * v.z;
-  return {
-    x: offset.x + ix * q.w + iw * -q.x + iy * -q.z - iz * -q.y,
-    y: offset.y + iy * q.w + iw * -q.y + iz * -q.x - ix * -q.z,
-    z: offset.z + iz * q.w + iw * -q.z + ix * -q.y - iy * -q.x,
-  };
 }
 
 /** One tick. dt is real time; the world steps at its own timestep, at most `substeps` times. */
@@ -253,12 +242,7 @@ export function step(sim, dt = 1 / 60) {
   for (let i = 0; i < n; i++) {
     // how hard a hit was is the speed going in, so it is read before the solver cancels it
     if (sim.queue) for (const rec of sim.bodies.values()) rec.vel = rec.body.linvel();
-    for (const h of sim.hands.values()) {                       // the finger chases the pointer, speed-capped
-      const p = h.finger.translation();
-      let d = { x: (h.target.x - p.x) * Math.min(1, HAND.track * sim.spec.timestep), y: (h.target.y - p.y) * Math.min(1, HAND.track * sim.spec.timestep), z: (h.target.z - p.z) * Math.min(1, HAND.track * sim.spec.timestep) };
-      d = cap(d, HAND.speed * sim.spec.timestep);
-      h.finger.setNextKinematicTranslation({ x: p.x + d.x, y: p.y + d.y, z: p.z + d.z });
-    }
+    for (const h of sim.hands.values()) trackHand(h, sim.spec.timestep, HAND);
     sim.world.step(sim.queue || undefined);
     sim.t += sim.spec.timestep;
     if (sim.queue) drainEvents(sim);
