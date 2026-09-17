@@ -12,7 +12,7 @@ LIB = https://games.ahaslides.io
 |---|---|
 | `LIB/<path>` | Any file: open to everyone, so games load them from any origin. |
 | `LIB/llms.txt` | This guide, served from the CDN. Start here. **Gated.** |
-| `LIB/packs.json` | The 270 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, file and byte counts. Small; start here. **Gated.** |
+| `LIB/packs.json` | The 276 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, file and byte counts. Small; start here. **Gated.** |
 | `LIB/manifest/<pack>.json` | One pack's files, with `path`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `cell`/`gap`/`cols`/`rows`/`frames`/`fps`/`animations`, `atlas`, `duration`, `category`, `variant`, `tags`. **This is the one to fetch.** **Gated.** |
 | `LIB/manifest.json` | The same for every pack at once: 32,000 entries, 8 MB. Only worth fetching to search across packs. **Gated.** |
 | `LIB/catalog` | The catalog: every pack, its licence, thumbnails, play buttons, the starter maps, a filter box. Sign in with your AhaSlides Google account. |
@@ -35,14 +35,14 @@ else answers 401; every asset file still answers. The gate is deliberate: most p
 an asset pack, so the host must be an asset server for our games rather than a browsable library.
 
 Ask the index, not the file system, and ask it pack by pack: `packs.json` is small and names all
-270 packs, and each pack's files are a separate small file. The whole manifest is 8 MB and is only
+276 packs, and each pack's files are a separate small file. The whole manifest is 8 MB and is only
 worth fetching to search across packs.
 
 ```js
 const KEY = process.env.TINY_KINGDOM_LIB_READ_TOKEN;           // or whatever holds it where you run
 const get = async (p) => (await fetch(`${LIB}/${p}`, { headers: { authorization: `Bearer ${KEY}` } })).json();
 
-const { packs } = await get('packs.json');                     // 270 packs with licences and counts
+const { packs } = await get('packs.json');                     // 276 packs with licences and counts
 const town = await get('manifest/kenney-tiny-town.json');      // one pack: 9 files
 const sfx  = await get('manifest/pixel-combat.json');
 const explosions = sfx.entries.filter(e => e.category === 'explosion');
@@ -473,6 +473,7 @@ pack cover clicks, switches and errors; Voiceover Pack has spoken numbers and wo
 | `mana-seed-forest-winter` | `sprites/mana-seed-forest-winter/` | three 16x16 winter forest tile sheets | 16x16 | commercial OK (sample) |
 | `adventure-girl`, `ninja-girl` | `sprites/adventure-girl/<Anim>_<n>.png`, `sprites/ninja-girl/<Anim>_<nnn>.png` | cartoon side-scroller heroines as per-frame PNGs (about 640x540, 376x520); `<Anim>.json` lists each animation's frames | per frame | CC0 |
 | `dragons` | `sprites/dragons/dragons.png` | eleven pixel dragons on one 428x377 sheet | irregular | **credit Redshrike et al. (CC BY 3.0)** |
+| `savanna-creatures-2` | `sprites/savanna-creatures-2/savanna-creatures-2.png` | 16 small pixel savanna animals (ostrich, vulture, warthog, wildebeest, caracal…), one still pose each; **AI-assisted** per its page | 61x61 cells, 4x4 | **credit Michael Jay (CC BY 4.0)** |
 
 ### Kenney: 242 packs, all CC0
 
@@ -530,6 +531,26 @@ OBJ were dropped):
 - `models/kaykit-forest/Assets/gltf/*.gltf` (105 trees, bushes, rocks, grass, flowers) sharing
   `forest_texture.png` in the same folder.
 
+Animals, as one GLB per model:
+
+- `models/everything-library-animals/<Category>/<Name>.glb`: David O'Reilly's Everything Library,
+  178 low-poly creatures in `Animals` (91 mammals, e.g. `Animals/Panda.glb`), `Birds`,
+  `BirdsUpright`, `Insects`, `FlyingInsects`, `Arachnids`, `Reptiles`, `Amphibians`, `Imaginary`
+  and `AnimalParts` (skeleton, teeth, feathers, brain). Static, coloured by vertex colours, metre
+  scale. **Credit required (CC BY 4.0).**
+- `models/styloo-animals/{butterfly,cat,chicken,cow,dog,giraffe,ladybug}.glb`: rigged and textured,
+  with clips on the cow (`iddle`, `jump`, `run`, `walk`, `walking`), dog (`attack1`, `iddle`, `jump`,
+  `run`, `walk`, `walksent`), giraffe (`iddle`) and butterfly (`fly`); the names are the author's,
+  typos included. CC0.
+- `models/craftpix-wild-animals/{bear,boar,deer_1,deer_2,fox,hedgehog,owl,rabbit,squirrel,wolf}.glb`:
+  rigged low-poly forest animals with no clips, one colour atlas embedded. CraftPix freebies licence:
+  commercial use, no credit.
+
+The Everything Library and CraftPix packs are FBX downloads: the build converts them with FBX2glTF
+(the `fbx2gltf` npm package, staged like the vendor libraries) and `library/gltf.mjs` does the rest
+(the embedded atlas, one file per creature, vertex colours shown). `handler: "fbx"` in `packs.json`
+documents the options.
+
 Load with three.js `GLTFLoader` straight from the URL; relative texture and buffer references
 resolve on the CDN.
 
@@ -554,6 +575,8 @@ Characters by ELV Games (elvgames.itch.io)
 Enemy sprites by Robert Pinero (robertpinero.itch.io)
 Isometric village tiles by Xilurus (xilurus.itch.io), CC BY 4.0
 Dragons by Stephen 'Redshrike' Challener, MrBeast, Surt, Blarumyrran, Sharm, Zabin (opengameart.org), CC BY 3.0
+3D animals: Everything Library 01 by David O'Reilly (davidoreilly.itch.io), CC BY 4.0
+Savanna Creatures 2 by Michael Jay (michael-jay-rov.itch.io), CC BY 4.0
 32rogues by Seth Boyles (sethbb.itch.io)                        (appreciated, not required)
 AutoBattlers Crew by RafaelMatos (rafaelmatos.itch.io)          (appreciated, not required)
 3D models: KayKit by Kay Lousberg (kaylousberg.com), CC0        (appreciated, not required)
@@ -572,7 +595,8 @@ any public page, and the library is referenced from AhaSlides games only.
   not be exposed to AhaSlides customers as an asset picker; it is for games we build.
 - **No AI or machine-learning use** of the art: 32rogues, AutoBattlers Crew, ELV Games, Mana Seed.
   An agent reading the manifest to build a game is fine; training a model on the files is not.
-- **Credit in the game** for the six `commercial: "credit"` packs, block above.
+- **Credit in the game** for the eight `commercial: "credit"` packs, block above.
+- **AI-assisted art:** Savanna Creatures 2 discloses generative AI in its graphics. Check that fits a game before using it.
 
 **Nothing hosted needs a purchase.** Several packs are the free tier of a paid pack; buying adds
 content, not rights (the free files are already licensed for commercial use). If a game needs more:
@@ -597,6 +621,7 @@ go in; if you buy one, add it to `packs.json` and rebuild:
 | RPG Fantasy Battlers (LimeZu) | free trial has no commercial licence | complete version from $1.50, CC BY 4.0: https://limezu.itch.io/fantasy-battlers |
 | Destructible Objects (Elthen) | commercial terms are on a separate licensing page, unconfirmed | confirm at https://elthen.itch.io/pixel-art-destructible-objects |
 | `spritesheets.zip` (12 monster strips), `File.png` (weapon icons) | no source page found, licence unknown | identify the source, or replace |
+| Free Isometric Animated Fox (Engvee) | the page states no licence, so all rights are reserved by default | ask Engvee for a licence in the page comments: https://engvee.itch.io/isometric-animated-fox |
 
 ## Maintaining the library
 

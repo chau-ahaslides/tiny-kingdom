@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cleanName, cleanPath, imageSize, mimeOf, parseEffectSheet, parseKenneyAtlas, parsePixelCombat, PIXEL_COMBAT_CAT, routeDest, slug, wavDuration } from './lib.mjs';
 import { parseCell } from './aha-assets.js';
+import { extractNode, readGlb, setBaseColorImage, vertexColorsOnly, writeGlb } from './gltf.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (process.env.LIB_SRC || path.join(os.homedir(), 'Downloads', 'Game asset')).replace(/^~/, os.homedir());
@@ -74,7 +75,7 @@ async function stage(zipName) {
   const dir = path.join(STAGE, zipName.replace(/\.zip$/i, ''));
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
-    await run('unzip', ['-qo', path.join(SRC, 'Game Assets', zipName), '-d', dir]);
+    await run('unzip', ['-qo', findSource(zipName), '-d', dir]);
   }
   return unwrap(dir);
 }
@@ -147,7 +148,8 @@ function planGeneric(pack, root, rels) {
     if (GLOBAL_SKIP.some((re) => re.test(rel)) || skips.some((re) => re.test('/' + rel))) continue;
     if (pack.only && !pack.only.some((p) => rel.startsWith(p))) continue;
     const isWav = /\.wav$/i.test(rel);
-    const target = cleanPath(isWav ? rel.replace(/\.wav$/i, '.m4a') : rel);
+    const named = pack.rename?.[rel] || rel;
+    const target = cleanPath(isWav ? named.replace(/\.wav$/i, '.m4a') : named);
     add({ src: path.join(root, rel), dst: routeDest(pack.dest, target), pack: pack.id, convert: isWav, meta: {} });
   }
 }
@@ -449,7 +451,64 @@ function cellOfPlanned(url) {
   return p.cell || null;
 }
 
-const HANDLERS = { 'sfx-folders': planSfxFolders, 'pixel-combat': planPixelCombat, 'pixel-effects': planPixelEffects, maps: planMaps, kenney: planKenney };
+/**
+ * FBX packs, served as GLB like every other model here. Each .fbx (after `only`/`skip`) goes through FBX2glTF
+ * (the npm fbx2gltf package, staged like the vendor libraries) into .stage/fbx/<pack>/, then:
+ *   texture: "<source path>"   put this PNG on every material (for exports whose texture slot names a missing file)
+ *   vertexColors: true          white base colour so vertex colours show, solid materials made opaque
+ *   doubleSided: true           every material double-sided (thin wings, leaves, feathers)
+ *   split: <depth>              one GLB per node at that depth below the scene root, as <dest>/<parent>/<node>.glb
+ *                               (depth 3 = root node > group > category > item); otherwise <dest>/<name>.glb
+ *   rename: { "<source rel>": "<new rel>" }  fix typos in file names before cleaning
+ */
+let fbxTool = null;
+async function fbx2glb(src, dst) {
+  if (upToDate(src, dst)) return;
+  if (!fbxTool) {
+    fbxTool = process.env.LIB_FBX2GLTF || path.join(await stageNpm('fbx2gltf', '0.9.7-p1'), 'bin', os.type(), os.type() === 'Windows_NT' ? 'FBX2glTF.exe' : 'FBX2glTF');
+    if (!fs.existsSync(fbxTool)) throw new Error(`FBX2glTF not found at ${fbxTool} (set LIB_FBX2GLTF)`);
+    fs.chmodSync(fbxTool, 0o755);
+  }
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  await run(fbxTool, ['--binary', '--pbr-metallic-roughness', '--input', src, '--output', dst.replace(/\.glb$/, '')]);
+}
+async function planFbx(pack, root, rels) {
+  const skips = (pack.skip || []).map((x) => new RegExp(x));
+  const texture = pack.texture ? fs.readFileSync(path.join(root, pack.texture)) : null;
+  for (const rel of rels) {
+    if (!/\.fbx$/i.test(rel) || GLOBAL_SKIP.some((re) => re.test(rel)) || skips.some((re) => re.test('/' + rel))) continue;
+    if (pack.only && !pack.only.some((x) => rel.startsWith(x))) continue;
+    const src = path.join(root, rel);
+    const raw = path.join(STAGE, 'fbx', pack.id, rel.replace(/\.fbx$/i, '.glb'));
+    await fbx2glb(src, raw);
+    const fix = (g) => {
+      if (texture) g = setBaseColorImage(g, texture, path.basename(pack.texture, '.png'));
+      if (pack.vertexColors) g = vertexColorsOnly(g);
+      if (pack.doubleSided) for (const m of g.json.materials || []) m.doubleSided = true;
+      return writeGlb(g);
+    };
+    const done = path.join(STAGE, 'fbx', pack.id, 'out');
+    const emit = (name, make) => {
+      const file = path.join(done, name);
+      if (!(fs.existsSync(file) && fs.statSync(file).mtimeMs >= stamp)) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, make()); }
+      add({ src: file, dst: `${pack.dest}/${name}`, pack: pack.id, convert: false, meta: {} });
+    };
+    // redo the fixes when the raw GLB, the pack's settings or the helpers change
+    const stamp = Math.max(...[raw, path.join(HERE, 'packs.json'), path.join(HERE, 'gltf.mjs')].map((f) => fs.statSync(f).mtimeMs));
+    const whole = readGlb(fs.readFileSync(raw));
+    if (pack.split) {
+      const { json } = whole;
+      let level = json.scenes[json.scene || 0].nodes.map((i) => ({ i, parent: null }));
+      for (let d = 0; d < pack.split; d++) level = level.flatMap(({ i }) => (json.nodes[i].children || []).map((c) => ({ i: c, parent: json.nodes[i].name })));
+      for (const { i, parent } of level) emit(cleanPath(`${parent ? parent + '/' : ''}${json.nodes[i].name}.glb`), () => fix(extractNode(whole, i)));
+    } else {
+      const named = pack.rename?.[rel] || rel;
+      emit(cleanName(path.basename(named).replace(/\.fbx$/i, '.glb')), () => fix(whole));
+    }
+  }
+}
+
+const HANDLERS = { fbx: planFbx, 'sfx-folders': planSfxFolders, 'pixel-combat': planPixelCombat, 'pixel-effects': planPixelEffects, maps: planMaps, kenney: planKenney };
 
 // ---------- plan ----------
 console.log(`source: ${SRC}\nout:    ${OUT}\njobs:   ${JOBS}  (${HAS_AFCONVERT ? 'afconvert' : 'ffmpeg'})\n`);
@@ -464,7 +523,7 @@ for (const pack of packsFile.packs) {
     for (const [srcName, dstName] of Object.entries(from.files)) add({ src: findSource(srcName), dst: `${pack.dest}/${dstName}`, pack: pack.id, convert: false, meta: {} });
     continue;
   } else throw new Error(`pack ${pack.id}: unknown from`);
-  (HANDLERS[pack.handler] || planGeneric)(pack, root, rels);
+  await (HANDLERS[pack.handler] || planGeneric)(pack, root, rels);
   for (const extra of from.extra || []) add({ src: findSource(extra), dst: `${from.extraDest || pack.dest}/${cleanName(extra)}`, pack: pack.id, convert: false, meta: {} });
 }
 

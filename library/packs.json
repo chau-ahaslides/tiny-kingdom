@@ -692,6 +692,111 @@
       "notes": null
     },
     {
+      "id": "craftpix-wild-animals",
+      "title": "Free Wild Animal 3D Models",
+      "author": "Free Game Assets (CraftPix)",
+      "authorUrl": "https://free-game-assets.itch.io/",
+      "url": "https://free-game-assets.itch.io/free-wild-animal-3d-low-poly-models",
+      "source": "itch.io",
+      "price": "free (name your price)",
+      "kind": "models",
+      "dest": "models/craftpix-wild-animals",
+      "from": {
+        "zip": "Trent new asset 17 Sep/Free Wild Animal 3D Models.zip"
+      },
+      "handler": "fbx",
+      "only": [
+        "fbx/unreal/"
+      ],
+      "texture": "texture/wild_animals_map.png",
+      "license": "CraftPix freebies licence: personal and commercial projects OK, no credit required (appreciated); do not resell or redistribute the art itself.",
+      "commercial": "yes",
+      "credit": null,
+      "licenseFile": "License.txt points to https://craftpix.net/file-licenses/",
+      "description": "10 rigged low-poly forest animals (bear, boar, two deer, fox, hedgehog, owl, rabbit, squirrel, wolf) sharing one 12x12 colour-atlas texture. Converted from FBX to GLB with the atlas embedded; about metre scale (the bear is 2.1 m long).",
+      "notes": "Rigged but no animations. The pack ships Unity and Unreal FBX exports of the same models; the Unreal ones are hosted (correct names, metre scale). Made without generative AI (per the page)."
+    },
+    {
+      "id": "everything-library-animals",
+      "title": "Everything Library 01: Animals",
+      "author": "David O'Reilly",
+      "authorUrl": "https://davidoreilly.itch.io/",
+      "url": "https://davidoreilly.itch.io/everything-library-animals",
+      "source": "itch.io",
+      "price": "free (name your price)",
+      "kind": "models",
+      "dest": "models/everything-library-animals",
+      "from": {
+        "zip": "Trent new asset 17 Sep/EverythingLibrary_Animals_002.zip"
+      },
+      "handler": "fbx",
+      "split": 3,
+      "vertexColors": true,
+      "doubleSided": true,
+      "license": "Creative Commons Attribution 4.0 (CC BY 4.0): credit required. (Code in the project is MIT.)",
+      "commercial": "credit",
+      "credit": "3D animals: Everything Library 01 by David O'Reilly (davidoreilly.itch.io), CC BY 4.0",
+      "licenseFile": null,
+      "description": "178 low-poly creatures from the game Everything, one GLB each under <category>/<Name>.glb: Animals (91 mammals, e.g. Animals/Panda.glb), Birds, BirdsUpright, Insects, FlyingInsects, Arachnids, Reptiles, Amphibians, Imaginary, and AnimalParts (skeleton, teeth, feathers, brain). Coloured by vertex colours, no textures, sizes in metres.",
+      "notes": "The download is one FBX (and a .blend) holding every creature; the build converts it and cuts one file per creature. Static meshes: no rigs or animations. Made without generative AI (per the page)."
+    },
+    {
+      "id": "styloo-animals",
+      "title": "Animals Asset Pack",
+      "author": "styloo",
+      "authorUrl": "https://styloo.itch.io/",
+      "url": "https://styloo.itch.io/animals",
+      "source": "itch.io",
+      "price": "free (name your price; the .blend files are a $3 tier and not hosted)",
+      "kind": "models",
+      "dest": {
+        "glb/": "models/styloo-animals"
+      },
+      "from": {
+        "zip": "Trent new asset 17 Sep/stylooanimalassetpack.zip"
+      },
+      "only": [
+        "glb/"
+      ],
+      "rename": {
+        "glb/chichen.glb": "glb/chicken.glb",
+        "glb/girafe.glb": "glb/giraffe.glb",
+        "glb/Cow.glb": "glb/cow.glb"
+      },
+      "license": "CC0 1.0 Universal: public domain, any use, no credit required.",
+      "commercial": "yes",
+      "credit": null,
+      "licenseFile": null,
+      "description": "7 rigged, textured stylised animals as GLB: butterfly, cat, chicken, cow, dog, giraffe, ladybug. Animated: cow (iddle, jump, run, walk, walking), dog (attack1, iddle, jump, run, walk, walksent), giraffe (iddle), butterfly (fly).",
+      "notes": "Clip names are the author's, typos included (\"iddle\" is idle). The page doubts the GLBs work; they load and animate in three.js 0.186. The FBX copies are not hosted. Made without generative AI (per the page)."
+    },
+    {
+      "id": "savanna-creatures-2",
+      "title": "Savanna Creatures 2",
+      "author": "Michael Jay",
+      "authorUrl": "https://michael-jay-rov.itch.io/",
+      "url": "https://michael-jay-rov.itch.io/savanna-creatures-2",
+      "source": "itch.io",
+      "price": "free (name your price)",
+      "kind": "sprites",
+      "dest": "sprites/savanna-creatures-2",
+      "from": {
+        "files": {
+          "Trent new asset 17 Sep/image - 2025-04-12T143305.329.png": "savanna-creatures-2.png"
+        }
+      },
+      "cell": [
+        61,
+        61
+      ],
+      "license": "Creative Commons Attribution 4.0 (CC BY 4.0): credit required.",
+      "commercial": "credit",
+      "credit": "Savanna Creatures 2 by Michael Jay (michael-jay-rov.itch.io), CC BY 4.0",
+      "licenseFile": null,
+      "description": "16 small pixel-art savanna animals on one 244x244 sheet, a 4x4 grid of 61px cells: secretary bird, vulture, marabou stork, ostrich, fennec-type foxes, mongoose, aardvark, warthog, wild dog, jackal, wildebeest, caracal, eagle, guineafowl. One still pose each.",
+      "notes": "AI-assisted: the itch page discloses generative AI used for the graphics. Check this fits a game before using it."
+    },
+    {
       "id": "kenney",
       "title": "Kenney Game Assets All-in-1",
       "author": "Kenney",
