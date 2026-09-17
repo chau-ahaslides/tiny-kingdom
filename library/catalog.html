@@ -42,6 +42,11 @@
   <span class="meta"><a id="l-guide" href="llms.txt">guide (llms.txt)</a> · <a id="l-manifest" href="manifest.json">manifest.json</a> · <a id="l-packs" href="packs.json">packs.json</a><span id="who"></span></span>
 </header>
 <main>
+<section id="games-home" style="margin:6px 0 22px">
+  <h2 style="font-size:16px;margin:12px 0 2px">Games <small class="meta" style="font-weight:normal">built on this library, live at <a href="https://play.ahaslides.io" style="color:var(--accent)">play.ahaslides.io</a></small></h2>
+  <div id="games" style="--gh-fg:var(--fg);--gh-card:var(--card);--gh-tag:var(--bg);--gh-accent:var(--accent);--gh-line:var(--line)">Loading the games list…</div>
+</section>
+<h2 style="font-size:16px;margin:18px 0 6px">Assets</h2>
 <pre id="how">Every file lives at <b id="base"></b>/&lt;path&gt;. Paths and metadata come from manifest.json:
   sfx/&lt;pack&gt;/&lt;category&gt;/&lt;name&gt;-&lt;variant&gt;.m4a   sounds (AAC, 44.1 kHz; play with Web Audio or &lt;audio&gt;)
   sprites/&lt;pack&gt;/...                              PNG sheets and frames (width/height in the manifest)
@@ -54,6 +59,8 @@
 </section>
 <div id="packs"></div>
 </main>
+<script src="https://play.ahaslides.io/js/games-home.js"></script>
+<script>if (window.gamesHome) gamesHome.load(document.getElementById('games'), 'https://play.ahaslides.io/games.json'); else document.getElementById('games').textContent = 'The games list lives at https://play.ahaslides.io';</script>
 <script type="importmap">
 { "imports": { "three": "./vendor/three/0.186.0/build/three.module.js", "three/addons/": "./vendor/three/0.186.0/examples/jsm/" } }
 </script>

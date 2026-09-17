@@ -8,3 +8,8 @@
 /js/*
   Cache-Control: no-cache
   Access-Control-Allow-Origin: *
+/games.json
+  Cache-Control: no-cache
+  Access-Control-Allow-Origin: *
+/screens/*
+  Cache-Control: public, max-age=3600

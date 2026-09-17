@@ -1,0 +1,60 @@
+{
+  "base": "https://play.ahaslides.io",
+  "groups": [
+    {
+      "title": "Big screen + phones",
+      "note": "Open the host link on the presenter screen; the audience scans the QR and plays from their phones. Bots fill empty seats.",
+      "games": [
+        { "id": "tower-raid", "title": "Defend the Attention Tower", "icon": "🏰", "path": "/tower-raid?host", "play": "/tower-raid",
+          "blurb": "Gremlins march on the tower every 25 seconds. Answer the quiz right and drag a gun onto the board with your name on it; a streak makes it bigger, six in a row is God Mode. Hold as many waves as you can.",
+          "tags": ["quiz", "3D", "tower defence"] },
+        { "id": "survival-quiz", "title": "Survival Quiz", "icon": "❓", "path": "/survival-quiz",
+          "blurb": "Everyone's knight stands in the arena. Answer the quiz right to keep your sword swinging; the wrong and the slow fall first. Last knight standing wins.",
+          "tags": ["quiz", "pixel", "battle"] },
+        { "id": "brawl-quiz", "title": "Brawl: Quiz Mode", "icon": "⚔️", "path": "/brawl-quiz",
+          "blurb": "Knights roam and meet in duels. Each encounter is a quiz: the first right answer strikes, wrong answers hurt, and if nobody answers the swords decide.",
+          "tags": ["quiz", "pixel", "duel"] },
+        { "id": "survival-brawl", "title": "Survival Brawl", "icon": "🏝️", "path": "/survival-brawl",
+          "blurb": "Tap-to-move battle royale. Steer your knight from your phone, dodge the fights you would lose, pick the ones you would win, and outlast the field.",
+          "tags": ["pixel", "battle royale"] },
+        { "id": "marshmallow", "title": "Marshmallow Challenge", "icon": "🍡", "path": "/marshmallow",
+          "blurb": "The classic team-building build: spaghetti, tape, string and one marshmallow. Teams build a tower together from their phones and the tallest standing tower wins.",
+          "tags": ["team building", "3D", "physics"] },
+        { "id": "marshmallow-live", "title": "Marshmallow Challenge Live", "icon": "🏗️", "path": "/marshmallow-live",
+          "blurb": "The same challenge with a live physics world on the big screen: every stick placed from a phone lands in the shared tower in real time, and it can really fall over.",
+          "tags": ["team building", "3D", "physics"] },
+        { "id": "idea-map", "title": "Idea Map", "icon": "💡", "path": "/idea-map?host=1", "play": "/idea-map",
+          "blurb": "A mind map on the big screen that the whole room grows. Phones tap a branch, type an idea and send it, and like the ideas they love. Solo, it is a mind-map editor.",
+          "tags": ["brainstorm", "editor"] },
+        { "id": "color-and-sound", "title": "Color & Sound", "icon": "🎨", "path": "/color-and-sound?host=1", "play": "/color-and-sound",
+          "blurb": "Paint on the shared canvas from your phone and hear it: an upright stroke sounds as a chord, a sideways one as a melody, and every mark keeps blooming after you lift your finger.",
+          "tags": ["toy", "music", "art"] }
+      ]
+    },
+    {
+      "title": "Play on one screen",
+      "note": "Solo or watch-along games, no phones needed.",
+      "games": [
+        { "id": "tiny-kingdom", "title": "Tiny Kingdom Quiz", "icon": "👑", "path": "/tiny-kingdom",
+          "blurb": "The original. Walk your hero through a pixel kingdom with the pad or WASD, strike what stands in the way, and answer quiz rounds along the road.",
+          "tags": ["quiz", "pixel", "adventure"] },
+        { "id": "tower", "title": "Tiny Towers", "icon": "🗼", "path": "/tower",
+          "blurb": "Classic 3D tower defence on Kenney's kit: build ballistas, cannons and turrets on the grass beside the road, upgrade them, and hold the crystal against orcs, raiders and UFOs.",
+          "tags": ["3D", "tower defence"] },
+        { "id": "survival-island", "title": "Survival Island", "icon": "🏝️", "path": "/survival-island",
+          "blurb": "A free-for-all of pixel knights on a small island with a live leaderboard by survival time. Pick the field size and watch it play out.",
+          "tags": ["pixel", "battle", "watch"] },
+        { "id": "tournament", "title": "Tiny Kingdom Tournament", "icon": "🏆", "path": "/tournament",
+          "blurb": "Knights fight it out in the castle arena, round after round, until one champion is left.",
+          "tags": ["pixel", "battle", "watch"] },
+        { "id": "archers-vs-knights", "title": "Archers vs Knights", "icon": "🏹", "path": "/archers-vs-knights",
+          "blurb": "Two armies meet on a pixel field: archers hold the line at range while knights charge it. Watch the lines break.",
+          "tags": ["pixel", "battle", "watch"] }
+      ]
+    }
+  ],
+  "builders": [
+    { "title": "aha-room SDK", "path": "/sdk", "blurb": "Scan-to-play rooms in three lines: host, join, replicated state." },
+    { "title": "Asset library", "url": "https://games.ahaslides.io/catalog", "blurb": "Free game art, sound and 3D models on the CDN, with a catalog and starter maps." }
+  ]
+}
