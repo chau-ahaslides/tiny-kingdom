@@ -11,7 +11,7 @@
      type:  'dynamic' (falls, the default) | 'fixed' (never moves) | 'kinematic' (the game moves it) */
 
 import { createHand, trackHand, dropHand, pointOn } from './hand.js';
-import { addJoint, removeJoint, forgetBody, checkJoints, describeJoints, collisionGroups, onGrab, onRelease, turn } from './phys-joints.js';
+import { addJoint, removeJoint, setMotor, forgetBody, checkJoints, describeJoints, collisionGroups, onGrab, onRelease, turn } from './phys-joints.js';
 import { normaliseControl } from './phys-control.js';
 import { pick, ray, area, collisionEvent } from './phys-query.js';
 
@@ -45,6 +45,7 @@ export function normalise(spec = {}) {
       plane,
       floor: spec.floor === false ? false : num(spec.floor, -50, -10000, 10000),   // bodies below this are dropped
       control: normaliseControl(spec.control, errors),   // who may send what (phys-control.js)
+      settle: normaliseSettle(spec.settle),              // when a world counts as done moving
       events: !!spec.events,
       eventForce: num(spec.eventForce, 1, 0, 1e6),
       sleep: spec.sleep !== false,
@@ -73,6 +74,9 @@ function normaliseBody(raw, where, errors) {
     linearDamping: num(raw.linearDamping, 0.05, 0, 100),
     angularDamping: num(raw.angularDamping, 0.1, 0, 100),
     ccd: !!raw.ccd,                                     // for small fast things that would tunnel
+    // a body that drifts on purpose, or is fast enough to need ccd, keeps the world awake: it would
+    // otherwise be frozen mid-glide by the settle rule
+    restless: raw.restless != null ? !!raw.restless : !!raw.ccd,
     sensor: !!raw.sensor,                               // reports touches, stops nothing
     lock: raw.lock === true ? true : null,              // no rotation at all
     tag: typeof raw.tag === 'string' ? raw.tag.slice(0, 32) : null,  // the game's own label, echoed back
@@ -112,9 +116,13 @@ export function createWorld(R, spec) {
 }
 
 /**
- * Rapier builds the structures behind pick/ray/area during step(), so a world that has never
- * stepped answers no questions — and a game asking "what is here?" straight after building one is
- * the normal case. A zero-length step builds them and moves nothing.
+ * Rapier builds the structures behind pick/ray/area during step(), so a world that has never stepped
+ * answers no questions — and a game asking "what is here?" straight after building one is the normal
+ * case. A zero-length step builds them and advances no time.
+ *
+ * One side effect to know about: this records contacts between bodies that already overlap, and a
+ * joint made later with its contacts disabled — a hinge between a door and its post, say — cannot
+ * shake off a contact that predates it. addAxisJoint() drops those pairs when it makes such a joint.
  */
 function primeQueries(sim) {
   const dt = sim.world.timestep;
@@ -168,18 +176,39 @@ export function addBody(sim, def) {
    it forever. So when nobody is holding anything and every body has been nearly still for SETTLE.seconds,
    the world is settled: isBusy() says no, the room stops stepping it, and the next command unsettles it. */
 const SETTLE = { speed: 0.35, spin: 0.35, seconds: 1.5 };
+
+/**
+ * `settle` in a spec: false to never settle, or { speed, spin, seconds } to change when a world
+ * counts as done. The defaults suit things that fall and stop. A world where something drifts
+ * slowly on purpose — a puck gliding, a balloon — would otherwise be called settled while it is
+ * still visibly moving, and freeze: such a world lowers `speed`, or turns settling off.
+ */
+export function normaliseSettle(settle) {
+  if (settle === false) return false;
+  if (!settle || typeof settle !== 'object') return { ...SETTLE };
+  return {
+    speed: num(settle.speed, SETTLE.speed, 0, 1000),
+    spin: num(settle.spin, SETTLE.spin, 0, 1000),
+    seconds: num(settle.seconds, SETTLE.seconds, 0.1, 600),
+  };
+}
 export function settle(sim, dt) {
+  const rule = sim.spec.settle;
+  if (rule === false) { sim.calm = 0; sim.settled = false; return; }     // this world never settles
   let calm = !sim.hands.size, awake = 0;
   if (calm) {
     for (const rec of sim.bodies.values()) {
+      if (rec.def.type === 'kinematic' && rec.moving) { sim.driven = true; calm = false; break; }   // being steered
       if (rec.def.type !== 'dynamic' || rec.body.isSleeping()) continue;
+      if (rec.def.restless) { calm = false; break; }    // a body that says it is never done (ccd, or `restless`)
       awake++;
       const v = rec.body.linvel(), w = rec.body.angvel();
-      if (Math.hypot(v.x, v.y, v.z) > SETTLE.speed || Math.hypot(w.x, w.y, w.z) > SETTLE.spin) { calm = false; break; }
+      if (Math.hypot(v.x, v.y, v.z) > rule.speed || Math.hypot(w.x, w.y, w.z) > rule.spin) { calm = false; break; }
     }
   }
+  if (calm) sim.driven = false;
   sim.calm = calm && awake ? (sim.calm || 0) + dt : 0;
-  sim.settled = sim.calm >= SETTLE.seconds;
+  sim.settled = sim.calm >= rule.seconds;
 }
 
 /* Keep every dynamic body flat on its plane: no spin about the two axes in the plane, and an orientation
@@ -189,8 +218,22 @@ export function flatten(sim) {
   const n = sim.spec.plane === 'xy' ? 'z' : sim.spec.plane === 'xz' ? 'y' : null;
   if (!n) return;
   const [a, b] = n === 'z' ? ['x', 'y'] : ['x', 'z'];
+  const [t1, t2, t3] = sim.spec.plane === 'xy' ? [true, true, false] : [true, false, true];
   for (const rec of sim.bodies.values()) {
     if (rec.def.type !== 'dynamic' || rec.def.lock || rec.body.isSleeping()) continue;
+    /* A body on a hinge or a slider is a different case. Rapier 0.20 mishandles a joint on a body
+       with a disabled translation: the constraint drifts and then explodes (spin in the hundreds).
+       Same family as the friction bug — a locked degree of freedom and a constraint do not mix. So
+       such a body keeps all three translations, and stays in the plane the honest way: its velocity
+       out of the plane is zeroed here, and the joint holds its rotation better than this ever could. */
+    if (sim.onAxis?.get(rec.id)) {
+      const v = rec.body.linvel();
+      if (Math.abs(v[n]) > 1e-6) { v[n] = 0; rec.body.setLinvel(v, false); }
+      const p = rec.body.translation();
+      if (Math.abs(p[n]) > 1e-4) { p[n] = 0; rec.body.setTranslation(p, false); }
+      continue;
+    }
+    if (rec.unlocked) { rec.body.setEnabledTranslations(t1, t2, t3, true); rec.unlocked = false; }   // its last joint went
     const w = rec.body.angvel();
     if (Math.abs(w[a]) > 1e-4 || Math.abs(w[b]) > 1e-4) { w[a] = 0; w[b] = 0; rec.body.setAngvel(w, false); }
     const q = rec.body.rotation();
@@ -245,7 +288,7 @@ export function apply(sim, m) {
     case 'place': {                                  // teleport, or steer a kinematic body
       if (!rec) return { ok: false, msg: `no body "${m.id}"` };
       const p = v3(m.pos);
-      if (rec.def.type === 'kinematic') rec.body.setNextKinematicTranslation(p);
+      if (rec.def.type === 'kinematic') { rec.body.setNextKinematicTranslation(p); rec.moving = true; }
       else { rec.body.setTranslation(p, true); rec.body.setLinvel(v3(), true); rec.body.setAngvel(v3(), true); }
       if (m.rot) { const q = quat(m.rot); rec.def.type === 'kinematic' ? rec.body.setNextKinematicRotation(q) : rec.body.setRotation(q, true); }
       return { ok: true };
@@ -259,6 +302,7 @@ export function apply(sim, m) {
     case 'turn': return turn(sim, sim.hands.get(String(m.hand || 'h').slice(0, 32)), m.angle, m.axis);
     case 'joint': return addJoint(sim, m);
     case 'unjoint': return removeJoint(sim, m.id);
+    case 'motor': return setMotor(sim, m);          // drive or hold a hinge or slider (phys-joints.js)
     // reads: they answer the asking connection and leave a settled world settled (phys-query.js)
     case 'pick': case 'ray': case 'area': {
       if (sim.queriesStale) { primeQueries(sim); sim.queriesStale = false; }
@@ -327,6 +371,9 @@ export function step(sim, dt = 1 / 60) {
     checkJoints(sim);
   }
   settle(sim, n * sim.spec.timestep);
+  // `moving` means "steered since the last step": a kinematic body driven every frame keeps the
+  // world awake, one placed once does not
+  for (const rec of sim.bodies.values()) if (rec.moving) rec.moving = false;
   if (sim.spec.floor !== false) {
     for (const rec of [...sim.bodies.values()]) {
       if (rec.def.type !== 'dynamic') continue;
@@ -366,6 +413,9 @@ export function snapshot(sim, { all = true } = {}) {
 /** Is anything still moving? A world where everything sleeps costs nothing until someone touches it. */
 export function isBusy(sim) {
   if (sim.hands.size) return true;
+  // a world whose only moving thing is a kinematic body the game is steering has nothing awake to
+  // speak for it, and stopping the loop would strand that body mid-travel
+  if (sim.driven) return true;
   if (sim.settled) return false;                                   // trembling on its springs, but done (settle())
   // fixed and kinematic bodies never report sleep, and never move on their own either
   for (const rec of sim.bodies.values()) if (rec.def.type === 'dynamic' && !rec.body.isSleeping()) return true;

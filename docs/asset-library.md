@@ -281,7 +281,7 @@ shape, pos, rot, density, friction, restitution, linearDamping, angularDamping, 
 tag }`, with `shape` one of `{ ball: r }`, `{ cuboid: [hx, hy, hz] }`, `{ capsule: [halfHeight, r] }`
 or `{ cylinder: [halfHeight, r] }` — half-extents, so a 2 x 1 x 2 m crate is `{ cuboid: [1, 0.5, 1] }`.
 Commands are `add`, `remove`, `impulse`, `torque`, `velocity`, `place`, `gravity`, `grab`, `drag`,
-`release`, `turn`, `joint`, `unjoint` and `reset`; each connection has one hand, so one phone cannot drop
+`release`, `turn`, `joint`, `unjoint`, `motor` and `reset`; each connection has one hand, so one phone cannot drop
 another's grip. The reads `pick`, `ray` and `area` ask the world questions; `world` (reset) and `control` are the host's.
 
 **Joints: tape, glue, a hinge.** `world.joint(a, b, [x, y], opts)` ties two bodies together at a world
@@ -291,6 +291,26 @@ past which it tears. Joints are springs on purpose — the stretch *is* the load
 yanked joint comes apart and everyone gets a `broke` event (`{ id, a, b, why: 'stretched' | 'removed' }`).
 `world.joints` is the live list (anchors in each body's frame; `world.jointPoint(j)` is where one is
 now), late joiners get it in the hello, and removing a body takes its joints with it.
+
+**Hinges, sliders and motors.** A spring joint is right for tape; a door wants a real one.
+`kind: 'hinge'` is a revolute joint about `axis` (z by default, the axis a 2D world turns in) and
+`kind: 'slider'` a prismatic one along it, both held exactly rather than softly:
+
+```js
+await world.joint('frame', 'door', [0.1, 0], { kind: 'hinge', limits: [0, 1.6] });   // opens one way, 0 to 1.6 rad
+await world.joint('shaft', 'car', [0, 0], { kind: 'slider', axis: [0, 1], limits: [-1, 3] });
+
+world.motor(id, { speed: 2, force: 500 });                     // drive it: rad/s for a hinge, m/s for a slider
+world.motor(id, { target: 0.8, stiffness: 2e3, damping: 200 }); // or send it somewhere and hold it there
+world.motor(id, false);                                         // let go, and it swings or slides freely again
+world.motor(id, { limits: [-0.5, 0.5] });                       // limits can change while it runs
+```
+
+That covers what a game would otherwise fake by teleporting a body every frame: doors that swing and
+latch, lifts and platforms that travel, wheels that drive, a catapult held and released. `limits` are
+radians for a hinge and world units for a slider, min first. A motor's `force` is its strength — too
+little and gravity wins, which is a thing to notice rather than a thing to fear. Hinges and sliders
+do not stretch, so `breakAt` does not apply to them.
 
 Two grab options make building with them work: `grab(id, at, 1, { ghost: true })` carries the body, and
 everything jointed to it, *through* other dynamic bodies until it is let go (fixed ones still stop it),
@@ -321,6 +341,15 @@ world.on('enter', (e) => score(e.tag));   // { zone, zoneTag, id, tag } — also
 ```
 
 A sensor reports whatever the world's `events` setting is, because a zone nobody hears is pointless.
+
+**When a world stops costing anything.** A world that has stopped moving stops being stepped: once
+nothing is held and every body has been under `settle.speed` and `settle.spin` for `settle.seconds`
+(0.35, 0.35 and 1.5 by default), the room idles until the next command. That suits things that fall
+and stop. A world where something drifts slowly on purpose — a puck gliding, a balloon — would be
+declared settled while it is still visibly moving, and freeze, so such a world lowers the numbers
+(`settle: { speed: 0.05 }`) or turns it off (`settle: false`). A single body can opt out with
+`restless: true`, which `ccd: true` implies; a kinematic body being steered keeps the world awake by
+itself.
 
 **Who may do what.** By default the world is `open`: any connection may send any command, which is
 what makes a shared world feel shared — twenty phones are twenty hands, and none of them asks the

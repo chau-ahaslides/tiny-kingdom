@@ -162,3 +162,50 @@ test('a 2D world keeps its friction: a stick shoved along the floor stops', () =
   const q = sim.bodies.get('stick').body.rotation(), p = at(sim, 'stick');
   assert.ok(Math.abs(q.x) < 1e-4 && Math.abs(q.y) < 1e-4 && Math.abs(p.z) < 1e-6, 'and it is still flat on the plane');
 });
+
+test('a world that drifts slowly on purpose is not declared settled', () => {
+  // the default rule calls a world done once everything is under 0.35 for 1.5 s, which is right for
+  // things that fall and stop — and wrong for a puck gliding across ice, which would freeze mid-glide
+  const puck = (settle) => {
+    const sim = build({ plane: 'xz', settle, bodies: [
+      { id: 'ice', type: 'fixed', shape: { cuboid: [50, 0.1, 50] }, pos: [0, 0, 0], friction: 0 },
+      { id: 'puck', shape: { cylinder: [0.05, 0.3] }, pos: [0, 0.16, 0], friction: 0, linearDamping: 0 },
+    ] });
+    apply(sim, { t: 'velocity', id: 'puck', lin: [0.2, 0, 0] });
+    run(sim, 3);
+    return { sim, x: at(sim, 'puck').x, settled: !!sim.settled, busy: isBusy(sim) };
+  };
+
+  const dflt = puck(undefined);
+  assert.ok(dflt.settled, 'with the default rule a 0.2 glide counts as settled');
+
+  const slower = puck({ speed: 0.05 });
+  assert.ok(!slower.settled && slower.busy, 'a world that says 0.05 keeps stepping');
+  assert.ok(slower.x > 0.5, `and the puck is still going, x=${slower.x}`);
+
+  const never = puck(false);
+  assert.ok(!never.settled && never.busy, 'settle: false never settles');
+  assert.ok(never.x > 0.5);
+});
+
+test('a restless body keeps the world awake, and a steered one does too', () => {
+  // `restless` opts a body out of the low-speed test, not out of physics: a body Rapier has genuinely
+  // put to sleep is still asleep. What it buys is a glider that would otherwise be frozen mid-drift.
+  const ice = { id: 'ice', type: 'fixed', shape: { cuboid: [50, 0.1, 50] }, pos: [0, 0, 0], friction: 0 };
+  const glide = (extra) => {
+    const sim = build({ plane: 'xz', bodies: [ice,
+      { id: 'puck', shape: { cylinder: [0.05, 0.3] }, pos: [0, 0.16, 0], friction: 0, linearDamping: 0, ...extra }] });
+    apply(sim, { t: 'velocity', id: 'puck', lin: [0.2, 0, 0] });
+    run(sim, 3);
+    return sim;
+  };
+  assert.equal(isBusy(glide({})), false, 'an ordinary slow glider lets the world settle');
+  assert.equal(isBusy(glide({ restless: true })), true, 'one that says restless does not');
+  assert.equal(isBusy(glide({ ccd: true })), true, 'and ccd implies it: something fast enough to tunnel is not scenery');
+
+  const steered = build({ bodies: [GROUND, { id: 'lift', type: 'kinematic', shape: { cuboid: [1, 0.1, 1] }, pos: [0, 1, 0] }] });
+  run(steered, 3);
+  assert.equal(isBusy(steered), false, 'a kinematic body nobody is steering does not hold the world open');
+  for (let i = 0; i < 30; i++) { apply(steered, { t: 'place', id: 'lift', pos: [0, 1 + i * 0.01, 0] }); step(steered, 1 / 60); }
+  assert.equal(isBusy(steered), true, 'but one being driven does');
+});

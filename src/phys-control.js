@@ -22,7 +22,7 @@
 
 /** Every command a connection can send. `world` and `control` are always host-only. */
 export const COMMANDS = ['add', 'remove', 'impulse', 'torque', 'velocity', 'place', 'gravity', 'grab', 'drag', 'release',
-  'turn', 'joint', 'unjoint', 'pick', 'ray', 'area'];
+  'turn', 'joint', 'unjoint', 'motor', 'pick', 'ray', 'area'];
 export const HOST_ONLY = ['world', 'control'];
 
 /** Reads: they answer the connection that asked and change nothing. "Nothing there" is an answer,

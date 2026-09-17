@@ -8,6 +8,16 @@
      pin    one stiff spring at the point: the bodies hinge about it.
      weld   the same, plus a softer spring `arm` along body b, so the joint resists bending (tape, not
             a hinge). `bend` scales it: 0 is a pin, 1 is as stiff as the pin itself.
+     hinge  a real revolute joint about `axis` (z by default, which is the one a 2D world turns in):
+            a door, a wheel, a flipper, a see-saw.
+     slider a prismatic joint along `axis`: a lift, a drawer, a piston.
+
+   A hinge or a slider can be held between `limits` — [min, max], radians for a hinge and world units
+   for a slider — and driven by a `motor`, which is either a speed to hold ({ speed, force }) or a
+   place to reach and keep ({ target, stiffness, damping, force }). `{ t: 'motor', id, ... }` changes
+   one while the world runs, and `motor: false` lets it go slack. That covers the things a game would
+   otherwise fake by teleporting a body every frame: doors that swing, platforms that travel, wheels
+   that drive, catapults that release.
 
    Joints are springs rather than rigid constraints on purpose: a spring's stretch is how hard the
    joint is loaded, so `breakAt` (a stretch, in world units) is all it takes for an overloaded or yanked
@@ -63,7 +73,8 @@ export function addJoint(sim, m) {
   const id = typeof m.jid === 'string' && /^[\w.:-]{1,48}$/.test(m.jid) ? m.jid : `j${sim.nextJoint++}`;
   if (sim.joints.has(id)) return { ok: false, msg: `there is already a joint called "${id}"` };
   const at = Array.isArray(m.at) ? v3(+m.at[0] || 0, +m.at[1] || 0, +m.at[2] || 0) : A.body.translation();
-  const kind = m.kind === 'pin' ? 'pin' : 'weld';
+  const kind = ['pin', 'weld', 'hinge', 'slider'].includes(m.kind) ? m.kind : 'weld';
+  if (kind === 'hinge' || kind === 'slider') return addAxisJoint(sim, { ...m, id, kind, A, B, at });
   // stiffness is per unit of the lighter body's mass, so a default joint holds whatever it joins
   const mass = Math.max(0.01, Math.min(...[A, B].filter((r) => r.def.type === 'dynamic').map((r) => r.body.mass())));
   const k = num(m.stiffness, 4e3, 1, JOINT_LIMITS.stiffness) * mass;
@@ -91,10 +102,99 @@ export function addJoint(sim, m) {
   return { ok: true, id, joint: describeJoint(rec) };
 }
 
+/* A hinge or a slider: a real constraint rather than a spring, so it holds exactly and can carry a
+   limit and a motor. Rapier wants the anchor in each body's own frame and an axis; the world point
+   and a world axis are what a game has, so they are converted here. */
+/** How many hinges or sliders hold each body: flatten() leaves those bodies alone (phys-world.js). */
+function onAxis(sim, id, delta) {
+  sim.onAxis ||= new Map();
+  const n = (sim.onAxis.get(id) || 0) + delta;
+  if (n > 0) sim.onAxis.set(id, n); else sim.onAxis.delete(id);
+}
+
+function addAxisJoint(sim, { id, kind, A, B, at, axis, limits, motor }) {
+  const R = sim.R;
+  const ax = Array.isArray(axis) ? v3(+axis[0] || 0, +axis[1] || 0, +axis[2] || 0) : v3(0, 0, 1);
+  const len = Math.hypot(ax.x, ax.y, ax.z);
+  if (!len) return { ok: false, msg: 'a hinge or slider needs an axis with a length' };
+  const unit = v3(ax.x / len, ax.y / len, ax.z / len);
+  const la = toLocal(A.body, at), lb = toLocal(B.body, at);
+  // the axis is given in world terms; each body needs it in its own
+  const aa = rotate(conj(A.body.rotation()), unit), ab = rotate(conj(B.body.rotation()), unit);
+  const data = kind === 'hinge'
+    ? R.JointData.revolute(la, lb, aa)
+    : R.JointData.prismatic(la, lb, aa);
+  const j = sim.world.createImpulseJoint(data, A.body, B.body, true);
+  // a door and its post meet exactly where the hinge is: left to collide they grind and never swing
+  j.setContactsEnabled(false);
+  const rec = { id, a: A.id, b: B.id, kind, main: { j, la, lb }, bend: null, breakAt: null, axis: [unit.x, unit.y, unit.z] };
+  sim.joints.set(id, rec);
+  const set = setAxis(sim, rec, { limits, motor });
+  if (!set.ok) { drop(sim, rec.main); sim.joints.delete(id); return set; }
+  onAxis(sim, A.id, 1); onAxis(sim, B.id, 1);
+  // In a plane world a body carries a translation lock, and Rapier 0.20 solves a joint on a locked
+  // body badly — it drifts and then explodes. The lock comes off here, before the first solve ever
+  // sees this joint; flatten() keeps the body in its plane by velocity instead (phys-world.js).
+  if (sim.spec.plane) for (const rec of [A, B]) {
+    if (rec.def.type !== 'dynamic' || rec.def.lock) continue;
+    rec.body.setEnabledTranslations(true, true, true, true);
+    rec.unlocked = true;
+  }
+  /* A hinge is normally made between bodies that already touch — a door and its post. Any contact
+     recorded before the joint existed outlives setContactsEnabled(false), and wedges the two solid:
+     the door never swings. Turning each collider off and on again drops those stale pairs. */
+  for (const rec of [A, B]) { rec.collider.setEnabled(false); rec.collider.setEnabled(true); }
+  A.body.wakeUp(); B.body.wakeUp();
+  sim.seq++;
+  return { ok: true, id, joint: describeJoint(rec) };
+}
+
+/** Limits and motor on a hinge or slider; used when it is made and by the `motor` command. */
+function setAxis(sim, rec, { limits, motor }) {
+  const j = rec.main.j;
+  if (limits !== undefined) {
+    if (limits === false || limits === null) rec.limits = null;
+    else if (Array.isArray(limits) && limits.length === 2 && limits.every((n) => Number.isFinite(+n)) && +limits[0] <= +limits[1]) {
+      j.setLimits(+limits[0], +limits[1]);
+      rec.limits = [+limits[0], +limits[1]];
+    } else return { ok: false, msg: 'limits are [min, max], min first (radians for a hinge, distance for a slider)' };
+  }
+  if (motor !== undefined) {
+    if (motor === false || motor === null) {
+      // a velocity motor asked for zero is a brake, not a release: the force has to go to zero
+      j.configureMotorVelocity(0, 0);
+      j.setMotorMaxForce?.(0);
+      rec.motor = null;
+    } else if (motor && typeof motor === 'object') {
+      const force = num(motor.force, 1e3, 0, JOINT_LIMITS.stiffness);
+      j.setMotorMaxForce?.(force);
+      if (motor.target != null) {
+        j.configureMotorPosition(+motor.target, num(motor.stiffness, 1e3, 0, JOINT_LIMITS.stiffness), num(motor.damping, 50, 0, JOINT_LIMITS.stiffness));
+        rec.motor = { target: +motor.target, force };
+      } else {
+        j.configureMotorVelocity(num(motor.speed, 0, -1e3, 1e3), force);
+        rec.motor = { speed: num(motor.speed, 0, -1e3, 1e3), force };
+      }
+    } else return { ok: false, msg: 'motor is { speed, force } to drive, { target, stiffness, damping } to hold, or false' };
+  }
+  for (const bid of [rec.a, rec.b]) sim.bodies.get(bid)?.body.wakeUp();
+  return { ok: true };
+}
+
+/** `{ t: 'motor', id, motor, limits }` — change a hinge or slider while the world runs. */
+export function setMotor(sim, m) {
+  const rec = sim.joints?.get(m.id);
+  if (!rec) return { ok: false, msg: `no joint "${m.id}"` };
+  if (rec.kind !== 'hinge' && rec.kind !== 'slider') return { ok: false, msg: `"${m.id}" is a ${rec.kind}: only a hinge or a slider has a motor` };
+  const r = setAxis(sim, rec, { limits: m.limits, motor: m.motor });
+  return r.ok ? { ok: true, id: rec.id, joint: describeJoint(rec) } : r;
+}
+
 export function removeJoint(sim, id, why = null) {
   const rec = sim.joints?.get(id);
   if (!rec) return { ok: false, msg: `no joint "${id}"` };
   drop(sim, rec.main); drop(sim, rec.bend);
+  if (rec.kind === 'hinge' || rec.kind === 'slider') { onAxis(sim, rec.a, -1); onAxis(sim, rec.b, -1); }
   sim.joints.delete(id);
   for (const bid of [rec.a, rec.b]) sim.bodies.get(bid)?.body.wakeUp();
   if (why) sim.events.push({ t: 'broke', id, a: rec.a, b: rec.b, why });
@@ -111,7 +211,7 @@ export function forgetBody(sim, bodyId) {
 export function checkJoints(sim) {
   if (!sim.joints?.size) return;
   for (const j of [...sim.joints.values()]) {
-    if (j.breakAt == null) continue;
+    if (j.breakAt == null || j.kind === 'hinge' || j.kind === 'slider') continue;   // a real constraint does not stretch
     const A = sim.bodies.get(j.a), B = sim.bodies.get(j.b);
     if (!A || !B) { removeJoint(sim, j.id, 'removed'); continue; }
     if (dist(toWorld(A.body, j.main.la), toWorld(B.body, j.main.lb)) > j.breakAt) removeJoint(sim, j.id, 'stretched');
@@ -119,7 +219,10 @@ export function checkJoints(sim) {
 }
 
 export function describeJoint(j) {
-  return { id: j.id, a: j.a, b: j.b, kind: j.kind, la: r3(j.main.la), lb: r3(j.main.lb) };
+  return {
+    id: j.id, a: j.a, b: j.b, kind: j.kind, la: r3(j.main.la), lb: r3(j.main.lb),
+    ...(j.axis ? { axis: j.axis } : {}), ...(j.limits ? { limits: j.limits } : {}), ...(j.motor ? { motor: j.motor } : {}),
+  };
 }
 export const describeJoints = (sim) => [...(sim.joints?.values() || [])].map(describeJoint);
 
