@@ -129,6 +129,16 @@ class World {
    */
   joint(a, b, at, opts = {}) { return this.ask({ t: 'joint', a, b, at: this._vec(at), ...opts }).then((r) => r.id); }
   unjoint(id) { this.send({ t: 'unjoint', id }); }
+  /**
+   * Drive or release a hinge or slider: { speed, force } to drive it, { target, stiffness, damping }
+   * to send it somewhere and hold it there, false to let go. { limits: [min, max] } changes how far
+   * it may travel, and may be passed on its own.
+   */
+  motor(id, opts) {
+    if (opts === false || opts === null) return this.send({ t: 'motor', id, motor: false });
+    const { limits, ...motor } = opts || {};
+    this.send({ t: 'motor', id, ...(limits !== undefined ? { limits } : {}), ...(Object.keys(motor).length ? { motor } : {}) });
+  }
   /** Where a joint is right now, from its first body's interpolated pose. */
   jointPoint(j) {
     const b = this.bodies.get(j.a) || this.bodies.get(j.b);
