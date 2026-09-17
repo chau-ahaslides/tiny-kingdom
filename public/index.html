@@ -2,40 +2,49 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Join a game</title>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { color-scheme: light dark; --ink: #20303f; --card: #fff; --bg: #cfe8ff; --blue: #4a8fe7; --line: #d8e0ea; }
-  @media (prefers-color-scheme: dark) { :root { --ink: #ececea; --card: #1f2023; --bg: #17181a; --line: #3a3d44; } }
+  /* Every text/background pair below is WCAG AA (4.5:1+) in its theme: button text 5.0:1, error 5.5:1 / 7.4:1, muted 5.9:1 / 6.9:1. */
+  :root { color-scheme: light dark; --ink: #20303f; --card: #fff; --bg: #cfe8ff; --line: #d8e0ea; --muted: #5b6672; --err: #c2362a;
+          --btn-bg: #2f6fc4; --btn-fg: #fff; --focus: #2f6fc4; --field-focus: #4a8fe7; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #ececea; --card: #1f2023; --bg: #17181a; --line: #3a3d44; --muted: #a4a9b0; --err: #ff8f80;
+          --btn-bg: #2f6fc4; --btn-fg: #fff; --focus: #8ab4ff; --field-focus: #8ab4ff; } }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: Fredoka, system-ui, sans-serif; }
   .center { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 20px; }
   .card { background: var(--card); border-radius: 24px; padding: 28px 28px 24px; box-shadow: 0 10px 40px rgba(0,0,0,.18); max-width: 420px; width: 100%; text-align: center; }
-  h1 { margin: 0 0 6px; font-size: 28px; } p { margin: 0 0 18px; opacity: .8; line-height: 1.4; }
+  h1 { margin: 0 0 6px; font-size: 28px; } .lede { display: block; margin: 0 0 18px; opacity: .8; line-height: 1.4; }
   form { display: flex; flex-direction: column; gap: 12px; }
   input { font-family: inherit; font-size: 34px; font-weight: 700; letter-spacing: .25em; text-transform: uppercase; text-align: center; padding: 12px 8px; border: 2px solid var(--line); border-radius: 16px; width: 100%; background: transparent; color: inherit; }
-  input:focus { outline: none; border-color: var(--blue); }
-  button { font-family: inherit; font-weight: 700; font-size: 20px; border: 0; border-radius: 16px; padding: 14px 20px; cursor: pointer; background: var(--blue); color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,.18); }
-  button:disabled { opacity: .5; cursor: default; box-shadow: none; }
-  .err { color: #e5533d; font-size: 14px; min-height: 18px; margin: 0; }
-  .foot { margin-top: 18px; font-size: 12px; opacity: .55; } .foot a { color: inherit; }
+  input:focus { outline: none; border-color: var(--field-focus); }
+  input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+  input[aria-invalid="true"] { border-color: var(--err); }
+  button { font-family: inherit; font-weight: 700; font-size: 20px; border: 0; border-radius: 16px; padding: 14px 20px; min-height: 52px; cursor: pointer; background: var(--btn-bg); color: var(--btn-fg); box-shadow: 0 3px 0 rgba(0,0,0,.18); }
+  button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+  button:disabled { opacity: .45; filter: saturate(.3); cursor: not-allowed; box-shadow: none; }
+  .err { color: var(--err); font-size: 15px; font-weight: 500; min-height: 21px; margin: 0; }
+  .foot { margin-top: 14px; font-size: 13px; color: var(--muted); line-height: 1.4; }
+  .foot a { color: inherit; display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; margin: 0 -8px; border-radius: 10px; text-underline-offset: 3px; }
+  .foot a:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 </style>
 </head>
 <body>
-<div class="center"><form class="card" id="f" autocomplete="off">
-  <h1>🎮 Join a game</h1>
-  <p>Enter the code shown on the big screen.</p>
-  <input id="code" inputmode="latin" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="8" placeholder="CODE" autofocus>
+<main class="center"><form class="card" id="f" autocomplete="off">
+  <h1><span aria-hidden="true">🎮</span> Join a game</h1>
+  <label class="lede" for="code">Enter the code shown on the big screen.</label>
+  <input id="code" inputmode="latin" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="8" placeholder="CODE" aria-describedby="err" autofocus>
   <button id="go" type="submit" disabled>Join</button>
-  <p class="err" id="err"></p>
+  <p class="err" id="err" role="alert"></p>
   <div class="foot">Or scan the QR code on the screen · <a href="https://games.ahaslides.io/catalog">all games</a></div>
-</form></div>
+</form></main>
 <script>
 'use strict';
 const input = document.getElementById('code'), go = document.getElementById('go'), err = document.getElementById('err');
 const clean = () => input.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8);
-input.addEventListener('input', () => { input.value = clean(); go.disabled = input.value.length < 4; err.textContent = ''; });
+const showError = (msg) => { err.textContent = msg; if (msg) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid'); };
+input.addEventListener('input', () => { input.value = clean(); go.disabled = input.value.length < 4; showError(''); });
 document.getElementById('f').addEventListener('submit', async (e) => {
   e.preventDefault(); const code = clean(); if (code.length < 4) return;
   go.disabled = true; go.textContent = 'Joining…';
@@ -43,7 +52,8 @@ document.getElementById('f').addEventListener('submit', async (e) => {
 });
 const qs = new URLSearchParams(location.search); const q = qs.get('code');
 if (q) { input.value = q.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8); go.disabled = input.value.length < 4; }
-if (qs.has('missing')) { err.textContent = 'No game is open with that code. Check the big screen and try again.'; history.replaceState(null, '', '/'); }
+// set after a beat so screen readers announce the alert (a live region filled during page load is often skipped)
+if (qs.has('missing')) { setTimeout(() => showError('No game is open with that code. Check the big screen and try again.'), 400); history.replaceState(null, '', '/'); }
 </script>
 </body>
 </html>
