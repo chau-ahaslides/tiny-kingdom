@@ -18,5 +18,5 @@
   // the OAuth client of the "AhaSlides games asset library" app in Google Cloud, whose redirect URI is
   // https://games.ahaslides.io/auth/callback; its secret and the cookie-signing key are wrangler secrets
   // (above). LOGIN_DOMAINS lists the email domains allowed in. Empty client id = no sign-in, key only.
-  "vars": { "GOOGLE_CLIENT_ID": "", "LOGIN_DOMAINS": "ahaslides.com" }
+  "vars": { "GOOGLE_CLIENT_ID": "658448366255-8u861uen4ita5b6hou5o2ru0qir898bq.apps.googleusercontent.com", "LOGIN_DOMAINS": "ahaslides.com" }
 }
