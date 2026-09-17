@@ -173,6 +173,8 @@ export default {
     if (j) {
       const r = await lookup(env, j[1]);
       if (r && r.page) return Response.redirect(joinTarget(url.origin, r.page, j[1].toUpperCase()), 302);
+      // A browser goes back to the join screen with the code and a note; scripts get the 404.
+      if (/text\/html/.test(req.headers.get('accept') || '')) return Response.redirect(url.origin + '/?code=' + j[1].toUpperCase() + '&missing=1', 302);
       return new Response('This room has ended. Ask the big screen for a new code.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     }
     const ws = url.pathname.match(/^\/ws\/([A-Za-z0-9-]{4,32})$/);

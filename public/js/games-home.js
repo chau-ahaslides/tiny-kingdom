@@ -38,6 +38,7 @@
             <div class="btns">
               <a class="btn" href="${abs(x.path)}" target="_blank" rel="noopener">${x.play ? 'Host on big screen' : 'Play'}</a>
               ${x.play ? `<a class="btn ghost" href="${abs(x.play)}" target="_blank" rel="noopener">Open solo</a>` : ''}
+              ${x.alt ? `<a class="btn ghost" href="${abs(x.alt.path)}" target="_blank" rel="noopener">${esc(x.alt.label)}</a>` : ''}
             </div>
           </div>
         </div>`).join('')}</div>`).join('') +
