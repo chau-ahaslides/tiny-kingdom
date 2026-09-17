@@ -127,11 +127,11 @@ export function originAllowed(origin) {
 }
 
 /**
- * Verify a Cloudflare Access JWT (RS256) against the team's JWKS `keys`. Returns the payload, or null
- * when the signature, audience, issuer or expiry does not check out. Pure WebCrypto, so it runs in
- * the worker and in Node tests alike.
+ * Verify an RS256 JWT (a Google ID token) against the issuer's JWKS `keys`. Returns the payload, or
+ * null when the signature, audience, issuer or expiry does not check out. Pure WebCrypto, so it runs
+ * in the worker and in Node tests alike.
  */
-export async function verifyAccessJwt(token, { keys, aud, issuer, now = Date.now() / 1000 }) {
+export async function verifyJwt(token, { keys, aud, issuer, now = Date.now() / 1000 }) {
   try {
     const [h, p, s] = String(token || '').split('.');
     if (!s) return null;
@@ -150,6 +150,61 @@ export async function verifyAccessJwt(token, { keys, aud, issuer, now = Date.now
     if (typeof payload.exp === 'number' && payload.exp < now) return null;
     return payload;
   } catch { return null; }
+}
+
+/* --- The staff session: a signed cookie minted after Google sign-in (see library/worker/worker.js) --- */
+
+const B64 = {
+  enc: (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+  dec: (s) => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)),
+};
+const hmacKey = (secret, usage) =>
+  crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [usage]);
+
+/** A cookie header as an object. */
+export function parseCookies(header) {
+  const out = {};
+  for (const part of String(header || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  return out;
+}
+
+/** Sign `payload` (which carries its own `exp`, in seconds) into a cookie value: <body>.<HMAC>. */
+export async function signSession(payload, secret) {
+  const body = B64.enc(new TextEncoder().encode(JSON.stringify(payload)));
+  const sig = await crypto.subtle.sign('HMAC', await hmacKey(secret, 'sign'), new TextEncoder().encode(body));
+  return body + '.' + B64.enc(new Uint8Array(sig));
+}
+
+/** The payload of a cookie this secret signed and that has not expired, else null. */
+export async function readSession(value, secret, now = Date.now() / 1000) {
+  try {
+    if (!secret) return null;
+    const [body, sig] = String(value || '').split('.');
+    if (!body || !sig) return null;
+    const ok = await crypto.subtle.verify('HMAC', await hmacKey(secret, 'verify'), B64.dec(sig), new TextEncoder().encode(body));
+    if (!ok) return null;
+    const payload = JSON.parse(new TextDecoder().decode(B64.dec(body)));
+    if (typeof payload.exp !== 'number' || payload.exp < now) return null;
+    return payload;
+  } catch { return null; }
+}
+
+/** Is this a verified address at one of the company's domains? Nothing else may hold a session. */
+export function emailAllowed(email, domains) {
+  if (typeof email !== 'string') return false;
+  const at = email.lastIndexOf('@');
+  if (at < 1 || at === email.length - 1) return false;
+  const domain = email.slice(at + 1).toLowerCase();
+  return (domains || []).some((d) => domain === String(d).trim().toLowerCase());
+}
+
+/** Where to send a browser after sign-in: a path on this site, never another origin. */
+export function safeNext(next, fallback = '/catalog') {
+  if (typeof next !== 'string' || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return fallback;
+  return next;
 }
 
 export const MIME = {

@@ -3,6 +3,8 @@
 //   npx wrangler r2 bucket create tiny-kingdom-lib            (once)
 //   npx wrangler secret put LIB_UPLOAD_TOKEN -c library/worker/wrangler.jsonc   (once; writes)
 //   npx wrangler secret put LIB_READ_TOKEN -c library/worker/wrangler.jsonc     (once; agents reading the index)
+//   npx wrangler secret put GOOGLE_CLIENT_SECRET -c library/worker/wrangler.jsonc  (once; staff Google sign-in)
+//   npx wrangler secret put LIB_SESSION_SECRET -c library/worker/wrangler.jsonc    (once; signs the session cookie)
 //   npx wrangler deploy -c library/worker/wrangler.jsonc
 {
   "name": "tiny-kingdom-lib",
@@ -12,8 +14,9 @@
   "preview_urls": false,
   "routes": [{ "pattern": "games.ahaslides.io", "custom_domain": true }],
   "r2_buckets": [{ "binding": "LIB", "bucket_name": "tiny-kingdom-lib" }],
-  // People log in at /catalog through Cloudflare Access; the worker checks the Access JWT with these.
-  // ACCESS_TEAM_DOMAIN is the Zero Trust team domain (<team>.cloudflareaccess.com); ACCESS_AUD is the
-  // Access application's Audience tag. Both empty until the Access app exists (then only the key works).
-  "vars": { "ACCESS_TEAM_DOMAIN": "", "ACCESS_AUD": "" }
+  // Staff sign in with Google at /auth/login (see the sign-in section of worker.js). GOOGLE_CLIENT_ID is
+  // the OAuth client of the "AhaSlides games asset library" app in Google Cloud, whose redirect URI is
+  // https://games.ahaslides.io/auth/callback; its secret and the cookie-signing key are wrangler secrets
+  // (above). LOGIN_DOMAINS lists the email domains allowed in. Empty client id = no sign-in, key only.
+  "vars": { "GOOGLE_CLIENT_ID": "", "LOGIN_DOMAINS": "ahaslides.com" }
 }

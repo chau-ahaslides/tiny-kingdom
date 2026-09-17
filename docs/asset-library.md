@@ -14,7 +14,7 @@ LIB = https://games.ahaslides.io
 | `LIB/llms.txt` | This guide, served from the CDN. Start here. **Gated.** |
 | `LIB/manifest.json` | Every file (3,650 assets, 1,298 metadata) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `cell`/`cols`/`rows`/`frames`/`fps`/`animations`, `duration`, `category`, `variant`, `tags`. **Gated.** |
 | `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. **Gated.** |
-| `LIB/catalog` | The catalog: every pack, its licence, thumbnails, play buttons, the starter maps, a filter box. Sign in with an AhaSlides account (Cloudflare Access). |
+| `LIB/catalog` | The catalog: every pack, its licence, thumbnails, play buttons, the starter maps, a filter box. Sign in with your AhaSlides Google account. |
 | `LIB/` | The same catalog for agents and scripts: open it once as `LIB/?key=<token>`. |
 | `LIB/vendor/…` | three.js and PixiJS, pinned by version (see "Libraries on the CDN"). |
 | `LIB/maps/<pack>/…` | A starter map per tileset pack, in the library's map format (see "Maps"). |
@@ -26,10 +26,11 @@ a day at the edge and in the browser, and a pinned version path never changes.
 
 **Gated** means the request needs one of two credentials. Agents and scripts send the library read
 token, as a header `Authorization: Bearer <token>` or as `?key=<token>`; it is
-`TINY_KINGDOM_LIB_READ_TOKEN` in `~/.env` on the AhaSlides machines. People sign in with their
-AhaSlides account at `LIB/catalog`, which sits behind Cloudflare Access; the session cookie it sets
-then opens `llms.txt`, `manifest.json` and `packs.json` in that browser too. Without either, those URLs
-answer 401; every asset file still answers. The gate is deliberate: most packs forbid redistribution as
+`TINY_KINGDOM_LIB_READ_TOKEN` in `~/.env` on the AhaSlides machines. People open `LIB/catalog` in a
+browser and sign in with their AhaSlides Google account (any `@ahaslides.com` address, no key to
+copy); the cookie that sign-in sets then opens `llms.txt`, `manifest.json` and `packs.json` in that
+browser too, for twelve hours. Without either, a browser is sent to the Google sign-in and anything
+else answers 401; every asset file still answers. The gate is deliberate: most packs forbid redistribution as
 an asset pack, so the host must be an asset server for our games rather than a browsable library.
 
 Ask the manifest, not the file system: it is 1.3 MB of JSON, so fetch it once and filter.
@@ -524,23 +525,34 @@ and `TINY_KINGDOM_LIB_READ_TOKEN` (index reads). A later upload is
 `LIB_TOKEN=$TINY_KINGDOM_LIB_TOKEN npm run lib:upload` (the URL above is the default); the upload
 token also opens the index.
 
-**AhaSlides login for people** (Cloudflare Access, once, in the Zero Trust dashboard of the account
-that owns `ahaslides.io`):
+**Google sign-in for staff** (once, in the Google Cloud project that owns the AhaSlides Workspace):
 
-1. Zero Trust, Settings, Authentication: make sure a login method exists for the company, either
-   Google Workspace (the AhaSlides domain) or One-time PIN by email.
-2. Zero Trust, Access, Applications, Add an application, Self-hosted. Name "AhaSlides games asset
-   library"; application domain `games.ahaslides.io`, path `catalog`. Session duration 24 hours.
-3. Policy: name "AhaSlides staff", action Allow, include Emails ending in `@ahaslides.com`,
-   `@ahaslides.io`, `@ahaslides.ai` (one rule per domain).
-4. Save. On the application's overview copy the **Application Audience (AUD) tag**, and note the
-   team domain (`<team>.cloudflareaccess.com`, under Settings, Custom Pages).
-5. Put both into `library/worker/wrangler.jsonc` (`ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`) and
-   `npm run lib:deploy`.
+1. console.cloud.google.com, pick (or create) a project, APIs & Services, OAuth consent screen:
+   User type **Internal**, app name "AhaSlides games asset library", support and developer email
+   your own. Internal means only `@ahaslides.com` accounts can even reach the consent screen.
+2. Credentials, Create credentials, OAuth client ID, type **Web application**. Name it the same.
+   Authorised redirect URI: `https://games.ahaslides.io/auth/callback` (add
+   `https://tiny-kingdom-lib.ahaslides-game.workers.dev/auth/callback` too if you want the
+   workers.dev copy to accept sign-ins). No JavaScript origins are needed.
+3. Copy the client ID into `GOOGLE_CLIENT_ID` in `library/worker/wrangler.jsonc`, then:
 
-Only `/catalog` is behind Access, so agents keep using `/` with the key and asset files stay open.
-The worker verifies the Access JWT (signature against the team's public keys, audience, issuer,
-expiry) before honouring the session, so a stray `CF_Authorization` cookie cannot open the index.
+   ```
+   npx wrangler secret put GOOGLE_CLIENT_SECRET -c library/worker/wrangler.jsonc   # from the same screen
+   npx wrangler secret put LIB_SESSION_SECRET -c library/worker/wrangler.jsonc     # any long random string
+   npm run lib:deploy
+   ```
+
+4. Open `https://games.ahaslides.io/catalog`: it bounces through Google and comes back signed in.
+
+`LOGIN_DOMAINS` in the same file lists the email domains allowed in (`ahaslides.com` by default;
+comma-separate to add more). The worker checks the Google ID token itself — RS256 signature against
+Google's published keys, audience equal to our client ID, issuer, expiry, `email_verified`, and the
+address's domain — and only then mints its own cookie, signed with `LIB_SESSION_SECRET`
+(`HttpOnly`, `Secure`, `SameSite=Lax`, twelve hours, `/auth/logout` to drop it). An unverified or
+outside address is refused even though Google authenticated it. Sign-in covers only the four gated
+URLs; agents keep using the key, and asset files stay open to everyone. With `GOOGLE_CLIENT_ID`
+empty the whole sign-in is off and only the key works.
+
 To put the CDN on a domain, add a `routes` entry with `custom_domain: true` to
 `library/worker/wrangler.jsonc`.
 

@@ -3,8 +3,9 @@
 //   GET  /<key>           the object, with ETag/304, Range, 1-day edge+browser cache — open to anyone
 //   GET  /                the catalog page (index.html in the bucket)       ┐ the index: needs the read token,
 //   GET  /llms.txt        the full guide for agents and people              │ as Authorization: Bearer <LIB_READ_TOKEN>
-//   GET  /manifest.json   every file with sizes, hashes, dimensions, durations │ or ?key=<LIB_READ_TOKEN>
-//   GET  /packs.json      the packs with licences and credits                ┘ (the upload token works too)
+//   GET  /manifest.json   every file with sizes, hashes, dimensions, durations │ or ?key=<LIB_READ_TOKEN> — or a
+//   GET  /packs.json      the packs with licences and credits                ┘ staff Google sign-in (/auth/login)
+//   GET  /auth/…          login, callback, logout, me — Google sign-in for AhaSlides staff
 //   PUT  /<key>           upload (Authorization: Bearer <LIB_UPLOAD_TOKEN>)
 //   DELETE /<key>         remove (same auth)
 //
@@ -14,7 +15,7 @@
 // an asset server for our games, not a browsable library (most packs forbid redistribution as a pack).
 // Deploy: wrangler deploy -c library/worker/wrangler.jsonc
 
-import { originAllowed, verifyAccessJwt } from '../lib.mjs';
+import { originAllowed, verifyJwt, parseCookies, signSession, readSession, emailAllowed, safeNext } from '../lib.mjs';
 
 const CACHE_CONTROL = 'public, max-age=86400, stale-while-revalidate=604800';
 const INDEX = new Set(['index.html', 'manifest.json', 'packs.json', 'llms.txt']);
@@ -24,10 +25,12 @@ export default {
     const url = new URL(request.url);
     let key = decodeURIComponent(url.pathname.slice(1));
     if (key === '' || key.endsWith('/')) key += 'index.html';
-    if (key === 'catalog') key = 'index.html';   // /catalog is the catalog behind Cloudflare Access (people); / takes the agent key
+    if (key === 'catalog') key = 'index.html';   // /catalog is the catalog for people, who sign in; / takes the agent key
     const method = request.method;
 
     if (method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(request, { 'access-control-max-age': '86400' }) });
+
+    if (url.pathname === '/auth' || url.pathname.startsWith('/auth/')) return auth(request, url, env);
 
     if (method === 'PUT' || method === 'DELETE') {
       if (!authorised(request, env)) return new Response('unauthorised', { status: 401 });
@@ -44,8 +47,12 @@ export default {
     if (method !== 'GET' && method !== 'HEAD') return new Response('method not allowed', { status: 405, headers: cors(request) });
 
     const gated = INDEX.has(key);
-    if (gated && !readAuthorised(request, url, env) && !(await accessAuthorised(request, env))) {
-      return new Response('this index needs the library read token (Authorization: Bearer <token> or ?key=<token>), or an AhaSlides login at /catalog', { status: 401, headers: cors(request, { 'cache-control': 'no-store' }) });
+    if (gated && !readAuthorised(request, url, env) && !(await session(request, env))) {
+      // a person in a browser is sent to Google; an agent gets the plain 401 and uses its token
+      if (method === 'GET' && loginConfigured(env) && (request.headers.get('accept') || '').includes('text/html')) {
+        return redirect('/auth/login?next=' + encodeURIComponent(url.pathname + url.search));
+      }
+      return new Response('this index needs the library read token (Authorization: Bearer <token> or ?key=<token>), or an AhaSlides sign-in at /catalog', { status: 401, headers: cors(request, { 'cache-control': 'no-store' }) });
     }
 
     // The edge cache holds responses without CORS headers; they are added per request below, since
@@ -137,23 +144,105 @@ function readAuthorised(request, url, env) {
   return same(token, env.LIB_READ_TOKEN) || same(token, env.LIB_UPLOAD_TOKEN);
 }
 
-/**
- * Index reads by people: a Cloudflare Access session. Access protects /catalog on the custom domain and
- * sets the CF_Authorization cookie (and the Cf-Access-Jwt-Assertion header) for the whole host, so the
- * catalog's own fetches of manifest.json etc. carry it. Needs ACCESS_TEAM_DOMAIN and ACCESS_AUD vars.
- */
-async function accessAuthorised(request, env) {
-  if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) return false;
-  const cookie = (request.headers.get('cookie') || '').match(/(?:^|;\s*)CF_Authorization=([^;]+)/);
-  const token = request.headers.get('cf-access-jwt-assertion') || (cookie && cookie[1]);
-  if (!token) return false;
-  const issuer = `https://${env.ACCESS_TEAM_DOMAIN}`;
-  const certs = await fetch(`${issuer}/cdn-cgi/access/certs`, { cf: { cacheTtl: 3600, cacheEverything: true } });
-  if (!certs.ok) return false;
-  const { keys } = await certs.json();
-  return !!(await verifyAccessJwt(token, { keys, aud: env.ACCESS_AUD, issuer }));
+/* --- Google sign-in, for people -------------------------------------------------------------------
+   Staff open the catalog and sign in with their AhaSlides Google account; the cookie it sets then opens
+   llms.txt, manifest.json and packs.json in that browser too. Agents keep using the read token, and the
+   asset files are public either way, so none of this is on the hot path.
+
+     GET /auth/login?next=/catalog   -> Google's account chooser
+     GET /auth/callback?code&state   -> checks the ID token, sets the session cookie, goes to `next`
+     GET /auth/logout                -> drops the cookie
+     GET /auth/me                    -> { email } for the catalog page
+
+   Needs the GOOGLE_CLIENT_ID var and the GOOGLE_CLIENT_SECRET and LIB_SESSION_SECRET secrets; without
+   them /auth answers 503 and only the token works. LOGIN_DOMAINS lists the email domains allowed in. */
+const GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token';
+const GOOGLE_CERTS = 'https://www.googleapis.com/oauth2/v3/certs';
+const GOOGLE_ISS = ['https://accounts.google.com', 'accounts.google.com'];
+const SESSION = 'aha_lib_session';
+const STATE = 'aha_lib_state';
+const SESSION_TTL = 12 * 3600;
+
+const loginConfigured = (env) => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.LIB_SESSION_SECRET);
+const loginDomains = (env) => String(env.LOGIN_DOMAINS || 'ahaslides.com').split(',').map((s) => s.trim()).filter(Boolean);
+const setCookie = (name, value, maxAge) =>
+  `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+const note = (body, status) => new Response(body + '\n', { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+const redirect = (location, extra = []) => {
+  const headers = new Headers({ location, 'cache-control': 'no-store' });
+  for (const c of extra) headers.append('set-cookie', c);
+  return new Response(null, { status: 302, headers });
+};
+
+/** The signed-in staff member, or null. */
+async function session(request, env) {
+  if (!env.LIB_SESSION_SECRET) return null;
+  return readSession(parseCookies(request.headers.get('cookie'))[SESSION], env.LIB_SESSION_SECRET);
+}
+
+async function auth(request, url, env) {
+  const path = url.pathname;
+  if (path === '/auth/me') {
+    const s = await session(request, env);
+    return Response.json({ email: s ? s.email : null, exp: s ? s.exp : null, login: loginConfigured(env) },
+      { status: s ? 200 : 401, headers: { 'cache-control': 'no-store' } });
+  }
+  if (path === '/auth/logout') return redirect(safeNext(url.searchParams.get('next'), '/catalog'), [setCookie(SESSION, '', 0)]);
+  if (!loginConfigured(env)) return note('sign-in is not set up on this worker (needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and LIB_SESSION_SECRET); use the library read token instead', 503);
+
+  if (path === '/auth/login') {
+    const nonce = crypto.randomUUID().replace(/-/g, '');
+    const to = new URL(GOOGLE_AUTH);
+    to.search = new URLSearchParams({
+      client_id: env.GOOGLE_CLIENT_ID,
+      redirect_uri: url.origin + '/auth/callback',
+      response_type: 'code',
+      scope: 'openid email',
+      state: nonce,
+      prompt: 'select_account',
+      hd: loginDomains(env)[0],            // Google offers company accounts first; the check below is the real gate
+    }).toString();
+    const state = `${nonce}.${encodeURIComponent(safeNext(url.searchParams.get('next')))}`;
+    return redirect(to.toString(), [setCookie(STATE, state, 600)]);
+  }
+
+  if (path === '/auth/callback') {
+    const [nonce, next = ''] = (parseCookies(request.headers.get('cookie'))[STATE] || '').split('.');
+    if (!nonce || url.searchParams.get('state') !== nonce) return note('that sign-in has expired — start again at /catalog', 400);
+    const code = url.searchParams.get('code');
+    if (!code) return note('sign-in was cancelled', 400);
+
+    const token = await fetch(GOOGLE_TOKEN, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: url.origin + '/auth/callback',
+        grant_type: 'authorization_code',
+      }),
+    });
+    if (!token.ok) return note('Google would not exchange that sign-in code', 502);
+    const { id_token: idToken } = await token.json();
+
+    const certs = await fetch(GOOGLE_CERTS, { cf: { cacheTtl: 3600, cacheEverything: true } });
+    if (!certs.ok) return note('could not reach Google to check the sign-in', 502);
+    const { keys } = await certs.json();
+    const claims = await verifyJwt(idToken, { keys, aud: env.GOOGLE_CLIENT_ID });
+    if (!claims || !GOOGLE_ISS.includes(claims.iss)) return note('that sign-in did not check out', 401);
+
+    const domains = loginDomains(env);
+    if (claims.email_verified === false || !emailAllowed(claims.email, domains)) {
+      return note(`${claims.email || 'That account'} cannot open the asset library. Sign in with your @${domains[0]} account.`, 403);
+    }
+    const value = await signSession({ email: claims.email, exp: Math.floor(Date.now() / 1000) + SESSION_TTL }, env.LIB_SESSION_SECRET);
+    return redirect(safeNext(decodeURIComponent(next)), [setCookie(SESSION, value, SESSION_TTL), setCookie(STATE, '', 0)]);
+  }
+  return note('not found', 404);
 }
 
 function validKey(key) {
-  return key.length > 0 && key.length < 1024 && !key.includes('..') && !key.startsWith('/') && !/[ -]/.test(key);
+  return key.length > 0 && key.length < 1024 && !key.includes('..') && !key.startsWith('/') && !/[\u0000-\u001f]/.test(key);
 }

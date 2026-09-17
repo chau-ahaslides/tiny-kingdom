@@ -39,7 +39,7 @@
 <header>
   <h1>AhaSlides games asset library <small id="totals"></small></h1>
   <input id="q" type="search" placeholder="filter by name or path (e.g. explosion, knight, 32x32)">
-  <span class="meta"><a id="l-guide" href="llms.txt">guide (llms.txt)</a> · <a id="l-manifest" href="manifest.json">manifest.json</a> · <a id="l-packs" href="packs.json">packs.json</a></span>
+  <span class="meta"><a id="l-guide" href="llms.txt">guide (llms.txt)</a> · <a id="l-manifest" href="manifest.json">manifest.json</a> · <a id="l-packs" href="packs.json">packs.json</a><span id="who"></span></span>
 </header>
 <main>
 <pre id="how">Every file lives at <b id="base"></b>/&lt;path&gt;. Paths and metadata come from manifest.json:
@@ -70,9 +70,14 @@ let key = new URLSearchParams(location.search).get('key');
 try { if (key) localStorage.setItem('lib-key', key); else key = localStorage.getItem('lib-key'); } catch {}
 if (new URLSearchParams(location.search).has('key')) history.replaceState(null, '', location.pathname);
 for (const [id, f] of [['l-guide', 'llms.txt'], ['l-manifest', 'manifest.json'], ['l-packs', 'packs.json']]) document.getElementById(id).href = key ? `${f}?key=${encodeURIComponent(key)}` : f;
-// Without a key the request still carries an AhaSlides login (the Cloudflare Access cookie set at /catalog).
+// Without a key the request carries the staff sign-in cookie instead (Google, at /auth/login).
+fetch('/auth/me', { credentials: 'same-origin' }).then((r) => r.json()).then((s) => {
+  document.getElementById('who').innerHTML = s.email
+    ? ' \u00b7 ' + s.email.replace(/[<&]/g, '') + ' <a href="/auth/logout">sign out</a>'
+    : (s.login ? ' \u00b7 <a href="/auth/login?next=/catalog">sign in</a>' : '');
+}).catch(() => {});
 fetch('manifest.json', { headers: key ? { authorization: `Bearer ${key}` } : {}, credentials: 'same-origin' })
-  .then((r) => { if (r.status === 401) throw new Error('sign in with your AhaSlides account at /catalog, or open this page as /?key=<library read token> (TINY_KINGDOM_LIB_READ_TOKEN)'); return r.json(); })
+  .then((r) => { if (r.status === 401) throw new Error('your sign-in has expired \u2014 reload this page, or open it as /?key=<library read token> (TINY_KINGDOM_LIB_READ_TOKEN)'); return r.json(); })
   .then(render).catch((e) => { document.getElementById('packs').textContent = String(e.message || e); });
 
 function render(m) {

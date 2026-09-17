@@ -111,8 +111,8 @@ test('map helpers: parseCell, expandRows, iso projection', async () => {
   assert.deepEqual(g.objects[0], { type: 'spawn', name: 'spawn', x: 1, y: 2 });
 });
 
-test('verifyAccessJwt: signature, audience, issuer, expiry', async () => {
-  const { verifyAccessJwt } = await import('../library/lib.mjs');
+test('verifyJwt (a Google ID token): signature, audience, issuer, expiry', async () => {
+  const { verifyJwt } = await import('../library/lib.mjs');
   const { publicKey, privateKey } = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
   const jwk = { ...(await crypto.subtle.exportKey('jwk', publicKey)), kid: 'k1' };
   const b64 = (o) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url');
@@ -122,13 +122,52 @@ test('verifyAccessJwt: signature, audience, issuer, expiry', async () => {
     return `${head}.${Buffer.from(sig).toString('base64url')}`;
   };
   const now = 1_800_000_000;
-  const good = { aud: ['app-aud'], iss: 'https://team.cloudflareaccess.com', exp: now + 600, email: 'chau@ahaslides.com' };
-  const opts = { keys: [jwk], aud: 'app-aud', issuer: 'https://team.cloudflareaccess.com', now };
-  assert.equal((await verifyAccessJwt(await sign(good), opts))?.email, 'chau@ahaslides.com');
-  assert.equal(await verifyAccessJwt(await sign({ ...good, aud: 'other' }), opts), null, 'wrong audience');
-  assert.equal(await verifyAccessJwt(await sign({ ...good, iss: 'https://evil' }), opts), null, 'wrong issuer');
-  assert.equal(await verifyAccessJwt(await sign({ ...good, exp: now - 1 }), opts), null, 'expired');
-  assert.equal(await verifyAccessJwt(await sign(good, 'k2'), opts), null, 'unknown key id');
-  const t = await sign(good); assert.equal(await verifyAccessJwt(t.slice(0, -4) + 'AAAA', opts), null, 'tampered signature');
-  assert.equal(await verifyAccessJwt('not.a.jwt', opts), null);
+  const good = { aud: ['app-aud'], iss: 'https://accounts.google.com', exp: now + 600, email: 'chau@ahaslides.com' };
+  const opts = { keys: [jwk], aud: 'app-aud', issuer: 'https://accounts.google.com', now };
+  assert.equal((await verifyJwt(await sign(good), opts))?.email, 'chau@ahaslides.com');
+  assert.equal(await verifyJwt(await sign({ ...good, aud: 'other' }), opts), null, 'wrong audience');
+  assert.equal(await verifyJwt(await sign({ ...good, iss: 'https://evil' }), opts), null, 'wrong issuer');
+  assert.equal(await verifyJwt(await sign({ ...good, exp: now - 1 }), opts), null, 'expired');
+  assert.equal(await verifyJwt(await sign(good, 'k2'), opts), null, 'unknown key id');
+  const t = await sign(good); assert.equal(await verifyJwt(t.slice(0, -4) + 'AAAA', opts), null, 'tampered signature');
+  assert.equal(await verifyJwt('not.a.jwt', opts), null);
+});
+
+test('the staff session cookie: signed, scoped to our domains, expires', async () => {
+  const { signSession, readSession, emailAllowed, parseCookies, safeNext } = await import('../library/lib.mjs');
+  const now = 1_800_000_000;
+  const value = await signSession({ email: 'chau@ahaslides.com', exp: now + 600 }, 'secret-one');
+  assert.equal((await readSession(value, 'secret-one', now))?.email, 'chau@ahaslides.com');
+  assert.equal(await readSession(value, 'secret-two', now), null, 'another key must not open it');
+  assert.equal(await readSession(value, 'secret-one', now + 601), null, 'expired');
+  assert.equal(await readSession(value.slice(0, -4) + 'AAAA', 'secret-one', now), null, 'tampered signature');
+  const [body] = value.split('.');
+  assert.equal(await readSession(body, 'secret-one', now), null, 'unsigned');
+  assert.equal(await readSession('', 'secret-one', now), null);
+  assert.equal(await readSession(value, '', now), null, 'no secret configured');
+  // a payload swapped for another email no longer matches the signature
+  const other = await signSession({ email: 'someone@example.com', exp: now + 600 }, 'secret-one');
+  assert.equal(await readSession(other.split('.')[0] + '.' + value.split('.')[1], 'secret-one', now), null);
+
+  const ours = ['ahaslides.com'];
+  assert.equal(emailAllowed('chau@ahaslides.com', ours), true);
+  assert.equal(emailAllowed('CHAU@AhaSlides.com', ours), true);
+  assert.equal(emailAllowed('chau@ahaslides.com.evil.com', ours), false, 'suffix trick');
+  assert.equal(emailAllowed('chau@evil.com', ours), false);
+  assert.equal(emailAllowed('chau@ahaslides.io', ours), false, 'only the listed domains');
+  assert.equal(emailAllowed('chau@ahaslides.io', ['ahaslides.com', 'ahaslides.io']), true);
+  assert.equal(emailAllowed('nobody', ours), false);
+  assert.equal(emailAllowed('@ahaslides.com', ours), false);
+  assert.equal(emailAllowed(undefined, ours), false);
+
+  assert.deepEqual(parseCookies('a=1; aha_lib_session=x.y; b=2'), { a: '1', aha_lib_session: 'x.y', b: '2' });
+  assert.deepEqual(parseCookies(''), {});
+  assert.deepEqual(parseCookies(null), {});
+
+  assert.equal(safeNext('/catalog'), '/catalog');
+  assert.equal(safeNext('/llms.txt?x=1'), '/llms.txt?x=1');
+  assert.equal(safeNext('//evil.com/'), '/catalog', 'protocol-relative');
+  assert.equal(safeNext('https://evil.com/'), '/catalog');
+  assert.equal(safeNext('/\\evil.com'), '/catalog');
+  assert.equal(safeNext(undefined, '/'), '/');
 });
