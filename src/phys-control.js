@@ -21,8 +21,13 @@
  */
 
 /** Every command a connection can send. `world` and `control` are always host-only. */
-export const COMMANDS = ['add', 'remove', 'impulse', 'torque', 'velocity', 'place', 'gravity', 'grab', 'drag', 'release', 'turn', 'joint', 'unjoint'];
+export const COMMANDS = ['add', 'remove', 'impulse', 'torque', 'velocity', 'place', 'gravity', 'grab', 'drag', 'release',
+  'turn', 'joint', 'unjoint', 'pick', 'ray', 'area'];
 export const HOST_ONLY = ['world', 'control'];
+
+/** Reads: they answer the connection that asked and change nothing. "Nothing there" is an answer,
+    not an error, so the room replies to these even when they find nothing. */
+export const READS = ['pick', 'ray', 'area'];
 
 /** Commands that are only ever about what this connection is already holding. */
 export const HAND_COMMANDS = ['grab', 'drag', 'release', 'turn'];

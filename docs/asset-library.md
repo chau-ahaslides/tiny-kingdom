@@ -273,14 +273,54 @@ me.impulse('ball', [12, 2]);                       // shove it
 me.grab('crate'); me.drag([x, y]); me.release();   // or pick something up and carry it
 ```
 
-The world spec, in full: `gravity`, `timestep` (1/240 to 1/20), `substeps`, `plane` (`'xy'`, `'xz'`
+The world spec, in full: `gravity`, `timestep` (1/240 to 1/20), `substeps`, `iterations` (solver passes, 1 to 16:
+more holds stacks and joints stiffer), `plane` (`'xy'`, `'xz'`
 or nothing for full 3D), `floor` (bodies below it are dropped and reported), `events` +
 `eventForce`, `sleep`, and `bodies`. A body is `{ id, type: 'dynamic' | 'fixed' | 'kinematic',
 shape, pos, rot, density, friction, restitution, linearDamping, angularDamping, ccd, sensor, lock,
 tag }`, with `shape` one of `{ ball: r }`, `{ cuboid: [hx, hy, hz] }`, `{ capsule: [halfHeight, r] }`
 or `{ cylinder: [halfHeight, r] }` — half-extents, so a 2 x 1 x 2 m crate is `{ cuboid: [1, 0.5, 1] }`.
 Commands are `add`, `remove`, `impulse`, `torque`, `velocity`, `place`, `gravity`, `grab`, `drag`,
-`release` and `reset`; each connection has one hand, so one phone cannot drop another's grip.
+`release`, `turn`, `joint`, `unjoint` and `reset`; each connection has one hand, so one phone cannot drop
+another's grip. The reads `pick`, `ray` and `area` ask the world questions; `world` (reset) and `control` are the host's.
+
+**Joints: tape, glue, a hinge.** `world.joint(a, b, [x, y], opts)` ties two bodies together at a world
+point, in the pose they have now, and resolves with the joint's id. `kind: 'weld'` (the default) resists
+bending, `'pin'` hinges; `stiffness`, `bend`, `arm` tune it, and `breakAt` is a stretch in world units
+past which it tears. Joints are springs on purpose — the stretch *is* the load — so an overloaded or
+yanked joint comes apart and everyone gets a `broke` event (`{ id, a, b, why: 'stretched' | 'removed' }`).
+`world.joints` is the live list (anchors in each body's frame; `world.jointPoint(j)` is where one is
+now), late joiners get it in the hello, and removing a body takes its joints with it.
+
+Two grab options make building with them work: `grab(id, at, 1, { ghost: true })` carries the body, and
+everything jointed to it, *through* other dynamic bodies until it is let go (fixed ones still stop it),
+so a piece can be carried into a structure without knocking it down; `{ hold: true }` keeps its angle
+instead of letting it swing from the grabbed point, and `world.turn(angle)` then sets that angle. The
+Marshmallow Challenge 2D (`/marshmallow-2d`) is built on exactly this: phones carry sticks as ghosts,
+and on release the phone works out what the stick is touching and tapes it there.
+
+**Asking the world questions.** A game should not keep its own copy of the world to work out what a
+player just tapped — the room has the bodies and answers in microseconds. Three reads, each
+resolving with the room's answer, and none of them waking a settled world:
+
+```js
+await world.pick([x, y], 0.5);          // { ok, id, tag, at, inside, distance } — a tap becomes a body
+await world.ray([0, 5], [0, -1], 10);   // { ok, id, tag, at, normal, distance } — the first body a line meets
+await world.area([x, y], 2);            // { ok, hits: [{ id, tag, distance }] } — everything near, nearest first
+```
+
+`ok: false` means nothing was there, which is an answer rather than an error, so these resolve
+either way. The usual shape on a phone is `const { id } = await me.pick(tapPoint); if (id) me.grab(id);`.
+
+**Zones that report.** A body with `sensor: true` stops nothing and says what passes through it —
+a goal, a finish line, a pressure plate:
+
+```js
+{ id: 'goal', type: 'fixed', sensor: true, shape: { cuboid: [0.8, 0.8, 1] }, pos: [4, 2], tag: 'goal' }
+world.on('enter', (e) => score(e.tag));   // { zone, zoneTag, id, tag } — also 'exit'
+```
+
+A sensor reports whatever the world's `events` setting is, because a zone nobody hears is pointless.
 
 **Who may do what.** By default the world is `open`: any connection may send any command, which is
 what makes a shared world feel shared — twenty phones are twenty hands, and none of them asks the
