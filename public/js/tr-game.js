@@ -3,7 +3,7 @@
 'use strict';
 /* ===================== ROOM LINK ===================== */
 // The session (room code, QR, sockets, reconnects, identity) is the aha-room SDK (/sdk): this file talks to `room` and `me` only.
-// The SDK is a module script, so it runs after this classic one: wait for it before opening or joining a room.
+// The SDK is a module script; the page defers every script, so it may run before or after this one: wait for it before opening or joining a room.
 const sdk = () => new Promise((res, rej) => { const ready = () => window.AhaRoom ? res(window.AhaRoom) : rej(new Error('aha-room.js did not load')); if (window.AhaRoom || document.readyState !== 'loading') ready(); else document.addEventListener('DOMContentLoaded', ready, { once: true }); });
 const sdkOpts = (AhaRoom, opts) => Object.assign(opts, CONFIG.api ? { transport: AhaRoom.relay({ origin: CONFIG.api }) } : {});   // CONFIG.api: the relay lives on another origin
 const emit = (name, data) => GremlinSiege.emit(name, data);
@@ -13,6 +13,7 @@ const T = CONFIG.text;
 const host = { room: null, code: '', view: null, S: null, total: CONFIG.host.partySize, lastSnap: 0, running: false, answers: new Map(), fx: { s: [], b: [] } };
 async function startHost() {
   show('s-hostlobby');
+  if (!host.simId) host.simId = setInterval(hostSim, 1000 / 60);   // the rules clock runs on the big screen only
   let room;
   try { const AhaRoom = await sdk(); room = host.room = await AhaRoom.host(sdkOpts(AhaRoom, {})); host.code = room.code; } catch (e) { toast('Could not open a room — this page has to be served by the game server.'); return; }
   const joinUrl = room.joinUrl || '';
@@ -20,7 +21,7 @@ async function startHost() {
   if (CONFIG.host.showQr) room.qr().then(d => { if (d) $('#qr').innerHTML = '<img src="' + d + '" width="176" height="176" alt="QR code to join">'; });
   host.S = TR.create({ rules: CONFIG.rules, quiz: CONFIG.quiz }); TR.setBots(host.S, host.total); emit('room', { code: host.code, joinUrl }); $('#hpnote').textContent = TR.RULES.towerHp; $('#hpper').textContent = TR.RULES.towerHpPer; $('#qtnote').textContent = TR.RULES.quizTime;
   room.on('join', hostJoin); room.on('leave', hostLeave); room.on('players', hostPlayers); room.on('msg', hostReceive);
-  room.on('status', s => { if (s === 'reconnecting') toast('Room link lost — reconnecting…'); });
+  room.on('status', netStatus);
   host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.64, y: 0.64, yBias: -0.12 } }); await host.view.buildMap();
   renderRoster();
 }
@@ -70,7 +71,9 @@ $('#b-less').onclick = () => { host.total = Math.max(1, host.total - 1); TR.setB
 $('#b-more').onclick = () => { host.total = Math.min(CONFIG.host.maxParty, host.total + 1); TR.setBots(host.S, host.total); renderRoster(); sendRoster(); };
 $('#b-start').onclick = async () => {
   const S = host.S; if (!S) return;
-  if (![...S.players.values()].some(r => !r.bot) && !confirm('No phones have joined. Start with bots only?')) return;
+  if ($('#b-start').disabled) return;
+  if (![...S.players.values()].some(r => !r.bot) && !(await askConfirm('No phones have joined. Start with bots only?', '🤖 Start with bots'))) return;
+  if (S.phase !== 'lobby' || host.running) return;
   $('#b-start').disabled = true; $('#b-start').textContent = 'Loading…'; SFX.unlock();
   try { await preload(); } catch (e) {}
   show('s-hostgame'); host.running = true; SFX.startMusic(); emit('start', { players: TR.roster(S) });
@@ -90,6 +93,7 @@ function onWave() {
   bigMsg('Wave ' + S.wave + ' — ' + count + ' ' + T.enemies + ' marching!', 2000); SFX.play('wave'); SFX.play('quiz');
   emit('wave', { wave: S.wave, enemies: count, quiz: { q: S.quiz.q, opts: S.quiz.opts } });
   renderQuiz(); $('#h-quiz').classList.add('on');
+  announce('Wave ' + S.wave + ' quiz: ' + S.quiz.q + ' Options: ' + S.quiz.opts.map((o, i) => 'ABCD'[i] + ', ' + o).join('; '));
 }
 function preload() {
   const names = new Set(['dungeon/coin', 'dungeon/character-orc', 'kit/enemy-ufo-a']);
@@ -100,16 +104,17 @@ function preload() {
 }
 function renderQuiz() {
   const S = host.S; if (!S.quiz) return;
-  $('#hq-q').textContent = '❓ ' + S.quiz.q;
+  put($('#hq-q'), '❓ ' + S.quiz.q);
   const counts = [0, 0, 0, 0]; for (const i of host.answers.values()) counts[i]++;
   const total = [...S.players.values()].filter(r => !r.gone).length;
   const reveal = S.phase !== 'wave' || S.quizLeft <= 0 || host.answers.size >= total;
-  $('#hq-opts').innerHTML = S.quiz.opts.map((o, i) => `<div class="opt ${reveal && i === S.quiz.answer ? 'right' : ''}"><span>${'ABCD'[i]}. ${esc(o)}</span><span>${counts[i] || ''}</span></div>`).join('');
-  $('#hq-who').innerHTML = [...host.answers.entries()].map(([id, i]) => { const p = S.players.get(id); if (!p) return ''; const ok = i === S.quiz.answer; const god = ok && p.streak >= S.rules.godStreak; return `<span class="chip ${ok ? 'ok' : 'bad'}">${god ? '⚡' : ok ? '🔫' : '❌'} ${p.bot ? '🤖 ' : ''}${esc(p.name)}${ok && p.streak > 1 ? ' 🔥' + p.streak : ''}</span>`; }).join('');
-  $('#hq-note').textContent = reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got a gun' : host.answers.size + ' of ' + total + ' answered · right = place a gun · streak = bigger gun';
-  $('#hq-time').classList.toggle('place', S.quizLeft <= 0 && S.placeLeft > 0);
-  $('#hq-time').style.width = (S.phase === 'wave' ? 100 * Math.max(0, S.quizLeft) / S.rules.quizTime : 0) + '%';
+  putHtml($('#hq-opts'), S.quiz.opts.map((o, i) => { const right = reveal && i === S.quiz.answer; return `<div class="opt ${right ? 'right' : ''}"><span>${'ABCD'[i]}. ${esc(o)}${right ? ' <span class="mark">✓</span><span class="sr-only">(correct answer)</span>' : ''}</span><span>${counts[i] || ''}</span></div>`; }).join(''));
+  putHtml($('#hq-who'), [...host.answers.entries()].map(([id, i]) => { const p = S.players.get(id); if (!p) return ''; const ok = i === S.quiz.answer; const god = ok && p.streak >= S.rules.godStreak; return `<span class="chip ${ok ? 'ok' : 'bad'}">${god ? '⚡' : ok ? '🔫' : '❌'} ${p.bot ? '🤖 ' : ''}${esc(p.name)}${ok && p.streak > 1 ? ' 🔥' + p.streak : ''}</span>`; }).join(''));
+  put($('#hq-note'), reveal ? '✅ Answer: ' + S.quiz.opts[S.quiz.answer] + ' · ' + [...host.answers.values()].filter(i => i === S.quiz.answer).length + ' of ' + host.answers.size + ' got a gun' : host.answers.size + ' of ' + total + ' answered · right = place a gun · streak = bigger gun');
+  putClass($('#hq-time'), 'place', S.quizLeft <= 0 && S.placeLeft > 0);
+  putStyle($('#hq-time'), 'width', pct(S.phase === 'wave' ? 100 * Math.max(0, S.quizLeft) / S.rules.quizTime : 0));
 }
+function putHtml(el, html) { if (el && el.__html !== html) { el.__html = html; el.innerHTML = html; } }
 function bigMsg(text, ms) { const el = $('#h-msg'); el.classList.remove('god'); el.textContent = text; el.classList.add('on'); clearTimeout(bigMsg.t); bigMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 function godFeast(name, streak, refilled, guns) {
   const el = $('#h-msg'); el.textContent = '⚡ GOD MODE ⚡\n' + name + ' · streak ' + streak + '\n' + (refilled ? refilled + ' gun' + (refilled === 1 ? '' : 's') + ' refilled!' : 'nothing left to refill'); el.classList.add('on', 'god');
@@ -118,7 +123,7 @@ function godFeast(name, streak, refilled, guns) {
 }
 function renderBoard() {
   const list = TR.roster(host.S).sort((a, b) => b.kills - a.kills || b.dmg - a.dmg);
-  $('#h-board').innerHTML = '<div class="hint" style="margin-bottom:4px">' + T.enemies[0].toUpperCase() + T.enemies.slice(1) + ' shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''}${r.gods ? ' ⚡' + r.refills : ''} <span class="hint">🔫${r.alive}${r.lost ? ' 🪫' + r.lost : ''}</span></span><span>${r.kills}</span></div>`).join('');
+  putHtml($('#h-board'), '<div class="hint" style="margin-bottom:4px">' + T.enemies[0].toUpperCase() + T.enemies.slice(1) + ' shot</div>' + list.map(r => `<div class="r"><span class="n"><span class="dot" style="width:10px;height:10px;border-radius:50%;background:${hex(COLORS[r.skin % COLORS.length])}"></span>${r.bot ? '🤖 ' : ''}${esc(r.name)}${r.streak > 1 ? ' 🔥' + r.streak : ''}${r.gods ? ' ⚡' + r.refills : ''} <span class="hint">🔫${r.alive}${r.lost ? ' 🪫' + r.lost : ''}</span></span><span>${r.kills}</span></div>`).join(''));
 }
 // The rules tick on a timer so a hidden tab keeps the game going in real time; rendering stays on the frame callback.
 function hostSim() {
@@ -154,20 +159,20 @@ function hostTick(ts) {
   const S = host.S, snap = host.snap;
   if (snap) { view.applyEnemies(snap.e); view.gunYaw = snap.gy; view.applyGuns(snap.gh, snap.ga); }
   if (host.running && (S.phase === 'wave' || S.phase === 'final')) {
-    $('#h-hp').textContent = Math.max(0, S.tower.hp) + ' / ' + S.tower.max; const bar = $('#h-hpbar'); bar.style.width = (100 * Math.max(0, S.tower.hp) / S.tower.max) + '%'; bar.classList.toggle('low', S.tower.hp <= S.tower.max * 0.3);
-    $('#h-wave').textContent = S.wave; $('#h-guns').textContent = S.guns.filter(g => !g.dead).length;
-    $('#h-enemies').textContent = snap ? snap.left : 0;
+    put($('#h-hp'), Math.max(0, S.tower.hp) + ' / ' + S.tower.max); const bar = $('#h-hpbar'); putStyle(bar, 'width', pct(100 * Math.max(0, S.tower.hp) / S.tower.max)); putClass(bar, 'low', S.tower.hp <= S.tower.max * 0.3);
+    let guns = 0; for (const g of S.guns) if (!g.dead) guns++;
+    put($('#h-wave'), S.wave); put($('#h-guns'), guns);
+    put($('#h-enemies'), snap ? snap.left : 0);
     const now = performance.now(); if (Math.floor(now / 500) !== host.boardT) { host.boardT = Math.floor(now / 500); renderBoard(); if (S.phase === 'wave' && S.quizLeft > 0) renderQuiz(); }
   }
   if (host.running && S.phase === 'wave') {
     const watching = S.quizLeft <= 0 && S.placeLeft <= 0; const n = Math.max(0, Math.ceil(S.cycleLeft));
     phaseStrip($('#h-phases'), [S.quizLeft, S.placeLeft, watching ? S.cycleLeft : 0], [S.rules.quizTime, S.rules.placeTime, S.rules.between], S.phase);
-    $('#b-next').style.display = watching ? '' : 'none';
+    putStyle($('#b-next'), 'display', watching ? '' : 'none');
     if (watching && n <= 3 && n > 0 && n !== host.lastCount && S.wave < S.rules.maxWaves) { host.lastCount = n; bigMsg('Wave ' + (S.wave + 1) + ' in ' + n, 950); host.room.send({ t: 'count', n, wave: S.wave + 1 }); SFX.play(n === 1 ? 'go' : 'tick'); }
-  } else if (host.running && S.phase === 'final') { phaseStrip($('#h-phases'), [0, 0, 0], [S.rules.quizTime, S.rules.placeTime, S.rules.between], 'final'); $('#b-next').style.display = 'none'; }
+  } else if (host.running && S.phase === 'final') { phaseStrip($('#h-phases'), [0, 0, 0], [S.rules.quizTime, S.rules.placeTime, S.rules.between], 'final'); putStyle($('#b-next'), 'display', 'none'); }
   view.frame(host.paused ? 0 : dt);
 }
-setInterval(hostSim, 1000 / 60);
 $('#b-next').onclick = () => { if (host.S && host.S.phase === 'wave') host.S.cycleLeft = 0; };
 function setPaused(on) {
   if (!host.running || host.paused === on) return;
@@ -177,15 +182,21 @@ function setPaused(on) {
   host.room.send({ t: 'pause', on });
 }
 $('#b-pause').onclick = () => setPaused(!host.paused);
-function soundButtons() { $('#b-sound').textContent = SFX.on ? '🔊' : '🔇'; $('#b-music').style.opacity = SFX.music ? 1 : .45; $('#p-sound').textContent = SFX.on ? '🔊' : '🔇'; }
+// On/off is in the icon (🔊/🔇, a slash across 🎵), in aria-pressed, and in the tooltip — not in colour or opacity alone.
+function soundButtons() {
+  const fx = String(!!SFX.on), mu = String(!!SFX.music);
+  for (const id of ['#b-sound', '#p-sound']) { const b = $(id); b.textContent = SFX.on ? '🔊' : '🔇'; b.setAttribute('aria-pressed', fx); b.title = SFX.on ? 'Sound effects on' : 'Sound effects off'; }
+  const m = $('#b-music'); m.setAttribute('aria-pressed', mu); m.style.opacity = SFX.music ? 1 : .6; m.title = SFX.music ? 'Music on' : 'Music off';
+}
 $('#b-sound').onclick = () => { SFX.unlock(); SFX.setOn(!SFX.on); soundButtons(); if (SFX.on) SFX.play('tick'); };
 $('#b-music').onclick = () => { SFX.unlock(); SFX.setMusic(!SFX.music); soundButtons(); if (SFX.music && host.running) SFX.startMusic(); };
 $('#p-sound').onclick = () => { SFX.unlock(); SFX.setOn(!SFX.on); soundButtons(); if (SFX.on) SFX.play('tick'); };
 document.addEventListener('pointerdown', () => SFX.unlock(), { capture: true });
 soundButtons();
-document.addEventListener('keydown', e => { if (e.key === ' ' && host.running && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); setPaused(!host.paused); } });
+// Space pauses — unless a control has focus, where Space already means "press this".
+document.addEventListener('keydown', e => { if (e.key === ' ' && host.running && !/INPUT|TEXTAREA|BUTTON|SELECT/.test(document.activeElement.tagName) && $('#confirm').hidden) { e.preventDefault(); setPaused(!host.paused); } });
 $('#b-recenter').onclick = () => { const v = host.view; if (!v) return; v.cam.theta = 0.18; v.cam.phi = 0.78; v.cam.fit = 0; v.fitBoard(); };
-$('#b-abort').onclick = () => { if (confirm('End the game for everyone?')) finish(false, true); };
+$('#b-abort').onclick = async () => { if (await askConfirm('End the game for everyone?', '✕ End game', true) && host.running) finish(false, true); };
 function finish(won, aborted) {
   const S = host.S; if (host.paused) setPaused(false); host.running = false; S.phase = 'over'; SFX.stopMusic(); SFX.play(won ? 'win' : 'lose');
   const fallen = !won && !aborted;
@@ -194,6 +205,7 @@ function finish(won, aborted) {
   host.room.send({ t: 'over', won, board: list, survived, aborted: !!aborted }); emit('over', { won, survived, aborted: !!aborted, wave: S.wave, board: list });
   $('#ov-title').textContent = won ? '🏆 Legendary! The tower held every wave' : '💥 The ' + T.tower + ' has fallen';
   $('#ov-text').textContent = won ? 'All ' + S.rules.maxWaves + ' waves held. The Gremlins give up.' : (aborted ? 'The game was ended early after ' + survived + ' wave' + (survived === 1 ? '' : 's') + '.' : 'The defence held for ' + survived + ' wave' + (survived === 1 ? '' : 's') + ' and fell in wave ' + S.wave + '. The ' + T.enemies + ' have the room.');
+  announce($('#ov-title').textContent + '. ' + $('#ov-text').textContent);
   $('#ov-table').innerHTML = list.slice(0, 12).map((r, i) => `<tr><td>${i + 1}.</td><td>${r.bot ? '🤖 ' : ''}${esc(r.name)} <span class="hint">🔫${r.guns} placed · best streak ${r.best}</span></td><td>${r.kills} kills</td></tr>`).join('');
   if (fallen) { host.view.crumbleKeep(); $('#h-quiz').classList.remove('on'); bigMsg('💥 The ' + T.tower + ' has fallen!', 5000); setTimeout(() => { SFX.play('boom'); setTimeout(() => SFX.play('boom', { pitch: .8 }), 500); }, 1200); setTimeout(() => show('s-hostover'), 5500); }
   else show('s-hostover');
@@ -218,9 +230,9 @@ async function joinGame(code, name) {
   if (!asked) enterPlay(name || '');
   me.on('welcome', w => { player.id = w.id; player.name = w.name; $('#p-name').textContent = w.name; player.view.me = w.id; emit('welcome', { id: w.id }); });
   me.on('status', s => {
+    netStatus(s);                                  // 'reconnecting' holds a banner up until the link is 'ok' again
     if (s === 'waiting-for-host') pMsg('The big screen is not open yet…', 4000);
     else if (s === 'host-left') { pMsg('Big screen disconnected', 5000); setBtn('', 'Waiting…'); }
-    else if (s === 'reconnecting') toast('Reconnecting…');
   });
   me.on('msg', playerReceive);
 }
@@ -249,38 +261,42 @@ function playerReceive(m) {
   if (m.t === 'quiz') { showQuiz(m); SFX.play('quiz'); emit('quiz', { wave: m.wave, q: m.q, opts: m.opts }); return; }
   if (m.t === 'placeEnd') { if (player.pending) { closePlace(); pMsg('⏰ Too slow — the gun is lost', 1600); SFX.play('wrong'); } return; }
   if (m.t === 'ans') {
-    const btns = $('#pq-opts').querySelectorAll('button'); btns.forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); else if (b.classList.contains('picked')) b.classList.add('wrong'); });
+    const btns = $('#pq-opts').querySelectorAll('button'); btns.forEach((b, i) => { b.disabled = true; if (i === m.correct) markOpt(b, 'right'); else if (b.classList.contains('picked')) markOpt(b, 'wrong'); });
     player.streak = m.streak; updateMe(); emit('answered', { result: m.res, streak: m.streak, level: m.level });
     const u = $('#pq-urgent');
     if (m.res === 'god') {
       $('#pq-note').textContent = '⚡ GOD MODE — streak ' + m.streak + ': you refill ' + (m.streak - 4) + ' guns!'; u.className = 'urgent good'; u.textContent = '⚡ GOD MODE ⚡';
+      announce('Right! God Mode, streak ' + m.streak + '.', true);
       setTimeout(() => $('#p-quiz').classList.remove('on'), 900);
     } else if (m.res === 'right') {
       SFX.play('right');
       $('#pq-note').textContent = 'Right! Drag your ' + LEVEL_LABEL[m.level] + ' onto the board.'; u.className = 'urgent good'; u.textContent = m.streak > 1 ? '🔥 ' + m.streak + ' in a row — ' + LEVEL_LABEL[m.level] + (m.level === TOP_LEVEL ? ' (max)' : '') + '!' : '✅ Right — you get a gun!';
       if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
-      pMsg(m.streak > 1 ? '🔥 STREAK ' + m.streak + '!\n' + LEVEL_LABEL[m.level] + ' unlocked' : '✅ RIGHT!\nPlace your gun', 1600);
+      announce('Right! ' + (m.streak > 1 ? 'Streak ' + m.streak + '. ' : '') + 'Place your ' + LEVEL_LABEL[m.level].replace(/^\S+ /, '') + '.', true);
+      pMsg(m.streak > 1 ? '🔥 STREAK ' + m.streak + '!\n' + LEVEL_LABEL[m.level] + ' unlocked' : '✅ RIGHT!\nPlace your gun', 1600, true);
       setTimeout(() => { $('#p-quiz').classList.remove('on'); openPlace(m.level, m.streak); }, 900);
     } else {
       $('#pq-note').textContent = m.res === 'wrong' ? 'Not this time — no gun this wave, streak lost.' : 'Too late for this wave.'; u.className = 'urgent calm'; u.textContent = '💔 No gun this wave';
-      redFlash(); SFX.play('wrong'); if (navigator.vibrate) navigator.vibrate(120); pMsg('❌ WRONG!\nNo gun this wave — streak lost', 2200);
+      announce(m.res === 'wrong' ? 'Wrong. The answer was ' + ((btns[m.correct] && btns[m.correct].dataset.label) || '') + '. No gun this wave, streak lost.' : 'Too late for this wave.', true);
+      redFlash(); SFX.play('wrong'); if (navigator.vibrate) navigator.vibrate(120); pMsg('❌ WRONG!\nNo gun this wave — streak lost', 2200, true);
       setTimeout(() => $('#p-quiz').classList.remove('on'), 2200);
     }
     return;
   }
   if (m.t === 'quizEnd') {
     if (!player.answered && $('#p-quiz').classList.contains('on')) {
-      $('#pq-opts').querySelectorAll('button').forEach((b, i) => { b.disabled = true; if (i === m.correct) b.classList.add('right'); });
+      $('#pq-opts').querySelectorAll('button').forEach((b, i) => { b.disabled = true; if (i === m.correct) markOpt(b, 'right'); });
       $('#pq-note').textContent = 'Time is up — no gun this wave.'; const u = $('#pq-urgent'); u.className = 'urgent calm'; u.textContent = '⏰ Too late';
+      announce('Time is up. No gun this wave.', true);
       player.streak = 0; updateMe(); setTimeout(() => $('#p-quiz').classList.remove('on'), 2500);
     }
     return;
   }
   if (m.t === 'god') {
-    const mine = m.id === player.id; const el = $('#p-msg'); clearTimeout(pMsg.t);
+    const mine = m.id === player.id; const el = $('#p-msg'); clearTimeout(pMsg.t); el.setAttribute('aria-live', 'polite');
     el.textContent = (mine ? '⚡ YOU ARE IN GOD MODE ⚡\nstreak ' + m.streak : '⚡ GOD MODE ⚡\n' + m.name + ' · streak ' + m.streak) + '\n' + (m.n ? m.n + ' gun' + (m.n === 1 ? '' : 's') + ' refilled!' : 'nothing left to refill'); el.classList.add('on', 'god');
     pMsg.t = setTimeout(() => el.classList.remove('on', 'god'), mine ? 4500 : 3000);
-    const g = $('#p-gold'); g.classList.add('on'); setTimeout(() => g.classList.remove('on'), mine ? 900 : 300);
+    if (!reducedMotion()) { const g = $('#p-gold'); g.classList.add('on'); setTimeout(() => g.classList.remove('on'), mine ? 900 : 300); }
     v.godBurst(m.guns); SFX.play('win'); if (navigator.vibrate) navigator.vibrate(mine ? [60, 40, 60, 40, 120] : [30, 30, 30]);
     return;
   }
@@ -290,12 +306,16 @@ function playerReceive(m) {
     else closePlace();
     return;
   }
-  if (m.t === 'kill') { player.kills = m.n; updateMe(); SFX.play('kill', { vol: 0.6 }); const now = performance.now(); if (now - (player.killT || 0) > 1500) { player.killT = now; pMsg('🎯 Gremlin shot! (' + m.n + ')', 900); } return; }
-  if (m.t === 'bite') { redFlash(); v.hitKeep(); SFX.play('bite', { vol: 0.7 }); if (navigator.vibrate) navigator.vibrate(60); pMsg('👹 One got through!\nTower ' + m.hp + ' / ' + m.max, 1200); return; }
+  if (m.t === 'kill') { player.kills = m.n; updateMe(); SFX.play('kill', { vol: 0.6 }); const now = performance.now(); if (now - (player.killT || 0) > 1500) { player.killT = now; pMsg('🎯 Gremlin shot! (' + m.n + ')', 900, true); } return; }
+  if (m.t === 'bite') {
+    redFlash(); v.hitKeep(); SFX.play('bite', { vol: 0.7 }); if (navigator.vibrate) navigator.vibrate(60);
+    const now = performance.now(); const say = now - (player.biteSaid || 0) > 6000; if (say) player.biteSaid = now;   // read out at most every 6 s
+    pMsg('👹 One got through!\nTower ' + m.hp + ' / ' + m.max, 1200, !say); return;
+  }
   if (m.t === 'msg') { pMsg(m.m, 1800); return; }
   if (m.t === 'fx') { for (const f of m.s || []) v.shot(f[0], f[1], f[2], f[3]); for (const b of m.b || []) v.boom(b[0], b[1], b[2]); return; }
-  if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950); SFX.play(m.n === 1 ? 'go' : 'tick'); return; }
-  if (m.t === 'pause') { player.paused = m.on; const el = $('#p-msg'); clearTimeout(pMsg.t); if (m.on) { el.textContent = '⏸ Paused by the host'; el.classList.add('on'); } else el.classList.remove('on'); return; }
+  if (m.t === 'count') { pMsg('Wave ' + m.wave + ' in ' + m.n + '…', 950, m.n !== 3); SFX.play(m.n === 1 ? 'go' : 'tick'); return; }
+  if (m.t === 'pause') { player.paused = m.on; const el = $('#p-msg'); clearTimeout(pMsg.t); el.setAttribute('aria-live', 'polite'); if (m.on) { el.textContent = '⏸ Paused by the host'; el.classList.add('on'); } else el.classList.remove('on'); return; }
   if (m.t === 's') { player.snap = m; player.ph = m.ph; return; }
   if (m.t === 'over') {
     player.ph = 'over'; $('#p-quiz').classList.remove('on'); closePlace();
@@ -313,36 +333,74 @@ function feed(text, who) {
   el.appendChild(f); while (el.children.length > 3) el.removeChild(el.firstChild);
   setTimeout(() => f.classList.add('fade'), 5000); setTimeout(() => { if (f.parentNode) f.parentNode.removeChild(f); }, 5700);
 }
-function updateMe() { $('#p-streak').textContent = player.streak; $('#p-kills').textContent = player.kills; $('#p-guns').textContent = player.gunsN; }
+function updateMe() { put($('#p-streak'), player.streak); put($('#p-kills'), player.kills); put($('#p-guns'), player.gunsN); }
+// Right and wrong carry a mark and words as well as the green / red fill.
+function markOpt(b, kind) {
+  b.classList.add(kind); if (b.querySelector('.mark')) return;
+  b.insertAdjacentHTML('beforeend', kind === 'right' ? ' <span class="mark" aria-hidden="true">✓</span><span class="sr-only">(correct answer)</span>' : ' <span class="mark" aria-hidden="true">✗</span><span class="sr-only">(your answer, wrong)</span>');
+}
 function showQuiz(m) {
   player.answered = !!m.done;
   $('#pq-q').textContent = '❓ Wave ' + m.wave + ': ' + m.q;
-  $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}">${esc(o)}</button>`).join('');
+  $('#pq-opts').innerHTML = m.opts.map((o, i) => `<button data-i="${i}" data-label="${esc(o)}">${esc(o)}</button>`).join('');
+  if (!m.done) announce('Wave ' + m.wave + ' quiz, ' + (m.left || player.quizTime) + ' seconds: ' + m.q + ' Options: ' + m.opts.join('; '));
   $('#pq-note').textContent = m.done ? 'Already answered this wave.' : '✅ Right = place a ' + LEVEL_LABEL[Math.min(TOP_LEVEL, player.streak)] + ' · ❌ Wrong = no gun, streak lost';
   $('#pq-opts').querySelectorAll('button').forEach(b => { b.disabled = !!m.done; b.onclick = () => { player.answered = true; b.classList.add('picked'); $('#pq-opts').querySelectorAll('button').forEach(x => x.disabled = true); player.me.send({ t: 'ans', i: +b.dataset.i }); }; });
   const u = $('#pq-urgent'); u.className = 'urgent' + (m.done ? ' calm' : ''); u.textContent = player.streak > 0 ? '🔥 Streak ' + player.streak + ' — answer right for a ' + LEVEL_LABEL[Math.min(TOP_LEVEL, player.streak)] + '!' : '⚠️ Gremlins are already marching! Answer right to place a gun';
-  $('#pq-time').style.width = (100 * (m.left || player.quizTime) / player.quizTime) + '%';
+  putStyle($('#pq-time'), 'width', pct(100 * (m.left || player.quizTime) / player.quizTime));
   $('#p-quiz').classList.add('on');
+  if (keyboardUser && !m.done && !$('#p-onboard').classList.contains('on')) { const first = $('#pq-opts button'); if (first) first.focus(); }
 }
+// Keyboard or pointer: what the player used last decides whether panels take focus and show key hints.
+let keyboardUser = false;
+document.addEventListener('keydown', e => { if (e.key === 'Tab' || e.key.startsWith('Arrow') || e.key === 'Enter') keyboardUser = true; }, true);
+document.addEventListener('pointerdown', () => { keyboardUser = false; }, true);
 /* --- placement: a top-down map of the board on the phone --- */
 function openPlace(level, streak) {
-  player.pending = { level }; player.sel = null; $('#b-place').disabled = true;
+  player.pending = { level }; player.sel = null; player.cursor = null; $('#b-place').disabled = true;
   $('#pl-h').textContent = 'Place your ' + LEVEL_LABEL[level] + (streak > 1 ? ' (streak ' + streak + ')' : '');
   $('#pl-hint').textContent = '👆 Drag the gun onto a free tile on the board';
   $('#p-place').classList.add('on'); player.type = TR.LEVEL_GUN[level]; player.view.setGhostGun(player.type, level);
   const v = player.view; v.onPick = pickAt;
+  placeKeys(keyboardUser);
   // Start the preview on a sensible free tile so there is something to drag right away.
   const start = [[4, 1], [2, 2], [4, 5], [7, 3], [8, 4], [5, 5], [10, 3], [2, 0]].find(([x, z]) => TR.freeTile({ guns: player.guns }, x, z));
   if (start) placeAt(start[0], start[1]);
+  if (keyboardUser && !$('#p-onboard').classList.contains('on')) $('#b-place').focus();
 }
-function closePlace() { player.pending = null; player.sel = null; $('#p-place').classList.remove('on'); const v = player.view; v.onPick = null; v.setGhost(null); }
-function pickAt(cx, cy) { const t = player.view.pickTile(cx, cy); if (t) placeAt(t.x, t.z); }
+function closePlace() { const had = $('#p-place').contains(document.activeElement); player.pending = null; player.sel = null; player.cursor = null; placeKeys(false); $('#p-place').classList.remove('on'); const v = player.view; v.onPick = null; v.setGhost(null); if (had) document.activeElement.blur(); }
+function pickAt(cx, cy) { const t = player.view.pickTile(cx, cy); if (t) { placeKeys(false); placeAt(t.x, t.z); } }
+// Keyboard placement: arrows move the ghost gun one tile toward that side of the screen, Enter places, Escape puts it back.
+function placeKeys(on) {
+  player.kbd = !!on; player.kbdFrom = on ? player.kbdFrom || player.cursor : null;
+  $('#p-place').classList.toggle('kbd', !!on);
+}
+function moveCursor(sx, sy) {
+  const v = player.view, c = player.cursor; if (!v || !c) return;
+  const here = v.tileOnScreen(c.x, c.z); let best = null, bestScore = 0.35;
+  for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const x = c.x + ox, z = c.z + oz; if (x < 0 || z < 0 || x >= TR.COLS || z >= TR.ROWS) continue;
+    const p = v.tileOnScreen(x, z); const dx = p.x - here.x, dy = p.y - here.y; const score = (dx * sx + dy * sy) / (Math.hypot(dx, dy) || 1);
+    if (score > bestScore) { bestScore = score; best = [x, z]; }
+  }
+  if (best) placeAt(best[0], best[1]);
+}
+document.addEventListener('keydown', e => {
+  if (!player.pending || !$('#p-place').classList.contains('on') || $('#p-onboard').classList.contains('on') || !$('#confirm').hidden) return;
+  if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (dir) { e.preventDefault(); if (!player.kbd) { placeKeys(true); player.kbdFrom = player.cursor; } moveCursor(dir[0], dir[1]); }
+  else if (e.key === 'Enter' && player.kbd && e.target.tagName !== 'BUTTON') { e.preventDefault(); if (!$('#b-place').disabled) $('#b-place').click(); }
+  else if (e.key === 'Escape' && player.kbd) { e.preventDefault(); const from = player.kbdFrom; placeKeys(false); if (from) placeAt(from.x, from.z); announce('Move cancelled'); }
+});
 function placeAt(x, z) {
   if (!player.pending) return;
   const ok = TR.freeTile({ guns: player.guns }, x, z); const key = x + ',' + z;
   player.view.setGhost(x, z, gunRange(), ok);
-  player.sel = ok ? { x, z } : null; $('#b-place').disabled = !ok;
-  $('#pl-hint').textContent = ok ? 'This spot covers ' + TR.coverage(x, z, gunRange()) + ' road points — tap Place' : TR.PATH_SET.has(key) ? '🚫 Not on the road — drag onto grass' : player.guns.some(g => g.x === x && g.z === z) ? '🚫 That spot has a gun already' : '🚫 Blocked — drag onto a free tile';
+  player.cursor = { x, z }; player.sel = ok ? { x, z } : null; $('#b-place').disabled = !ok;
+  const how = player.kbd ? 'press Enter' : 'tap Place', move = player.kbd ? 'use the arrow keys' : 'drag';
+  $('#pl-hint').textContent = ok ? 'This spot covers ' + TR.coverage(x, z, gunRange()) + ' road points — ' + how : TR.PATH_SET.has(key) ? '🚫 Not on the road — ' + move + ' onto grass' : player.guns.some(g => g.x === x && g.z === z) ? '🚫 That spot has a gun already' : '🚫 Blocked — ' + move + ' onto a free tile';
+  if (player.kbd) announce($('#pl-hint').textContent);
   if (ok && (!player.lastSel || player.lastSel !== key)) { player.lastSel = key; if (navigator.vibrate) navigator.vibrate(8); }
 }
 function gunRange() { return TR.LEVELS[player.pending ? player.pending.level : 0].range; }
@@ -358,28 +416,61 @@ const ONBOARD_STEPS = () => [
   { ic: '🪫', h: 'Guns run dry', p: 'Every gun carries limited ammo and vanishes when empty, and the next horde marches every 25 seconds. Keep answering, keep placing.' },
   { ic: '🎮', h: 'Look around', p: 'One finger turns the board, pinch to zoom, ⌖ resets the view. 🔊 mutes, ? brings this guide back. Ready?' },
 ];
-let obStep = 0;
-function openOnboarding() { obStep = 0; $('#p-onboard').classList.add('on'); renderOnboarding(); }
+let obStep = 0, obReturn = null;
+// A modal: focus moves in on open, Tab stays inside, Escape closes, and focus goes back where it was.
+function openOnboarding() {
+  const ob = $('#p-onboard'); if (!ob.classList.contains('on')) obReturn = document.activeElement;
+  obStep = 0; ob.classList.add('on'); renderOnboarding();
+  setTimeout(() => $('#b-ob-next').focus(), 0);
+}
+function closeOnboarding() {
+  $('#p-onboard').classList.remove('on');
+  const back = obReturn && obReturn !== document.body && document.contains(obReturn) && obReturn.offsetParent !== null ? obReturn : null; obReturn = null;
+  if (back) back.focus(); else if (document.activeElement && $('#p-onboard').contains(document.activeElement)) document.activeElement.blur();
+}
 function renderOnboarding() {
   const steps = ONBOARD_STEPS(); const s = steps[obStep]; const last = obStep === steps.length - 1;
   $('#ob-dots').innerHTML = steps.map((_, i) => `<i class="${i === obStep ? 'on' : ''}"></i>`).join('');
-  $('#ob-step').innerHTML = `<div class="big-ic">${s.ic}</div><h2>${esc(s.h)}</h2><p>${esc(s.p)}</p>${s.ladder ? `<div class="ladder">${esc(s.ladder)}</div>` : ''}`;
+  $('#ob-dots').setAttribute('aria-label', 'Step ' + (obStep + 1) + ' of ' + steps.length);
+  $('#ob-step').innerHTML = `<div class="big-ic" aria-hidden="true">${s.ic}</div><h2 id="ob-title">${esc(s.h)}</h2><p>${esc(s.p)}</p>${s.ladder ? `<div class="ladder">${esc(s.ladder)}</div>` : ''}`;
   $('#b-ob-back').style.visibility = obStep ? 'visible' : 'hidden';
   $('#b-ob-next').textContent = last ? '✅ Got it — let\'s defend!' : 'Next ›';
   $('#ob-skip-row').style.visibility = last ? 'visible' : 'hidden';
+  if (!obStep && document.activeElement === $('#b-ob-back')) $('#b-ob-next').focus();   // Back just hid itself
 }
 $('#b-ob-back').onclick = () => { if (obStep > 0) { obStep--; renderOnboarding(); } };
 $('#b-ob-next').onclick = () => {
   SFX.unlock(); const steps = ONBOARD_STEPS();
   if (obStep < steps.length - 1) { obStep++; renderOnboarding(); SFX.play('tick'); return; }
-  SFX.play('go'); $('#p-onboard').classList.remove('on');
+  SFX.play('go'); closeOnboarding();
   if ($('#onboard-skip').checked) { try { localStorage.setItem('tk-tr-onboard', ONBOARD_VERSION); } catch (e) {} }
 };
+$('#p-onboard').addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); closeOnboarding(); return; }
+  if (e.key !== 'Tab') return;
+  const items = [...$('#p-onboard').querySelectorAll('button, input')].filter(el => el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden' && !el.disabled);
+  if (!items.length) return; const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+// Focus that lands outside the open guide (a click on the page behind, say) is brought back in.
+document.addEventListener('focusin', e => { const ob = $('#p-onboard'); if (ob.classList.contains('on') && !ob.contains(e.target)) $('#b-ob-next').focus(); });
 $('#p-help').onclick = () => { SFX.unlock(); openOnboarding(); };
 $('#p-recenter').onclick = () => { const v = player.view; if (!v) return; v.cam.theta = v.cam.portrait ? Math.PI / 2 - 0.35 : -0.55; v.cam.phi = 0.95; v.cam.fit = 0; v.fitBoard(); };
-function setBtn(cls, text) { const b = $('#p-btn'); b.className = cls; b.textContent = text; }
-function redFlash() { const r = $('#p-red'); r.classList.add('on'); setTimeout(() => r.classList.remove('on'), 120); }
-function pMsg(text, ms) { const el = $('#p-msg'); el.classList.remove('god'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
+// The status pill at the bottom. `text` is what shows (with a live countdown); `say` is what a screen reader hears,
+// without the seconds, so it speaks only when the state itself changes.
+function setBtn(cls, text, say) {
+  const b = $('#p-btn'); if (b.__cls !== cls) { b.__cls = cls; b.className = cls; }
+  put($('#p-btn-text'), text); put($('#p-btn-sr'), say === undefined ? text : say);
+}
+// Flash safety: at most one soft red flash every 500 ms, and none with reduced motion.
+function redFlash() {
+  if (reducedMotion()) return;
+  const now = performance.now(); if (now - (redFlash.t || 0) < 500) return; redFlash.t = now;
+  const r = $('#p-red'); r.classList.add('on'); setTimeout(() => r.classList.remove('on'), 120);
+}
+// `silent`: shown but not read out (frequent, low-value, or already announced more urgently).
+function pMsg(text, ms, silent) { const el = $('#p-msg'); el.setAttribute('aria-live', silent ? 'off' : 'polite'); el.classList.remove('god'); el.textContent = text; el.classList.add('on'); clearTimeout(pMsg.t); pMsg.t = setTimeout(() => el.classList.remove('on'), ms); }
 
 function playerTick(ts) {
   requestAnimationFrame(playerTick);
@@ -389,23 +480,27 @@ function playerTick(ts) {
   if (s) {
     v.applyEnemies(s.e); v.gunYaw = s.gy; v.applyGuns(s.gh, s.ga);
     for (const g of v.guns) if (g && g.low && g.owner === player.id && !g.warned) { g.warned = true; SFX.play('low'); }
-    const bar = $('#p-thp'); bar.style.width = (100 * s.th / s.tm) + '%'; bar.classList.toggle('low', s.th <= s.tm * 0.3); $('#p-tpct').textContent = s.th + '/' + s.tm;
-    $('#p-wave').textContent = s.w; $('#p-left').textContent = s.ph === 'wave' ? s.left : '–';
+    // Every write below is skipped when the value has not changed since the last frame.
+    const bar = $('#p-thp'); putStyle(bar, 'width', pct(100 * s.th / s.tm)); putClass(bar, 'low', s.th <= s.tm * 0.3); put($('#p-tpct'), s.th + '/' + s.tm);
+    put($('#p-wave'), s.w); put($('#p-left'), s.ph === 'wave' ? s.left : '–');
     if (s.ph === 'wave' || s.ph === 'final') {
-      $('#pq-time').style.width = Math.max(0, 100 * s.ql / player.quizTime) + '%';
+      putStyle($('#pq-time'), 'width', pct(Math.max(0, 100 * s.ql / player.quizTime)));
       if (player.pending) {   // answered early? the rest of the answer phase plus the whole placement phase is yours to place in
         const leftToPlace = s.ql > 0 ? s.ql + player.placeTime : s.pl; const full = player.quizTime + player.placeTime;
-        $('#pl-time').style.width = Math.max(0, 100 * leftToPlace / full) + '%'; $('#pl-clock').textContent = '⏱ ' + Math.max(0, leftToPlace) + ' s to place' + (leftToPlace <= 3 ? ' — hurry!' : '');
-        $('#pl-time').style.background = leftToPlace <= 3 ? 'var(--red)' : 'var(--gold)';
+        putStyle($('#pl-time'), 'width', pct(Math.max(0, 100 * leftToPlace / full))); put($('#pl-clock'), '⏱ ' + Math.max(0, leftToPlace) + ' s to place' + (leftToPlace <= 3 ? ' — hurry!' : ''));
+        putStyle($('#pl-time'), 'background', leftToPlace <= 3 ? 'var(--red)' : 'var(--gold)');
+        if (leftToPlace === 3 && player.saidPlace !== s.w) { player.saidPlace = s.w; announce('3 seconds left to place your gun'); }
       }
+      // Timer milestones for screen readers: once per wave, not every tick.
+      if (s.ph === 'wave' && !player.answered && s.ql === 5 && player.saidQuiz !== s.w && $('#p-quiz').classList.contains('on')) { player.saidQuiz = s.w; announce('5 seconds left to answer'); }
     }
     if (player.ph === 'over') {}
     else if (player.paused) setBtn('', '⏸ Paused');
-    else if (s.ph === 'final') setBtn('ok', '⚔️ Last wave held — clear the road! 👹 ' + s.left);
-    else if (player.pending) setBtn('hot', '📍 Place your gun' + (s.pl > 0 ? ' — ' + s.pl + ' s' : '') + '!');
-    else if (s.ph === 'wave' && !player.answered && s.ql > 0) setBtn('hot', '❓ Answer the quiz — ' + s.ql + ' s');
-    else if (s.ph === 'wave' && (s.ql > 0 || s.pl > 0)) setBtn('', '⏳ Wait for other players… ' + (s.ql > 0 ? s.ql + player.placeTime : s.pl) + ' s');
-    else if (s.ph === 'wave') setBtn('ok', s.nx ? '👹 Next wave: ' + s.nx + ' ' + T.enemies + ' in ' + s.nl + ' s' : '⚔️ Last wave · 👹 ' + s.left + ' left');
+    else if (s.ph === 'final') setBtn('ok', '⚔️ Last wave held — clear the road! 👹 ' + s.left, '⚔️ Last wave held — clear the road!');
+    else if (player.pending) setBtn('hot', '📍 Place your gun' + (s.pl > 0 ? ' — ' + s.pl + ' s' : '') + '!', '📍 Place your gun!');
+    else if (s.ph === 'wave' && !player.answered && s.ql > 0) setBtn('hot', '❓ Answer the quiz — ' + s.ql + ' s', '❓ Answer the quiz');
+    else if (s.ph === 'wave' && (s.ql > 0 || s.pl > 0)) setBtn('', '⏳ Wait for other players… ' + (s.ql > 0 ? s.ql + player.placeTime : s.pl) + ' s', '⏳ Wait for other players…');
+    else if (s.ph === 'wave') setBtn('ok', s.nx ? '👹 Next wave: ' + s.nx + ' ' + T.enemies + ' in ' + s.nl + ' s' : '⚔️ Last wave · 👹 ' + s.left + ' left', s.nx ? '👹 Next wave: ' + s.nx + ' ' + T.enemies + ' on the way' : '⚔️ Last wave');
     else setBtn('', s.ph === 'lobby' ? 'Waiting for the host…' : 'Waiting…');
   }
   v.frame(player.paused ? 0 : dt);

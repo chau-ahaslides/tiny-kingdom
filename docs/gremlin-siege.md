@@ -1,7 +1,7 @@
 # Gremlin Siege — integration notes
 
 The tower-defence quiz game lives at `/tower-raid` (presenter: `/tower-raid?host`, phones: `/tr/CODE`).
-It is split into plain scripts, loaded in this order by `public/tower-raid.html`:
+It is split into plain scripts, loaded in this order by `public/tower-raid.html` (all `defer`, so they still run in this order, after the page has parsed; an embedding page that calls `GremlinSiege` inline should wait for `DOMContentLoaded`):
 
 | File | What it holds |
 |---|---|

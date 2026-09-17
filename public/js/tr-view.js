@@ -4,7 +4,41 @@
 const $ = s => document.querySelector(s);
 const show = id => { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); };
 let toastT = 0;
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), Math.max(1800, 60 * msg.length)); }
+// Write to the DOM only when the value changed: the HUDs are refreshed every frame.
+function put(el, text) { if (!el) return; text = String(text); if (el.__text !== text) { el.__text = text; el.textContent = text; } }
+function putStyle(el, prop, value) { if (!el) return; const k = '__s_' + prop; if (el[k] !== value) { el[k] = value; el.style[prop] = value; } }
+function putClass(el, cls, on) { if (!el) return; on = !!on; const k = '__c_' + cls; if (el[k] !== on) { el[k] = on; el.classList.toggle(cls, on); } }
+const pct = v => (Math.round(v * 10) / 10) + '%';
+// Screen readers: milestones only. `assertive` interrupts (right/wrong results); the rest waits its turn.
+function announce(text, assertive) {
+  const el = $(assertive ? '#sr-alert' : '#sr-polite'); if (!el || !text) return;
+  el.textContent = ''; setTimeout(() => { el.textContent = String(text).replace(/\n+/g, '. '); }, 60);   // clear first so a repeat is read again
+}
+// Motion: honour the OS setting, and follow it live if it changes mid-game.
+const motionQuery = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+const reducedMotion = () => !!(motionQuery && motionQuery.matches);
+// The room link: a banner that stays up for as long as the link is down, and a short note when it is back.
+function netStatus(s) {
+  const bar = $('#netbar'); if (!bar) return;
+  if (s === 'reconnecting') { if (bar.hidden) { put($('#netbar-text'), 'Reconnecting…'); bar.hidden = false; } }
+  else if (s === 'ok' || s === 'waiting-for-host' || s === 'host-left') { if (!bar.hidden) { bar.hidden = true; if (s === 'ok') toast('✅ Back online'); } }
+  netStatus.was = s;
+}
+// An inline yes/no in the page's own style, in place of confirm(). Resolves true or false; Escape and the backdrop cancel.
+function askConfirm(question, yesLabel, danger) {
+  const box = $('#confirm'); if (!box) return Promise.resolve(window.confirm(question));
+  if (askConfirm.pending) askConfirm.pending(false);
+  return new Promise(res => {
+    const back = document.activeElement; const yes = $('#cf-yes'), no = $('#cf-no');
+    $('#cf-q').textContent = question; yes.textContent = yesLabel || 'OK'; yes.className = danger ? 'danger' : ''; box.hidden = false;
+    const done = v => { askConfirm.pending = null; box.hidden = true; document.removeEventListener('keydown', key, true); yes.onclick = no.onclick = box.onclick = null; if (back && back.focus) back.focus(); res(v); };
+    const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } else if (e.key === 'Tab') { e.preventDefault(); (document.activeElement === yes ? no : yes).focus(); } };
+    document.addEventListener('keydown', key, true);
+    yes.onclick = () => done(true); no.onclick = () => done(false); box.onclick = e => { if (e.target === box) done(false); };
+    askConfirm.pending = done; setTimeout(() => no.focus(), 0);
+  });
+}
 const ASSETS = CONFIG.assets;
 const COLORS = CONFIG.theme.playerColors.map(c => parseInt(String(c).replace('#', ''), 16));
 const FONT = CONFIG.theme.font;
@@ -19,10 +53,10 @@ function phaseStrip(el, left, total, phaseName) {
   const labels = ['❓ Answer', '📍 Place gun', '👹 Next wave'];
   if (!el.children.length) el.innerHTML = labels.map((l, i) => `<div class="ph p${i + 1}"><span>${l}</span><b></b><i></i></div>`).join('');
   for (let i = 0; i < 3; i++) {
-    const d = el.children[i]; d.classList.toggle('on', i === cur); d.classList.toggle('done', cur > i || cur < 0);
+    const d = el.children[i]; putClass(d, 'on', i === cur); putClass(d, 'done', cur > i || cur < 0);
     const n = i === cur ? Math.max(0, Math.ceil(left[i])) : cur > i || cur < 0 ? 0 : Math.ceil(total[i]);
-    d.querySelector('b').textContent = i === cur ? n + ' s' : cur > i || cur < 0 ? '✓' : Math.ceil(total[i]) + ' s';
-    d.querySelector('i').style.width = (i === cur ? 100 * Math.max(0, left[i]) / total[i] : cur > i ? 0 : 100) + '%';
+    put(d.children[1], i === cur ? n + ' s' : cur > i || cur < 0 ? '✓' : Math.ceil(total[i]) + ' s');
+    putStyle(d.children[2], 'width', pct(i === cur ? 100 * Math.max(0, left[i]) / total[i] : cur > i ? 0 : 100));
   }
 }
 
@@ -41,6 +75,20 @@ function cloneSkinned(source) {
   return clone;
 }
 const fixMaterials = root => root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (o.material && o.material.map) o.material.map.encoding = THREE.sRGBEncoding; } });
+// GPU memory: models cloned from the loader cache share geometry and materials with it, so those are never disposed.
+// What this file creates for one object (text sprites and their canvas textures, materials cloned with `owned`) is freed here.
+const ownMaterial = m => { m.userData.owned = true; return m; };
+function disposeOwned(root) {
+  if (!root) return;
+  root.traverse(o => {
+    if (!o.material) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (o.isSprite) { if (m.map) m.map.dispose(); m.dispose(); }
+      else if (m.userData && m.userData.owned) m.dispose();
+    }
+  });
+}
+const RED_TINT = new THREE.Color(0xe5533d);
 function textSprite(text, { size = 34, fill = '#20303f', stroke = '#fff', w = 256, h = 64, scale = 1.1 } = {}) {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const cx = cv.getContext('2d');
   cx.font = '700 ' + size + 'px ' + FONT; cx.textAlign = 'center'; cx.lineWidth = Math.max(4, size / 6); cx.strokeStyle = stroke; cx.fillStyle = fill;
@@ -84,6 +132,11 @@ class View {
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({ color: new THREE.Color(CONFIG.theme.grass) })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; this.scene.add(ground);
     this.enemies = new Map(); this.pool = { orc: [], ufo: [] }; this.guns = []; this.shots = []; this.fx = []; this.clock = new THREE.Clock(); this.me = null;
     this.hpGeo = new THREE.PlaneGeometry(0.6, 0.07);
+    // Effects share one geometry per shape. Fading effects need their own material, so those meshes are pooled and reused.
+    this.fxGeo = { sphere: new THREE.SphereGeometry(1, 12, 8), puff: new THREE.SphereGeometry(1, 8, 6), ring: new THREE.RingGeometry(0.3, 0.5, 32), spark: new THREE.BoxGeometry(0.12, 0.12, 0.12) };
+    this.sparkMat = [new THREE.MeshBasicMaterial({ color: 0xffd23f }), new THREE.MeshBasicMaterial({ color: 0xffffff })];
+    this.fxPool = { front: [], double: [] };
+    this.ray = new THREE.Raycaster(); this.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); this.tmpV = new THREE.Vector3(); this.aimV = new THREE.Vector3();
     addEventListener('resize', () => this.resize()); this.resize();
     this.placeCamera();
     if (this.opts.orbit) this.enableOrbit(canvas);
@@ -169,21 +222,27 @@ class View {
   // Which board tile is under a screen point (ground-plane hit), or null off the board.
   pickTile(cx, cy) {
     const r = this.renderer.domElement.getBoundingClientRect();
-    const ray = new THREE.Raycaster(); ray.setFromCamera({ x: (cx - r.left) / r.width * 2 - 1, y: -((cy - r.top) / r.height) * 2 + 1 }, this.camera);
-    const hit = new THREE.Vector3(); if (!ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) return null;
+    const ray = this.ray; ray.setFromCamera({ x: (cx - r.left) / r.width * 2 - 1, y: -((cy - r.top) / r.height) * 2 + 1 }, this.camera);
+    const hit = this.tmpV; if (!ray.ray.intersectPlane(this.groundPlane, hit)) return null;
     const x = Math.round(hit.x), z = Math.round(hit.z);
     return x < 0 || z < 0 || x >= TR.COLS || z >= TR.ROWS ? null : { x, z };
+  }
+  // Where a board tile sits on screen, for the keyboard: arrows move toward the neighbour that looks that way.
+  tileOnScreen(x, z) {
+    const v = this.tmpV.set(x, 0.2, z).project(this.camera);
+    return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight };
   }
   setGhost(x, z, range, ok = true) {
     if (!this.ghost) return; if (x === null) { this.ghost.visible = false; return; }
     this.ghost.visible = true; this.ghost.position.set(x, 0, z); this.ghostReach.scale.setScalar(range);
     const c = ok ? 0xffd23f : 0xe5533d; this.ghost.children[0].material.color.set(c); this.ghostReach.material.color.set(c);
-    if (this.ghostGun) this.ghostGun.traverse(o => { if (o.isMesh) o.material.color.copy(o.material.__orig).lerp(new THREE.Color(0xe5533d), ok ? 0 : 0.6); });
+    if (this.ghostGun && this.ghostOk !== ok) { this.ghostOk = ok; this.ghostGun.traverse(o => { if (o.isMesh) o.material.color.copy(o.material.__orig).lerp(RED_TINT, ok ? 0 : 0.6); }); }
   }
   // A see-through gun of the right type and size rides on the ghost while the player drags it around.
   async setGhostGun(type, level) {
     const gen = this.ghostGen = (this.ghostGen || 0) + 1;
-    if (this.ghostGun) { this.ghost.remove(this.ghostGun); this.ghostGun = null; }
+    if (this.ghostGun) { this.ghost.remove(this.ghostGun); disposeOwned(this.ghostGun); this.ghostGun = null; }
+    this.ghostOk = undefined;
     const g = new THREE.Group(); g.position.y = 0.2;
     await this.inst('tower-round-base', 0, 0, 0, -0.2, g);
     let y = 0;
@@ -191,7 +250,7 @@ class View {
     const w = await this.inst(WEAPON[type], 0, 0, 0, y + (WEAPON_LIFT[type] || 0.02), g);
     if (type === 'crystal') this.crystalDress(w, g, y);
     if (gen !== this.ghostGen) return;
-    g.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.6; o.material.depthWrite = false; o.material.__orig = o.material.color.clone(); o.castShadow = false; } });
+    g.traverse(o => { if (o.isMesh) { const was = o.material; o.material = ownMaterial(o.material.clone()); if (was.userData.owned) was.dispose(); o.material.transparent = true; o.material.opacity = 0.6; o.material.depthWrite = false; o.material.__orig = o.material.color.clone(); o.castShadow = false; } });
     this.ghost.add(g); this.ghostGun = g;
   }
   // Guns persist for the whole game, so only new ones are built. `d` is one entry of TR.gunList().
@@ -209,15 +268,28 @@ class View {
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 72; entry.ammoCv = cv; entry.ammoTex = new THREE.CanvasTexture(cv); entry.ammoTex.minFilter = THREE.LinearFilter;
     const pill = new THREE.Sprite(new THREE.SpriteMaterial({ map: entry.ammoTex, depthTest: false, transparent: true })); pill.scale.set(1.6, 1.6 * 72 / 256, 1); pill.position.y = y + 0.66; pill.renderOrder = 10; group.add(pill); entry.pill = pill;
     entry.ammo = d.ammo; entry.max = d.max; entry.frac = d.max ? d.ammo / d.max : 1; this.drawAmmo(entry);
-    if (this.guns[d.i] !== entry) { this.scene.remove(group); return; }      // collapsed while loading
+    if (this.guns[d.i] !== entry) { this.scene.remove(group); disposeOwned(group); return; }      // collapsed while loading
     const mine = d.owner === this.me;
     const label = textSprite((mine ? '★ ' : '') + d.name.slice(0, 14), { fill: mine ? '#e5533d' : hex(COLORS[d.skin % COLORS.length]), size: 44, scale: mine ? 1.9 : 1.6 }); label.position.y = y + 1.12; group.add(label);
     // A puff so the new gun is easy to spot.
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .7 })); puff.position.set(d.x, 0.5, d.z); this.scene.add(puff); this.fx.push({ m: puff, t: 0, life: .5, r: 0.9, kind: 'boom' });
+    const puff = this.fxMesh(this.fxGeo.sphere, 0xffffff, .7); puff.position.set(d.x, 0.5, d.z); this.fx.push({ m: puff, t: 0, life: .5, r: 0.9, kind: 'boom' });
+  }
+  // A pooled mesh with its own fading material. Goes back to the pool when its effect ends (see dropFx).
+  fxMesh(geo, color, opacity, double) {
+    const pool = double ? this.fxPool.double : this.fxPool.front;
+    const m = pool.pop() || new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent: true, side: double ? THREE.DoubleSide : THREE.FrontSide }));
+    m.geometry = geo; m.material.color.setHex(color); m.material.opacity = opacity;
+    m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.setScalar(1); m.visible = true; m.userData.pool = pool;
+    this.scene.add(m); return m;
+  }
+  dropFx(f) {
+    const o = f.m; this.scene.remove(o);
+    if (o.userData.pool) { if (o.userData.pool.length < 200) o.userData.pool.push(o); else o.material.dispose(); }
+    else if (f.kind === 'text' || f.kind === 'collapse') disposeOwned(o);
   }
   // The legendary gun: a turret scaled up, tinted cyan, ringed with crystals that spin.
   async crystalDress(weapon, group, y) {
-    weapon.scale.setScalar(1.25); weapon.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.multiply(new THREE.Color(0x9fe8ff)); } });
+    weapon.scale.setScalar(1.25); weapon.traverse(o => { if (o.isMesh) { o.material = ownMaterial(o.material.clone()); o.material.color.multiply(new THREE.Color(0x9fe8ff)); } });
     const ring = new THREE.Group(); ring.position.y = y - 0.1; group.add(ring); group.userData.ring = ring;
     for (let k = 0; k < 4; k++) { const c = await this.inst('detail-crystal', Math.cos(k * Math.PI / 2) * 0.42, Math.sin(k * Math.PI / 2) * 0.42, k, 0, ring); c.scale.setScalar(0.8); }
   }
@@ -244,8 +316,9 @@ class View {
   // God Mode: a golden ring bursts from every gun and sparks rise over the whole board.
   godBurst(indices) {
     const list = indices ? indices.map(i => this.guns[i]).filter(Boolean) : this.guns.filter(Boolean);
-    for (const t of list) { t.godT = performance.now() + 2500; const m = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.5, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, side: THREE.DoubleSide, transparent: true, opacity: .9 })); m.rotation.x = -Math.PI / 2; m.position.set(t.x, 0.25, t.z); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.0, kind: 'ring' }); }
-    for (let k = 0; k < 60; k++) { const m = new THREE.Mesh(new THREE.BoxGeometry(.12, .12, .12), new THREE.MeshBasicMaterial({ color: k % 2 ? 0xffd23f : 0xffffff })); m.position.set(Math.random() * TR.COLS, 0.2, Math.random() * TR.ROWS); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.4 + Math.random(), kind: 'spark', vy: 2 + Math.random() * 3, vx: (Math.random() - .5), vz: (Math.random() - .5) }); }
+    for (const t of list) { t.godT = performance.now() + 2500; const m = this.fxMesh(this.fxGeo.ring, 0xffd23f, .9, true); m.rotation.x = -Math.PI / 2; m.position.set(t.x, 0.25, t.z); this.fx.push({ m, t: 0, life: 1.0, kind: 'ring' }); }
+    const sparks = reducedMotion() ? 0 : 60;
+    for (let k = 0; k < sparks; k++) { const m = new THREE.Mesh(this.fxGeo.spark, this.sparkMat[k % 2 ? 0 : 1]); m.position.set(Math.random() * TR.COLS, 0.2, Math.random() * TR.ROWS); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.4 + Math.random(), kind: 'spark', vy: 2 + Math.random() * 3, vx: (Math.random() - .5), vz: (Math.random() - .5) }); }
     this.keepFlash = 0.6;
   }
   // Out of ammo: the gun tips over and sinks into the ground under a puff of smoke, then goes away.
@@ -253,7 +326,7 @@ class View {
     const t = this.guns[i]; if (!t) return; this.guns[i] = null;
     t.group.rotation.set(0, 0, 0); t.group.position.set(t.x, 0.2, t.z);
     this.fx.push({ m: t.group, t: 0, life: 1.1, kind: 'collapse', x: t.x, z: t.z, dir: Math.random() * Math.PI * 2 });
-    for (let k = 0; k < 7; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.16, 8, 6), new THREE.MeshBasicMaterial({ color: 0xb8c2cc, transparent: true, opacity: .8 })); m.position.set(t.x + (Math.random() - .5) * .6, 0.3 + Math.random() * .4, t.z + (Math.random() - .5) * .6); this.scene.add(m); this.fx.push({ m, t: 0, life: 1.2 + Math.random() * .4, kind: 'smoke', vx: (Math.random() - .5) * .6, vz: (Math.random() - .5) * .6 }); }
+    for (let k = 0; k < 7; k++) { const m = this.fxMesh(this.fxGeo.puff, 0xb8c2cc, .8); m.scale.setScalar(.16); m.position.set(t.x + (Math.random() - .5) * .6, 0.3 + Math.random() * .4, t.z + (Math.random() - .5) * .6); this.fx.push({ m, t: 0, life: 1.2 + Math.random() * .4, kind: 'smoke', s: .16, vx: (Math.random() - .5) * .6, vz: (Math.random() - .5) * .6 }); }
     const sp = textSprite('🪫 out of ammo', { size: 40, fill: '#e5533d', w: 384, h: 80, scale: 1.7 }); sp.position.set(t.x, (t.top || 0.6) + 1.1, t.z); this.scene.add(sp); this.fx.push({ m: sp, t: 0, life: 1.6, kind: 'text' });
   }
   // Enemies come and go every wave, so their models are pooled.
@@ -335,7 +408,10 @@ class View {
     this.shots.push({ m, from, tgt, t: 0, dur, arc: splash > 0 });
     t.weapon.position.y -= 0.05; setTimeout(() => t.weapon.position.y += 0.05, 90);
   }
-  boom(x, z, r) { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: .8 })); m.position.set(x, 0.4, z); m.scale.setScalar(.1); this.scene.add(m); this.fx.push({ m, t: 0, life: .35, r: r + .2, kind: 'boom' }); }
+  boom(x, z, r) {
+    if (this.fx.length > (this.opts.lite ? 150 : 300)) return;      // a burst of splash hits: the rest of the bursts already cover it
+    const m = this.fxMesh(this.fxGeo.sphere, 0xffa040, .8); m.position.set(x, 0.4, z); m.scale.setScalar(.1); this.fx.push({ m, t: 0, life: .35, r: r + .2, kind: 'boom' });
+  }
   async coin(pos) { const g = await loadGLB('dungeon/coin'); const m = g.scene.clone(true); m.position.copy(pos).setY(0.6); this.scene.add(m); this.fx.push({ m, t: 0, life: .8, kind: 'coin' }); }
   hitKeep() { this.keepFlash = 0.35; }
   // The tower has fallen: it shakes, then its storeys tumble off one by one into the grass under a cloud of dust.
@@ -348,7 +424,7 @@ class View {
       this.scene.attach(o); const a = Math.random() * Math.PI * 2;
       this.fx.push({ m: o, t: -1.2 - i * 0.28, life: 4, kind: 'tumble', vx: Math.cos(a) * (0.8 + Math.random()), vz: Math.sin(a) * (0.8 + Math.random()), vy: 1.5 + Math.random() * 1.5, rx: (Math.random() - .5) * 6, rz: (Math.random() - .5) * 6 });
     });
-    for (let k = 0; k < 40; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.2 + Math.random() * .2, 8, 6), new THREE.MeshBasicMaterial({ color: 0xb8a58a, transparent: true, opacity: .85 })); m.visible = false; m.position.set(TR.END[0] + (Math.random() - .5) * 1.2, 0.2 + Math.random() * 2.5, TR.END[1] + (Math.random() - .5) * 1.2); this.scene.add(m); this.fx.push({ m, t: -1.0 - Math.random() * 2.2, life: 1.8 + Math.random(), kind: 'smoke', vx: (Math.random() - .5) * 1.5, vz: (Math.random() - .5) * 1.5 }); }
+    for (let k = 0; k < 40; k++) { const s = .2 + Math.random() * .2; const m = this.fxMesh(this.fxGeo.puff, 0xb8a58a, .85); m.scale.setScalar(s); m.visible = false; m.position.set(TR.END[0] + (Math.random() - .5) * 1.2, 0.2 + Math.random() * 2.5, TR.END[1] + (Math.random() - .5) * 1.2); this.fx.push({ m, t: -1.0 - Math.random() * 2.2, life: 1.8 + Math.random(), kind: 'smoke', s, vx: (Math.random() - .5) * 1.5, vz: (Math.random() - .5) * 1.5 }); }
   }
   biteText(text) {
     const sp = textSprite(text, { size: 64, fill: '#e5533d', w: 192, h: 96, scale: 1.6 }); sp.renderOrder = 12;
@@ -356,6 +432,7 @@ class View {
     this.fx.push({ m: sp, t: 0, life: 1.1, kind: 'text' });
   }
   frame(dt) {
+    const calm = reducedMotion();
     this.moveEnemies(dt);
     for (const e of this.enemies.values()) if (e.root && e.holder.visible) {
       if (e.mixer) e.mixer.update(dt); e.bar.quaternion.copy(this.camera.quaternion);
@@ -364,19 +441,19 @@ class View {
     for (let i = 0; i < this.guns.length; i++) {
       const t = this.guns[i]; if (!t || !t.weapon) continue; const y = this.gunYaw ? this.gunYaw[i] : 0; if (y !== undefined) { let d = y - t.weapon.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); t.weapon.rotation.y += d * Math.min(1, 12 * dt); }
       if (t.group.userData.ring) t.group.userData.ring.rotation.y += dt * 1.5;
-      if (t.low) {   // running dry: the pill throbs and the gun rattles
+      if (t.low && !calm) {   // running dry: the pill throbs and the gun rattles (the pill's 🪫 says it without motion)
         const k = performance.now() / 1000; const g = 1.6 * (1 + 0.12 * Math.sin(k * 12)); t.pill.scale.set(g, g * 72 / 256, 1);
         t.weapon.rotation.z = Math.sin(k * 40) * 0.05; t.pill.material.opacity = 0.75 + 0.25 * Math.sin(k * 12);
       } else if (t.pill && t.pill.material.opacity !== 1) { t.pill.material.opacity = 1; t.pill.scale.set(1.6, 1.6 * 72 / 256, 1); t.weapon.rotation.z = 0; }
     }
     this.shots = this.shots.filter(s => {
       s.t += dt / s.dur; if (s.t >= 1 || !s.tgt.root) { this.scene.remove(s.m); return false; }
-      const aim = s.tgt.holder.position.clone().setY(s.tgt.kind === 'ufo' ? 0.9 : 0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
+      const aim = this.aimV.copy(s.tgt.holder.position).setY(s.tgt.kind === 'ufo' ? 0.9 : 0.35); s.m.position.lerpVectors(s.from, aim, s.t); if (s.arc) s.m.position.y += Math.sin(s.t * Math.PI) * s.from.distanceTo(aim) * 0.35; s.m.lookAt(aim); return true;
     });
-    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.t < 0) { if (f.kind === 'smoke') f.m.visible = false; return true; } if (f.kind === 'smoke') f.m.visible = true; if (f.kind === 'tumble') { f.vy -= 9 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += f.vy * dt; if (f.m.position.y < 0.05) { f.m.position.y = 0.05; f.vy = -f.vy * 0.25; f.vx *= 0.7; f.vz *= 0.7; f.rx *= 0.5; f.rz *= 0.5; } f.m.rotation.x += f.rx * dt; f.m.rotation.z += f.rz * dt; if (k >= 1) return false; return true; } if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'ring') { f.m.scale.setScalar(1 + k * 5); f.m.material.opacity = .9 * (1 - k); } else if (f.kind === 'spark') { f.vy -= 4 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += f.vy * dt; f.m.rotation.x += dt * 6; f.m.rotation.y += dt * 4; } else if (f.kind === 'collapse') { const e = k * k; f.m.rotation.z = Math.cos(f.dir) * 0.9 * e; f.m.rotation.x = Math.sin(f.dir) * 0.9 * e; f.m.position.y = 0.2 - 1.4 * e; f.m.scale.setScalar(1 - 0.5 * e); } else if (f.kind === 'smoke') { f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += dt * 0.9; f.m.scale.setScalar(1 + k * 1.5); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.scene.remove(f.m); return false; } return true; });
+    this.fx = this.fx.filter(f => { f.t += dt; const k = f.t / f.life; if (f.t < 0) { if (f.kind === 'smoke') f.m.visible = false; return true; } if (f.kind === 'smoke') f.m.visible = true; if (f.kind === 'tumble') { f.vy -= 9 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += f.vy * dt; if (f.m.position.y < 0.05) { f.m.position.y = 0.05; f.vy = -f.vy * 0.25; f.vx *= 0.7; f.vz *= 0.7; f.rx *= 0.5; f.rz *= 0.5; } f.m.rotation.x += f.rx * dt; f.m.rotation.z += f.rz * dt; if (k >= 1) return false; return true; } if (f.kind === 'boom') { f.m.scale.setScalar(f.r * Math.sin(k * Math.PI)); f.m.material.opacity = .8 * (1 - k); } else if (f.kind === 'text') { f.m.position.y += dt * 1.4; f.m.material.opacity = 1 - k * k; } else if (f.kind === 'ring') { f.m.scale.setScalar(1 + k * 5); f.m.material.opacity = .9 * (1 - k); } else if (f.kind === 'spark') { f.vy -= 4 * dt; f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += f.vy * dt; f.m.rotation.x += dt * 6; f.m.rotation.y += dt * 4; } else if (f.kind === 'collapse') { const e = k * k; f.m.rotation.z = Math.cos(f.dir) * 0.9 * e; f.m.rotation.x = Math.sin(f.dir) * 0.9 * e; f.m.position.y = 0.2 - 1.4 * e; f.m.scale.setScalar(1 - 0.5 * e); } else if (f.kind === 'smoke') { f.m.position.x += f.vx * dt; f.m.position.z += f.vz * dt; f.m.position.y += dt * 0.9; f.m.scale.setScalar((f.s || 1) * (1 + k * 1.5)); f.m.material.opacity = .8 * (1 - k); } else { f.m.position.y += dt * 1.2; f.m.rotation.y += dt * 8; f.m.scale.setScalar(1 - k * .6); } if (k >= 1) { this.dropFx(f); return false; } return true; });
     if (this.crystal) this.crystal.rotation.y += dt * 0.8;
-    if (this.keep) { if (this.keepFlash > 0) { this.keepFlash -= dt; this.keep.position.x = TR.END[0] + (Math.random() - .5) * .08; } else this.keep.position.x = TR.END[0]; }
-    if (this.ghost && this.ghost.visible) this.ghost.children[0].scale.setScalar(1 + 0.08 * Math.sin(performance.now() / 150));
+    if (this.keep) { if (this.keepFlash > 0 && !calm) { this.keepFlash -= dt; this.keep.position.x = TR.END[0] + (Math.random() - .5) * .08; } else { this.keepFlash = 0; this.keep.position.x = TR.END[0]; } }
+    if (this.ghost && this.ghost.visible) this.ghost.children[0].scale.setScalar(calm ? 1 : 1 + 0.08 * Math.sin(performance.now() / 150));
     if (this.focus && dt > 0) { const k = Math.min(1, 1.5 * dt); this.center.x += (this.focus.x - this.center.x) * k; this.center.z += (this.focus.z - this.center.z) * k; this.cam.dist += (this.focus.dist - this.cam.dist) * k; this.placeCamera(); }
     this.renderer.render(this.scene, this.camera);
   }

@@ -2,30 +2,42 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Defend the Attention Tower</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --ink:#20303f; --gold:#f3b53e; --red:#e5533d; --green:#4fbb6c; --blue:#4a8fe7; --purple:#8e6be8; --sky:#cfe8ff; --grass:#6fcf8a; --card:#fff; --font:Fredoka,system-ui,sans-serif; }
+  :root {
+    --ink:#20303f; --ink-soft:#4f5d6b; --gold:#f3b53e; --red:#e5533d; --green:#4fbb6c; --blue:#4a8fe7; --purple:#8e6be8; --sky:#cfe8ff; --grass:#6fcf8a; --card:#fff; --font:Fredoka,system-ui,sans-serif;
+    /* fills that carry white text: each is 4.9:1 or better against #fff */
+    --btn:#2f6fc4; --ok:#23813f; --hot:#c23b26; --idle:#5b6b7b;
+    --surface:#e9eef4; --surface-2:#eef3f8; --line:#d8e0ea; --right-bg:#d8f5e1; --right-ink:#1d6b38; --wrong-bg:#fbd9d3; --warn-bg:#fff3c2;
+    --backing:rgba(32,48,63,.9); --god:#ffd23f; --focus:#2f6fc4;
+    --safe-t:env(safe-area-inset-top, 0px); --safe-r:env(safe-area-inset-right, 0px); --safe-b:env(safe-area-inset-bottom, 0px); --safe-l:env(safe-area-inset-left, 0px);
+  }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; height:100%; overflow:hidden; background:var(--sky); font-family:var(--font); color:var(--ink); touch-action:none; }
-  canvas.gl { position:fixed; inset:0; display:block; width:100vw !important; height:100vh !important; }
+  html,body { margin:0; height:100%; overflow:hidden; background:var(--sky); font-family:var(--font); color:var(--ink); }
+  canvas.gl { position:fixed; inset:0; display:block; width:100vw !important; height:100vh !important; touch-action:none; }
+  .sr-only { position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
   .screen { position:fixed; inset:0; display:none; }
   .screen.on { display:block; }
-  .center { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .center { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l)); }
   .card { background:var(--card); border-radius:24px; padding:24px 28px; box-shadow:0 10px 40px rgba(0,0,0,.18); max-width:420px; width:100%; text-align:center; }
   h1 { margin:0 0 4px; font-size:30px; } h2 { margin:0 0 8px; font-size:22px; }
   p { margin:6px 0 14px; line-height:1.4; opacity:.85; }
-  button { font-family:inherit; font-weight:600; font-size:16px; border:0; border-radius:14px; padding:10px 18px; cursor:pointer; background:var(--blue); color:#fff; box-shadow:0 2px 0 rgba(0,0,0,.18); }
+  button { font-family:inherit; font-weight:600; font-size:16px; border:0; border-radius:14px; padding:10px 18px; min-height:44px; min-width:44px; cursor:pointer; background:var(--btn); color:#fff; box-shadow:0 2px 0 rgba(0,0,0,.18); }
   button:active { transform:translateY(1px); box-shadow:none; }
   button:disabled { opacity:.45; cursor:default; }
-  button.ghost { background:#e9eef4; color:var(--ink); }
+  button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
+  button.ghost { background:var(--surface); color:var(--ink); }
+  button.danger { background:var(--hot); color:#fff; }
   button.big { font-size:20px; padding:14px 26px; border-radius:18px; }
-  input { font-family:inherit; font-size:18px; padding:10px 12px; border:2px solid #d8e0ea; border-radius:12px; width:100%; text-align:center; }
-  input:focus { outline:none; border-color:var(--blue); }
+  input { font-family:inherit; font-size:18px; padding:10px 12px; min-height:44px; border:2px solid var(--line); border-radius:12px; width:100%; text-align:center; }
+  input:focus { border-color:var(--btn); }
   .row { display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; }
-  .credit { font-size:11px; opacity:.55; margin-top:12px; }
-  .pill { position:absolute; background:rgba(255,255,255,.93); border-radius:14px; padding:6px 12px; font-weight:600; font-size:15px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:flex; gap:12px; align-items:center; pointer-events:auto; }
+  .credit { font-size:12px; color:var(--ink-soft); margin-top:12px; }
+  .pill { position:absolute; background:rgba(255,255,255,.95); border-radius:14px; padding:6px 12px; font-weight:600; font-size:15px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:flex; gap:12px; align-items:center; pointer-events:auto; }
   .hud { position:absolute; inset:0; pointer-events:none; }
   #s-hostgame, #s-play { pointer-events:none; }
   #s-hostgame .hud > *, #s-play .hud > * { pointer-events:auto; } #h-msg, #p-msg, #p-top { pointer-events:none !important; }
@@ -35,111 +47,141 @@
   #code { font-size:56px; letter-spacing:.2em; font-weight:700; margin:4px 0; }
   #qr { display:flex; justify-content:center; margin:8px 0; } #qr img { border-radius:12px; image-rendering:pixelated; }
   #roster { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; min-height:48px; margin:10px 0; }
-  .chip { background:#eef3f8; border-radius:999px; padding:6px 12px; font-weight:600; display:flex; align-items:center; gap:6px; }
+  .chip { background:var(--surface-2); border-radius:999px; padding:6px 12px; font-weight:600; display:flex; align-items:center; gap:6px; }
   .chip .dot { width:12px; height:12px; border-radius:50%; }
-  .chip.bot { opacity:.7; }
-  .stepper { display:inline-flex; align-items:center; gap:10px; background:#eef3f8; border-radius:14px; padding:6px 10px; }
+  .chip.bot { color:var(--ink-soft); }
+  .stepper { display:inline-flex; align-items:center; gap:10px; background:var(--surface-2); border-radius:14px; padding:4px 6px; }
   .stepper b { min-width:34px; font-size:22px; }
-  .stepper button { padding:4px 12px; font-size:20px; background:#fff; color:var(--ink); }
-  .hint { font-size:13px; opacity:.7; }
+  .stepper button { width:44px; height:44px; padding:0; font-size:22px; background:#fff; color:var(--ink); }
+  .hint { font-size:13px; color:var(--ink-soft); }
   /* host game hud */
-  #h-tower { position:absolute; top:14px; left:50%; transform:translateX(-50%); width:min(560px, 60vw); background:rgba(255,255,255,.93); border-radius:18px; padding:8px 14px 10px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
+  #h-tower { position:absolute; top:calc(14px + var(--safe-t)); left:50%; transform:translateX(-50%); width:min(560px, 60vw); background:rgba(255,255,255,.95); border-radius:18px; padding:8px 14px 10px; box-shadow:0 2px 8px rgba(0,0,0,.12); }
   .bar { height:16px; background:#e3e9f0; border-radius:8px; overflow:hidden; position:relative; }
   .bar i { position:absolute; left:0; top:0; bottom:0; background:var(--green); border-radius:8px; transition:width .25s; }
   .bar i.low { background:var(--red); }
   #h-tower .lbl { display:flex; justify-content:space-between; font-weight:600; font-size:14px; margin-bottom:4px; }
-  #h-left { top:14px; left:14px; flex-direction:column; align-items:flex-start; gap:4px; }
+  #h-left { top:calc(14px + var(--safe-t)); left:calc(14px + var(--safe-l)); flex-direction:column; align-items:flex-start; gap:4px; }
   .phases { display:flex; gap:4px; width:100%; }
-  .phases .ph { flex:1; background:#e9eef4; border-radius:10px; padding:4px 8px; font-size:12px; font-weight:600; opacity:.55; position:relative; overflow:hidden; white-space:nowrap; }
+  .phases .ph { flex:1; background:var(--surface); color:var(--ink-soft); border-radius:10px; padding:4px 8px; font-size:12px; font-weight:600; position:relative; overflow:hidden; white-space:nowrap; }
   .phases .ph b { display:block; font-size:15px; line-height:1.1; }
   .phases .ph i { position:absolute; left:0; bottom:0; height:4px; background:var(--blue); border-radius:2px; transition:width .3s linear; }
-  .phases .ph.on { opacity:1; background:#fff; box-shadow:inset 0 0 0 2px var(--blue); }
+  .phases .ph.on { color:var(--ink); background:#fff; box-shadow:inset 0 0 0 2px var(--blue); }
   .phases .ph.on.p2 { box-shadow:inset 0 0 0 2px var(--gold); } .phases .ph.on.p2 i { background:var(--gold); }
   .phases .ph.on.p3 { box-shadow:inset 0 0 0 2px var(--red); } .phases .ph.on.p3 i { background:var(--red); }
-  .phases .ph.done { opacity:.35; }
-  #h-left .phases { width:300px; } #h-left .phases .ph b { font-size:17px; }
+  .phases .ph.done { background:transparent; box-shadow:inset 0 0 0 1px var(--line); }
+  #h-left .phases { width:min(300px, calc(100vw - 56px)); } #h-left .phases .ph b { font-size:17px; }
   #p-top .phases .ph { padding:3px 6px; }
-  #h-quiz { position:absolute; right:14px; top:14px; width:min(340px, 34vw); background:rgba(255,255,255,.95); border-radius:18px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:none; }
+  #h-quiz { position:absolute; right:calc(14px + var(--safe-r)); top:calc(14px + var(--safe-t)); width:min(340px, 34vw); background:rgba(255,255,255,.97); border-radius:18px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); display:none; }
   #h-quiz.on { display:block; }
   #h-quiz .q { font-weight:700; font-size:17px; margin-bottom:8px; }
-  #h-quiz .opt { background:#eef3f8; border-radius:10px; padding:6px 10px; margin:4px 0; font-weight:600; font-size:14px; display:flex; justify-content:space-between; }
-  #h-quiz .opt.right { background:#d8f5e1; }
+  #h-quiz .opt { background:var(--surface-2); border-radius:10px; padding:6px 10px; margin:4px 0; font-weight:600; font-size:14px; display:flex; justify-content:space-between; }
+  #h-quiz .opt.right { background:var(--right-bg); box-shadow:inset 0 0 0 2px var(--right-ink); }
   #h-quiz .tbar { height:6px; margin:6px 0 8px; } #h-quiz .tbar i { background:var(--blue); transition:width .5s linear; } #h-quiz .tbar i.place { background:var(--gold); }
   #hq-who { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
   #hq-who .chip { font-size:12px; padding:3px 8px; }
-  #hq-who .chip.ok { background:#fff3c2; } #hq-who .chip.bad { background:#fbd9d3; }
-  #h-board { position:absolute; left:14px; bottom:14px; background:rgba(255,255,255,.93); border-radius:18px; padding:10px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); min-width:240px; max-height:46vh; overflow:auto; }
+  #hq-who .chip.ok { background:var(--warn-bg); } #hq-who .chip.bad { background:var(--wrong-bg); }
+  #h-board { position:absolute; left:calc(14px + var(--safe-l)); bottom:calc(14px + var(--safe-b)); background:rgba(255,255,255,.95); border-radius:18px; padding:10px 14px; box-shadow:0 2px 8px rgba(0,0,0,.12); min-width:240px; max-height:46vh; overflow:auto; }
+  #h-board:empty { display:none; }
   #h-board .r { display:flex; justify-content:space-between; gap:12px; font-weight:600; font-size:14px; padding:3px 0; }
   #h-board .r .n { display:flex; align-items:center; gap:6px; }
-  #h-msg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:min(9vw,64px); font-weight:700; color:#fff; text-shadow:0 4px 18px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; }
+  /* big messages sit on a solid backing so they read over the pale sky from the back of the room */
+  #h-msg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:max-content; max-width:min(90vw, 1100px); font-size:min(9vw,64px); font-weight:700; line-height:1.15; color:#fff; background:var(--backing); border-radius:28px; padding:.2em .6em .25em; box-shadow:0 10px 40px rgba(0,0,0,.25); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; }
   #h-msg.on { opacity:1; }
-  #h-msg.god { color:#ffd23f; text-shadow:0 0 24px #ff9f1c, 0 4px 18px rgba(0,0,0,.4); font-size:min(5vw,46px); line-height:1.25; width:90vw; animation:godpulse .6s ease-in-out infinite alternate; white-space:pre-line; }
+  #h-msg.god { color:var(--god); font-size:min(5vw,46px); line-height:1.25; animation:godpulse .6s ease-in-out infinite alternate; white-space:pre-line; }
   #h-msg.god::first-line { font-size:min(9vw,80px); }
   @keyframes godpulse { from { transform:translate(-50%,-50%) scale(1); } to { transform:translate(-50%,-50%) scale(1.06); } }
-  #p-msg.god { color:#ffd23f; text-shadow:0 0 20px #ff9f1c, 0 3px 14px rgba(0,0,0,.4); font-size:34px; animation:godpulse .6s ease-in-out infinite alternate; }
-  #p-gold { position:absolute; inset:0; background:radial-gradient(circle, rgba(255,210,63,.55), rgba(255,159,28,.15)); opacity:0; transition:opacity .6s; pointer-events:none !important; }
+  #p-msg.god { color:var(--god); font-size:30px; animation:godpulse .6s ease-in-out infinite alternate; }
+  #p-gold { position:absolute; inset:0; background:radial-gradient(circle, rgba(255,210,63,.4), rgba(255,159,28,.1)); opacity:0; transition:opacity .6s; pointer-events:none !important; }
   #p-gold.on { opacity:1; transition:none; }
-  .sbtn { padding:8px 10px; font-size:18px; }
-  #h-ctl { right:14px; bottom:14px; }
+  .sbtn { padding:8px 10px; font-size:18px; position:relative; }
+  .sbtn.strike[aria-pressed="false"]::after { content:''; position:absolute; left:8px; right:8px; top:50%; height:3px; margin-top:-1.5px; background:var(--ink); border-radius:2px; transform:rotate(-45deg); box-shadow:0 0 0 1.5px var(--surface); }
+  #h-ctl { right:calc(14px + var(--safe-r)); bottom:calc(14px + var(--safe-b)); flex-wrap:wrap; justify-content:flex-end; gap:8px; max-width:calc(100vw - 28px); }
   /* phone */
-  #p-top { position:absolute; left:10px; right:10px; top:10px; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+  #p-top { position:absolute; left:calc(10px + var(--safe-l)); right:calc(10px + var(--safe-r)); top:calc(10px + var(--safe-t)); display:flex; flex-direction:column; gap:6px; pointer-events:none; }
   #p-top .pill { position:static; width:100%; justify-content:space-between; font-size:13px; padding:6px 10px; }
   #p-top .bar { height:10px; flex:1; }
-  #p-btn { position:absolute; left:50%; bottom:16px; transform:translateX(-50%); width:min(84vw, 320px); height:64px; border-radius:32px; font-size:18px; background:#9aa7b5; box-shadow:0 6px 0 rgba(0,0,0,.2); pointer-events:none !important; user-select:none; }
-  #p-btn.hot { background:var(--red); } #p-btn.ok { background:var(--green); }
-  #p-quiz { position:absolute; left:10px; right:10px; bottom:14px; background:rgba(255,255,255,.96); border-radius:20px; padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.2); display:none; pointer-events:auto; }
+  /* #p-btn is a status label, not a control */
+  #p-btn { position:absolute; left:50%; bottom:calc(16px + var(--safe-b)); transform:translateX(-50%); width:min(84vw, 320px); min-height:64px; padding:8px 18px; border-radius:32px; display:flex; align-items:center; justify-content:center; text-align:center; font-weight:600; font-size:18px; line-height:1.2; color:#fff; background:var(--idle); box-shadow:0 6px 0 rgba(0,0,0,.2); pointer-events:none !important; user-select:none; }
+  #p-btn.hot { background:var(--hot); } #p-btn.ok { background:var(--ok); }
+  #p-quiz { position:absolute; left:calc(10px + var(--safe-l)); right:calc(10px + var(--safe-r)); bottom:calc(14px + var(--safe-b)); background:rgba(255,255,255,.97); border-radius:20px; padding:12px 14px; box-shadow:0 6px 24px rgba(0,0,0,.2); display:none; pointer-events:auto; }
   #p-quiz.on { display:block; }
   #p-quiz .q { font-weight:700; font-size:16px; margin-bottom:8px; }
-  .urgent { background:var(--red); color:#fff; font-weight:700; font-size:13px; border-radius:12px; padding:6px 10px; margin:-4px -4px 8px; text-align:center; animation:throb 1s ease-in-out infinite; }
-  .urgent.calm { animation:none; background:#e9eef4; color:var(--ink); font-weight:600; }
-  .urgent.good { animation:none; background:#d8f5e1; color:#1d6b38; }
+  .urgent { background:var(--hot); color:#fff; font-weight:700; font-size:13px; border-radius:12px; padding:6px 10px; margin:-4px -4px 8px; text-align:center; animation:throb 1s ease-in-out infinite; }
+  .urgent.calm { animation:none; background:var(--surface); color:var(--ink); font-weight:600; }
+  .urgent.good { animation:none; background:var(--right-bg); color:var(--right-ink); }
   #p-quiz .tbar { height:6px; margin-bottom:8px; } #p-quiz .tbar i { background:var(--red); transition:width .5s linear; }
   @keyframes throb { 0%,100% { transform:scale(1); } 50% { transform:scale(1.03); } }
   #p-quiz .opts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  #p-quiz .opts button { background:#eef3f8; color:var(--ink); font-size:16px; padding:14px 8px; }
-  #p-quiz .opts button.right { background:#d8f5e1; } #p-quiz .opts button.wrong { background:#fbd9d3; }
-  #p-quiz .note { font-size:12px; opacity:.7; margin-top:6px; text-align:center; }
-  #p-place { position:absolute; left:8px; right:8px; bottom:14px; background:rgba(255,255,255,.97); border-radius:20px; padding:10px 10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.25); display:none; pointer-events:auto; }
+  #p-quiz .opts button { background:var(--surface-2); color:var(--ink); font-size:16px; padding:14px 8px; }
+  #p-quiz .opts button.right { background:var(--right-bg); box-shadow:inset 0 0 0 2px var(--right-ink); } #p-quiz .opts button.wrong { background:var(--wrong-bg); box-shadow:inset 0 0 0 2px var(--hot); }
+  #p-quiz .opts button.right:disabled, #p-quiz .opts button.wrong:disabled, #p-quiz .opts button.picked:disabled { opacity:1; }
+  .mark { font-weight:700; }
+  #p-quiz .note { font-size:13px; color:var(--ink-soft); margin-top:6px; text-align:center; }
+  #p-place { position:absolute; left:calc(8px + var(--safe-l)); right:calc(8px + var(--safe-r)); bottom:calc(14px + var(--safe-b)); background:rgba(255,255,255,.97); border-radius:20px; padding:10px 10px 12px; box-shadow:0 6px 24px rgba(0,0,0,.25); display:none; pointer-events:auto; }
   #p-place.on { display:block; }
   #p-place.on ~ #p-btn, #p-place.on ~ #p-recenter, #p-quiz.on ~ #p-btn, #p-quiz.on ~ #p-recenter { display:none; }
-  #p-sound { position:absolute; left:10px; bottom:92px; width:44px; height:44px; border-radius:22px; padding:0; font-size:20px; background:rgba(255,255,255,.9); }
+  #p-sound { position:absolute; left:calc(10px + var(--safe-l)); bottom:calc(92px + var(--safe-b)); width:44px; height:44px; border-radius:22px; padding:0; font-size:20px; background:rgba(255,255,255,.95); }
   #p-place.on ~ #p-sound, #p-quiz.on ~ #p-sound, #p-place.on ~ #p-help, #p-quiz.on ~ #p-help { display:none; }
-  #p-help { position:absolute; left:62px; bottom:92px; width:44px; height:44px; border-radius:22px; padding:0; font-size:20px; font-weight:700; background:rgba(255,255,255,.9); }
-  #p-feed { position:absolute; left:60px; right:60px; bottom:92px; display:flex; flex-direction:column; gap:4px; align-items:center; pointer-events:none !important; }
-  #p-feed .f { background:rgba(255,255,255,.88); border-radius:12px; padding:4px 10px; font-size:12px; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,.1); max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:opacity .6s; }
-  #p-feed .f.tally { background:rgba(32,48,63,.85); color:#fff; }
+  #p-help { position:absolute; left:calc(62px + var(--safe-l)); bottom:calc(92px + var(--safe-b)); width:44px; height:44px; border-radius:22px; padding:0; font-size:20px; font-weight:700; background:rgba(255,255,255,.95); }
+  #p-feed { position:absolute; left:calc(60px + var(--safe-l)); right:calc(60px + var(--safe-r)); bottom:calc(92px + var(--safe-b)); display:flex; flex-direction:column; gap:4px; align-items:center; pointer-events:none !important; }
+  #p-feed .f { background:rgba(255,255,255,.96); border-radius:12px; padding:4px 10px; font-size:12px; font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,.1); max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:opacity .6s; }
+  #p-feed .f.tally { background:var(--backing); color:#fff; }
   #p-feed .f.fade { opacity:0; }
   #p-quiz.on ~ #p-feed, #p-place.on ~ #p-feed, #p-onboard.on ~ #p-feed { display:none; }
-  #p-recenter { position:absolute; right:10px; bottom:92px; width:44px; height:44px; border-radius:22px; padding:0; font-size:22px; background:rgba(255,255,255,.9); }
+  #p-recenter { position:absolute; right:calc(10px + var(--safe-r)); bottom:calc(92px + var(--safe-b)); width:44px; height:44px; border-radius:22px; padding:0; font-size:22px; background:rgba(255,255,255,.95); }
   #p-place .h { font-weight:700; font-size:16px; text-align:center; margin-bottom:6px; }
   #p-place .foot { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:4px; }
   #p-place .foot .hint { flex:1; text-align:left; }
-  #b-place { background:var(--green); }
-  #p-red { position:absolute; inset:0; background:rgba(229,83,61,.45); opacity:0; transition:opacity .4s; pointer-events:none !important; }
-  #p-red.on { opacity:1; transition:none; }
-  #p-msg { white-space:pre-line; position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); font-size:28px; font-weight:700; color:#fff; text-shadow:0 3px 14px rgba(0,0,0,.35); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; width:90%; }
+  #b-place { background:var(--ok); }
+  #p-red { position:absolute; inset:0; background:rgba(229,83,61,.22); opacity:0; transition:opacity .45s ease-out; pointer-events:none !important; }
+  #p-red.on { opacity:1; transition:opacity .08s; }
+  #p-msg { white-space:pre-line; position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); width:max-content; max-width:calc(100% - 32px); font-size:26px; font-weight:700; line-height:1.2; color:#fff; background:var(--backing); border-radius:22px; padding:10px 18px 12px; box-shadow:0 8px 28px rgba(0,0,0,.25); text-align:center; pointer-events:none; opacity:0; transition:opacity .3s; }
   #p-msg.on { opacity:1; }
-  #p-onboard { position:absolute; inset:0; background:rgba(32,48,63,.55); display:none; align-items:flex-end; justify-content:center; padding:12px; pointer-events:auto; }
+  #p-onboard { position:absolute; inset:0; background:rgba(32,48,63,.55); display:none; align-items:flex-end; justify-content:center; padding:calc(12px + var(--safe-t)) calc(12px + var(--safe-r)) calc(12px + var(--safe-b)) calc(12px + var(--safe-l)); pointer-events:auto; }
   #p-onboard.on { display:flex; }
   #p-onboard .card { text-align:center; padding:18px 20px 16px; max-width:460px; }
   #p-onboard .dots { display:flex; gap:6px; justify-content:center; margin-bottom:10px; }
-  #p-onboard .dots i { width:8px; height:8px; border-radius:50%; background:#d8e0ea; } #p-onboard .dots i.on { background:var(--blue); width:22px; border-radius:4px; }
+  #p-onboard .dots i { width:8px; height:8px; border-radius:50%; background:var(--line); } #p-onboard .dots i.on { background:var(--btn); width:22px; border-radius:4px; }
   #p-onboard .step { min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; }
   #p-onboard .step .big-ic { font-size:56px; line-height:1; }
   #p-onboard .step h2 { margin:0; font-size:22px; }
-  #p-onboard .step p { margin:0; font-size:16px; line-height:1.4; opacity:.9; }
-  #p-onboard .step .ladder { font-size:13px; opacity:.8; }
+  #p-onboard .step p { margin:0; font-size:16px; line-height:1.4; opacity:1; }
+  #p-onboard .step .ladder { font-size:13px; color:var(--ink-soft); }
   #p-onboard .foot { display:flex; flex-direction:column; gap:8px; align-items:center; }
-  #p-onboard label { font-size:13px; opacity:.75; display:flex; gap:6px; align-items:center; white-space:nowrap; }
-  #toast { position:fixed; left:50%; top:70px; transform:translateX(-50%); background:rgba(32,48,63,.92); color:#fff; padding:8px 16px; border-radius:14px; font-weight:600; opacity:0; transition:opacity .25s; white-space:nowrap; z-index:9; pointer-events:none; }
+  #p-onboard label { font-size:14px; color:var(--ink-soft); display:flex; gap:8px; align-items:center; white-space:nowrap; min-height:44px; padding:0 8px; cursor:pointer; }
+  #p-onboard label input { width:20px; height:20px; min-height:0; margin:0; }
+  #toast { position:fixed; left:50%; top:calc(70px + var(--safe-t)); transform:translateX(-50%); width:max-content; max-width:calc(100vw - 32px); background:var(--backing); color:#fff; padding:8px 16px; border-radius:14px; font-weight:600; text-align:center; line-height:1.3; opacity:0; transition:opacity .25s; white-space:normal; overflow-wrap:anywhere; z-index:9; pointer-events:none; }
   #toast.show { opacity:1; }
+  /* the room link is down: stays up until the status is ok again */
+  #netbar { position:fixed; left:50%; top:calc(8px + var(--safe-t)); transform:translateX(-50%); z-index:12; width:max-content; max-width:calc(100vw - 24px); display:flex; align-items:center; gap:8px; background:var(--hot); color:#fff; font-weight:600; font-size:15px; padding:8px 16px; border-radius:999px; box-shadow:0 4px 16px rgba(0,0,0,.25); pointer-events:none; }
+  #netbar[hidden] { display:none; }
+  #netbar .spin { width:14px; height:14px; border-radius:50%; border:3px solid rgba(255,255,255,.45); border-top-color:#fff; animation:spin 1s linear infinite; flex:none; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  /* an inline confirm, in place of the browser's confirm() box */
+  #confirm { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(32,48,63,.35); }
+  #confirm[hidden] { display:none; }
+  #confirm .card { max-width:360px; }
+  #confirm p { font-size:18px; font-weight:600; opacity:1; margin:0 0 14px; }
+  .kbd-hint { display:none; }
+  #p-place.kbd .kbd-hint { display:block; font-size:13px; color:var(--ink-soft); text-align:center; margin-top:6px; }
   table.res { width:100%; border-collapse:collapse; font-size:15px; } table.res td { padding:4px 6px; text-align:left; } table.res td:last-child { text-align:right; font-weight:700; }
   @media (max-width:800px) { #s-hostlobby .wrap { grid-template-columns:1fr; overflow:auto; align-items:start; } #h-board { display:none; } #h-quiz { width:44vw; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration:.01ms !important; animation-iteration-count:1 !important; }
+    #h-msg.god, #p-msg.god, .urgent, #netbar .spin { animation:none !important; }
+    #p-red, #p-gold { display:none !important; }
+    button:active { transform:none; }
+  }
 </style>
 </head>
 <body>
-<canvas class="gl" id="gl"></canvas>
-<div id="toast"></div>
+<canvas class="gl" id="gl" aria-hidden="true"></canvas>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="netbar" role="status" aria-live="polite" aria-atomic="true" hidden><span class="spin" aria-hidden="true"></span><span id="netbar-text">Reconnecting…</span></div>
+<!-- screen-reader announcements: milestones only (the quiz, results, wave starts, time running out) -->
+<div id="sr-polite" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="sr-alert" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+<div id="confirm" role="alertdialog" aria-modal="true" aria-labelledby="cf-q" hidden><div class="card"><p id="cf-q"></p><div class="row"><button class="ghost" id="cf-no">Cancel</button><button class="danger" id="cf-yes">OK</button></div></div></div>
 
 <!-- landing -->
 <div class="screen" id="s-home"><div class="center"><div class="card">
@@ -147,7 +189,7 @@
   <p>The Attention Gremlins are marching on the tower. Every wave opens with a quiz: answer right and you get to place a gun with your name on it, wherever you like. Keep a streak of right answers going and your guns get bigger. Guns carry limited ammo and vanish when empty. Hold as many waves as you can.</p>
   <div class="row"><button class="big" id="b-host">Host on this screen</button></div>
   <p style="margin-top:18px">Have a code?</p>
-  <div class="row"><input id="in-code" placeholder="ROOM CODE" maxlength="8" style="width:170px;text-transform:uppercase"><button id="b-join">Join</button></div>
+  <div class="row"><label for="in-code" class="sr-only">Room code</label><input id="in-code" placeholder="ROOM CODE" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:170px;text-transform:uppercase"><button id="b-join">Join</button></div>
   <div class="credit" data-text="credit">Models by Kenney (CC0): Tower Defense Kit, Mini Characters, Mini Dungeon</div>
 </div></div></div>
 
@@ -164,7 +206,7 @@
     <div id="roster"><span class="hint">Waiting for phones…</span></div>
     <div class="row" style="margin:12px 0">
       <span style="font-weight:600">Party size</span>
-      <span class="stepper"><button id="b-less">−</button><b id="total">6</b><button id="b-more">+</button></span>
+      <span class="stepper" role="group" aria-label="Party size"><button id="b-less" aria-label="Fewer seats">−</button><b id="total" aria-live="polite">6</b><button id="b-more" aria-label="More seats">+</button></span>
       <span class="hint">bots fill the empty seats</span>
     </div>
     <div class="row"><button class="big" id="b-start">🏰 Start the siege</button></div>
@@ -178,8 +220,8 @@
   <div class="pill" id="h-left"><span>🌊 Wave <b id="h-wave">1</b></span><span>👹 <b id="h-enemies">0</b> coming</span><span>🔫 <b id="h-guns">0</b> guns</span><span id="h-time" style="display:none"></span><div class="phases" id="h-phases"></div></div>
   <div id="h-quiz"><div class="q" id="hq-q"></div><div class="bar tbar"><i id="hq-time" style="width:100%"></i></div><div id="hq-opts"></div><div class="hint" id="hq-note"></div><div id="hq-who"></div></div>
   <div id="h-board"></div>
-  <div id="h-msg"></div>
-  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-pause">⏸ Pause</button><button class="ghost sbtn" id="b-music" title="Music">🎵</button><button class="ghost sbtn" id="b-sound" title="Sound effects">🔊</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
+  <div id="h-msg" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div class="pill" id="h-ctl"><button class="ghost" id="b-next" style="display:none">Next wave ▶</button><button class="ghost" id="b-pause">⏸ Pause</button><button class="ghost sbtn strike" id="b-music" title="Music" aria-label="Music" aria-pressed="true">🎵</button><button class="ghost sbtn" id="b-sound" title="Sound effects" aria-label="Sound effects" aria-pressed="true">🔊</button><button class="ghost" id="b-recenter" title="Reset the camera">⌖ Recentre</button><button class="ghost" id="b-abort">✕ End game</button></div>
 </div></div>
 
 <!-- host results -->
@@ -192,7 +234,7 @@
 <!-- phone: name -->
 <div class="screen" id="s-join"><div class="center"><div class="card">
   <h1>🏰 <span data-text="title">Defend the Attention Tower</span></h1><p>Room <b id="j-code"></b>. What's your name?</p>
-  <input id="in-name" placeholder="Your name" maxlength="16">
+  <label for="in-name" class="sr-only">Your name</label><input id="in-name" placeholder="Your name" maxlength="16" autocomplete="nickname">
   <div class="row" style="margin-top:12px"><button class="big" id="b-go" data-text="joinButton">Join the defence</button></div>
 </div></div></div>
 
@@ -202,24 +244,25 @@
     <div class="pill"><span id="p-name">You</span><span>🔥 streak <b id="p-streak">0</b></span><span>🎯 <b id="p-kills">0</b> kills</span><span>🔫 <b id="p-guns">0</b></span></div>
     <div class="pill"><span>🏰</span><div class="bar"><i id="p-thp" style="width:100%"></i></div><span id="p-tpct">10</span><span>🌊 <b id="p-wave">-</b></span><span>👹 <b id="p-left">-</b></span></div>
   </div>
-  <div id="p-red"></div>
-  <div id="p-msg"></div>
-  <div id="p-quiz"><div class="urgent" id="pq-urgent">⚠️ Gremlins are already marching! Answer right to place a gun</div><div class="bar tbar"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note"></div></div>
-  <div id="p-place">
+  <div id="p-red" aria-hidden="true"></div>
+  <div id="p-msg" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="p-quiz" role="group" aria-labelledby="pq-q"><div class="urgent" id="pq-urgent">⚠️ Gremlins are already marching! Answer right to place a gun</div><div class="bar tbar" aria-hidden="true"><i id="pq-time" style="width:100%"></i></div><div class="q" id="pq-q"></div><div class="opts" id="pq-opts"></div><div class="note" id="pq-note"></div></div>
+  <div id="p-place" role="group" aria-labelledby="pl-h">
     <div class="h" id="pl-h">🔫 Place your gun</div>
-    <div class="bar tbar" style="height:6px;margin-bottom:4px"><i id="pl-time" style="width:100%;background:var(--gold)"></i></div>
+    <div class="bar tbar" style="height:6px;margin-bottom:4px" aria-hidden="true"><i id="pl-time" style="width:100%;background:var(--gold)"></i></div>
     <div class="hint" id="pl-clock" style="text-align:center;margin-bottom:6px">⏱ place before the gremlins get close</div>
-    <div class="foot"><span class="hint" id="pl-hint">👆 Drag the gun onto a free tile on the board</span><button id="b-place" disabled>Place here</button></div>
+    <div class="foot"><span class="hint" id="pl-hint">👆 Drag the gun onto a free tile on the board</span><button id="b-place" disabled aria-describedby="pl-hint pl-keys">Place here</button></div>
+    <div class="kbd-hint" id="pl-keys">⌨️ Arrow keys move the gun · Enter places it · Esc cancels the move</div>
   </div>
-  <div id="p-gold"></div>
-  <div id="p-feed"></div>
-  <button class="ghost" id="p-recenter" title="Reset the camera">⌖</button>
-  <button class="ghost" id="p-sound" title="Sound">🔊</button>
-  <button class="ghost" id="p-help" title="How to play">?</button>
-  <button id="p-btn">Waiting…</button>
-  <div id="p-onboard"><div class="card">
-    <div class="dots" id="ob-dots"></div>
-    <div class="step" id="ob-step"></div>
+  <div id="p-gold" aria-hidden="true"></div>
+  <div id="p-feed" aria-hidden="true"></div>
+  <button class="ghost" id="p-recenter" title="Reset the camera" aria-label="Reset the camera">⌖</button>
+  <button class="ghost" id="p-sound" title="Sound" aria-label="Sound" aria-pressed="true">🔊</button>
+  <button class="ghost" id="p-help" title="How to play" aria-label="How to play">?</button>
+  <div id="p-btn" role="status" aria-live="polite"><span id="p-btn-text" aria-hidden="true">Waiting…</span><span id="p-btn-sr" class="sr-only">Waiting…</span></div>
+  <div id="p-onboard" role="dialog" aria-modal="true" aria-labelledby="ob-title" aria-describedby="ob-step"><div class="card">
+    <div class="dots" id="ob-dots" role="img"></div>
+    <div class="step" id="ob-step" aria-live="polite"></div>
     <div class="foot">
       <div class="row" style="width:100%;justify-content:space-between"><button class="ghost" id="b-ob-back">‹ Back</button><button class="big" id="b-ob-next">Next ›</button></div>
       <label id="ob-skip-row"><input type="checkbox" id="onboard-skip" checked> Don't show this again</label>
@@ -227,14 +270,15 @@
   </div></div>
 </div></div>
 
-<script src="/vendor/three.min.js"></script>
-<script src="/vendor/GLTFLoader.js"></script>
-<script src="/js/tr-config.js?v=1"></script>
-<script src="/js/tr-sim.js?v=13"></script>
-<script src="/vendor/zzfx.js"></script>
-<script src="/js/tr-audio.js?v=2"></script>
-<script src="/js/tr-view.js?v=2"></script>
+<!-- All deferred: the page parses and paints first, then these run in this exact order (the module too). -->
+<script defer src="/vendor/three.min.js"></script>
+<script defer src="/vendor/GLTFLoader.js"></script>
+<script defer src="/js/tr-config.js?v=1"></script>
+<script defer src="/js/tr-sim.js?v=13"></script>
+<script defer src="/vendor/zzfx.js"></script>
+<script defer src="/js/tr-audio.js?v=2"></script>
+<script defer src="/js/tr-view.js?v=3"></script>
 <script type="module" src="/js/aha-room.js"></script>
-<script src="/js/tr-game.js?v=4"></script>
+<script defer src="/js/tr-game.js?v=5"></script>
 </body>
 </html>
