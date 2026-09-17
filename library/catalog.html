@@ -6,17 +6,27 @@
 <meta name="robots" content="noindex">
 <title>AhaSlides games asset library</title>
 <style>
-  :root { color-scheme: light dark; --bg: #f6f5f2; --fg: #1d1d1b; --mute: #6b6a66; --line: #dedcd6; --card: #fff; --accent: #2a62c4; --btn-bg: #2f6fc4; --btn-fg: #fff; }
+  :root { color-scheme: light dark; --bg: #f6f5f2; --fg: #1d1d1b; --mute: #6b6a66; --line: #dedcd6; --card: #fff; --accent: #2a62c4; --btn-bg: #2f6fc4; --btn-fg: #fff;
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 40px; --s7: 64px; }
   @media (prefers-color-scheme: dark) { :root { --bg: #17181a; --fg: #ececea; --mute: #9a9a95; --line: #2f3034; --card: #1f2023; --accent: #7aa7ff; --btn-bg: #7aa7ff; --btn-fg: #14161a; } }
   /* AA: --accent 5.3:1 on --bg (light) / 7.4:1 (dark); --btn-fg on --btn-bg 5.0:1 / 7.6:1 */
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
-  header { padding: 20px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; }
-  h1 { font-size: 18px; margin: 0; } h1 small { color: var(--mute); font-weight: normal; margin-left: 8px; }
+  header { padding: var(--s4) var(--s5); border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); align-items: center; }
+  header .title { margin-right: auto; }
+  h1 { font-size: 18px; line-height: 1.25; margin: 0; } #totals { display: block; color: var(--mute); font-size: 13px; }
   input[type=search] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); min-width: min(260px, 100%); min-height: 44px; }
   header .meta a { display: inline-flex; align-items: center; min-height: 44px; }
-  main { padding: 12px 24px 60px; max-width: 1400px; }
+  main { padding: var(--s5) var(--s5) var(--s7); max-width: 1400px; }
+  @media (max-width: 600px) { header, main { padding-left: var(--s4); padding-right: var(--s4); } header input[type=search] { flex: 1 1 100%; } }
+  .sec + .sec { margin-top: var(--s7); padding-top: var(--s6); border-top: 1px solid var(--line); }
+  .sec-head { margin: 0 0 var(--s5); max-width: 70ch; }
+  .sec-head h2 { font-size: 26px; line-height: 1.2; margin: 0 0 var(--s1); }
+  .sec-head p { margin: 0; color: var(--mute); }
+  .sec-head p a { color: var(--accent); }
+  .sub { margin: var(--s6) 0 0; } .sub h3 { font-size: 18px; margin: 0 0 var(--s1); } .sub > p { margin: 0 0 var(--s4); color: var(--mute); }
+  #how { margin: 0; }
   details { border: 1px solid var(--line); border-radius: 8px; background: var(--card); margin: 10px 0; }
   summary { cursor: pointer; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; min-height: 44px; list-style: none; }
   summary::-webkit-details-marker { display: none; }
@@ -45,27 +55,29 @@
 </head>
 <body>
 <header>
-  <h1>AhaSlides games asset library <small id="totals"></small></h1>
+  <div class="title"><h1>AhaSlides games asset library</h1><small id="totals"></small></div>
   <input id="q" type="search" aria-label="Filter assets by name or path" placeholder="filter by name or path (e.g. explosion, knight, 32x32)">
   <span class="meta"><a id="l-guide" href="llms.txt">guide (llms.txt)</a> · <a id="l-manifest" href="manifest.json">manifest.json</a> · <a id="l-packs" href="packs.json">packs.json</a><span id="who"></span></span>
 </header>
 <main>
-<section id="games-home" style="margin:6px 0 22px">
-  <h2 style="font-size:16px;margin:12px 0 2px">Games <small class="meta" style="font-weight:normal">built on this library, live at <a href="https://play.ahaslides.io" style="color:var(--accent)">play.ahaslides.io</a></small></h2>
-  <div id="games" style="--gh-fg:var(--fg);--gh-card:var(--card);--gh-tag:var(--bg);--gh-accent:var(--accent);--gh-btn-bg:var(--btn-bg);--gh-btn-fg:var(--btn-fg);--gh-line:var(--line)">Loading the games list…</div>
+<section id="games-home" class="sec">
+  <div class="sec-head"><h2>Games</h2><p>Built on this library, live at <a href="https://play.ahaslides.io">play.ahaslides.io</a>.</p></div>
+  <div id="games" data-level="3" style="--gh-fg:var(--fg);--gh-card:var(--card);--gh-tag:var(--bg);--gh-accent:var(--accent);--gh-btn-bg:var(--btn-bg);--gh-btn-fg:var(--btn-fg);--gh-line:var(--line)">Loading the games list…</div>
 </section>
-<h2 style="font-size:16px;margin:18px 0 6px">Assets</h2>
+<section id="assets" class="sec">
+<div class="sec-head"><h2>Assets</h2><p>Sounds, sprites, 3D models, music and fonts on the CDN. Search above, or open a pack below.</p></div>
 <pre id="how" tabindex="0" role="region" aria-label="Asset path layout">Every file lives at <b id="base"></b>/&lt;path&gt;. Paths and metadata come from manifest.json:
   sfx/&lt;pack&gt;/&lt;category&gt;/&lt;name&gt;-&lt;variant&gt;.m4a   sounds (AAC, 44.1 kHz; play with Web Audio or &lt;audio&gt;)
   sprites/&lt;pack&gt;/...                              PNG sheets and frames (width/height in the manifest)
   models/&lt;pack&gt;/...                               glTF / GLB with textures beside them
   music/…  fonts/…                                  the odd track and font</pre>
-<section id="maps" hidden>
-  <h2 style="font-size:16px;margin:18px 0 6px">Starter maps</h2>
-  <p class="meta" style="margin:0 0 10px">One ready-made level per tileset pack, drawn live by <code>aha-assets.js</code> from the same files a game would load. Drag to pan.</p>
+<section id="maps" class="sub" hidden>
+  <h3>Starter maps</h3>
+  <p>One ready-made level per tileset pack, drawn live by <code>aha-assets.js</code> from the same files a game would load. Drag to pan.</p>
   <div id="maplist" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(440px,100%),1fr));padding:0"></div>
 </section>
-<div id="packs"></div>
+<div id="packs" class="sub"></div>
+</section>
 </main>
 <script src="https://play.ahaslides.io/js/games-home.js"></script>
 <script>if (window.gamesHome) gamesHome.load(document.getElementById('games'), 'https://play.ahaslides.io/games.json'); else document.getElementById('games').textContent = 'The games list lives at https://play.ahaslides.io';</script>
