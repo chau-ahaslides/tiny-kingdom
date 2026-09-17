@@ -282,6 +282,28 @@ or `{ cylinder: [halfHeight, r] }` — half-extents, so a 2 x 1 x 2 m crate is `
 Commands are `add`, `remove`, `impulse`, `torque`, `velocity`, `place`, `gravity`, `grab`, `drag`,
 `release` and `reset`; each connection has one hand, so one phone cannot drop another's grip.
 
+**Who may do what.** By default the world is `open`: any connection may send any command, which is
+what makes a shared world feel shared — twenty phones are twenty hands, and none of them asks the
+big screen for permission. A game that wants otherwise says so in the spec:
+
+```js
+control: 'open'                                    // the default: anyone, anything
+control: 'host'                                    // phones watch; only the host changes the world
+control: { players: ['grab', 'drag', 'release'] }  // phones may carry things and nothing else
+```
+
+A blocked command comes back as an error naming the policy (`this world lets players send grab,
+drag, release — "remove" is the host's`), so a game finds out while it is being written rather than
+wondering why nothing happened. `world.may('remove')` asks before sending, which is how a button
+greys itself out, and the host can change the policy while the world runs with
+`world.control('open')`.
+
+Being the host is something the room grants, not something a page claims: `?role=host` is a string
+anyone can type, so the room mints a key when it builds the world and hands it to the connection
+that built it. `world.hostKey` is that key; the SDK keeps it for the tab, so a big screen that
+reloads comes back as the host rather than as a spectator, and a second screen can be given
+authority with `AhaPhysics.host(spec, { code, key })`.
+
 Worth knowing: the room snapshots 20 times a second and `world.step(now)` interpolates between
 snapshots, so drawing is smooth at any frame rate — call it once per animation frame even if nothing
 of yours changed. Work in metres (a body should be roughly 0.1–10 m). A world where everything has

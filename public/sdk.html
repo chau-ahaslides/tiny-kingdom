@@ -591,6 +591,9 @@ me.grab(<span class="s">'crate'</span>); me.drag([x, y]); me.release();</code></
   <tr><td>Cost</td><td>A settled world stops being stepped until the next command, so an idle room is free. Limits: 400 bodies, 120 commands a second per connection, emptied 15 minutes after the last command.</td></tr>
   <tr><td>Looking in</td><td><code>GET https://play.ahaslides.io/phys/&lt;CODE&gt;</code> answers with what is in the room right now.</td></tr>
 </table></div>
+<p><b>Who may do what.</b> A world is <code>open</code> unless it says otherwise: any connection may send any command, which is the whole point of a shared world — the Marshmallow phone lays the tape without asking the big screen. Games that want a firmer hand set <code>control</code> in the spec: <code>'host'</code> (phones watch), or <code>{ players: ['grab', 'drag', 'release'] }</code> (a whitelist). A blocked command returns <code>{ t: 'err', of, msg }</code> naming the policy rather than doing nothing quietly; <code>world.may('remove')</code> asks in advance, so a button can grey itself out; and <code>world.control(policy)</code> changes the rule while the world runs.</p>
+<p>Host is granted, not claimed. <code>?role=host</code> is a string anyone can type, so the room mints a key when it builds the world and only a connection presenting that key counts as a host. <code>world.hostKey</code> holds it, the SDK remembers it for the tab so a reloaded big screen comes back in charge, and <code>AhaPhysics.host(spec, { code, key })</code> hands authority to a second screen.</p>
+
 <p>The two SDKs are independent and compose: <code>aha-room.js</code> for who is playing, whose turn it is and what the score is; <code>aha-physics.js</code> for the world they are pushing on. A game that wants both mints two rooms, or passes the same code to both (<code>AhaPhysics.host(spec, { code: room.code })</code>).</p>
 
 <h2 id="embed">Embedding in the presenter and audience apps</h2>
