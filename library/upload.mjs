@@ -4,8 +4,9 @@
 //   LIB_URL=https://tiny-kingdom-lib.<account>.workers.dev LIB_TOKEN=... node library/upload.mjs [--prune] [--dry-run] [--force]
 //
 // Only files whose sha1 differs from the remote manifest are sent (--force sends everything);
-// --prune deletes remote files that are no longer in the local manifest. manifest.json,
-// packs.json and index.html go last so a reader never sees a manifest ahead of its files.
+// --prune deletes remote files that are no longer in the local manifest. The per-pack slices in
+// manifest/ are always sent, and manifest.json, packs.json and index.html go last so a reader never
+// sees a manifest ahead of its files.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -60,9 +61,14 @@ async function pool(items, n, fn) {
   return failed;
 }
 
+// The per-pack manifest slices are not in manifest.json's own entries, so they ride along here.
+const sliceDir = path.join(OUT, 'manifest');
+const slices = fs.existsSync(sliceDir) ? fs.readdirSync(sliceDir).filter((f) => f.endsWith('.json')).map((f) => `manifest/${f}`) : [];
+
 const t0 = Date.now();
 let failed = await pool(toSend.map((e) => e.path), JOBS, put);
 failed += await pool(toDelete, JOBS, del);
+if (!DRY) failed += await pool(slices, JOBS, put);
 if (failed) { console.error(`${failed} transfers failed; manifest not updated`); process.exit(1); }
 if (!DRY) for (const f of ['aha-assets.js', 'packs.json', 'index.html', 'llms.txt', 'manifest.json']) await put(f);
 console.log(`done in ${((Date.now() - t0) / 1000).toFixed(1)}s -> ${URL_}/`);

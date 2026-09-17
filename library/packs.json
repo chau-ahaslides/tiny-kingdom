@@ -692,6 +692,28 @@
       "notes": null
     },
     {
+      "id": "kenney",
+      "title": "Kenney Game Assets All-in-1",
+      "author": "Kenney",
+      "authorUrl": "https://kenney.nl",
+      "url": "https://kenney.nl/assets",
+      "source": "kenney.nl",
+      "price": "$29.95 for the bundle; every pack is also free on kenney.nl",
+      "kind": "bundle",
+      "dest": "kenney",
+      "from": {
+        "dir": "Kenney Game Assets All-in-1 3.7.0"
+      },
+      "handler": "kenney",
+      "expands": true,
+      "license": "CC0 1.0 Universal: public domain. Use commercially, alter, no credit required.",
+      "commercial": "yes",
+      "credit": null,
+      "licenseFile": null,
+      "description": "Kenney's whole catalogue in one download: 2D sprites and tilesets, 3D kits, UI packs, input-prompt icons and sound effects, all CC0. It expands into one pack per Kenney pack (kenney-<name>); only the web-ready form of each asset is hosted — sheets with their atlas, GLB models, .m4a sound — not the vector sources, FBX/OBJ/DAE/STL copies or sample projects.",
+      "notes": "Packs that are sheet-plus-loose-frames are hosted as the sheet: its .atlas.json names every frame, so nothing is lost and one request replaces hundreds. The Archive and Goodies categories (superseded packs, wallpapers, PDFs) are not hosted."
+    },
+    {
       "id": "three",
       "title": "three.js 0.186.0",
       "author": "three.js authors",

@@ -4,7 +4,8 @@
 //   GET  /                the catalog page (index.html in the bucket)       ┐ the index: needs the read token,
 //   GET  /llms.txt        the full guide for agents and people              │ as Authorization: Bearer <LIB_READ_TOKEN>
 //   GET  /manifest.json   every file with sizes, hashes, dimensions, durations │ or ?key=<LIB_READ_TOKEN> — or a
-//   GET  /packs.json      the packs with licences and credits                ┘ staff Google sign-in (/auth/login)
+//   GET  /manifest/<pack>.json  one pack's files (what to read; the whole one is 8 MB) │ staff Google
+//   GET  /packs.json      the packs with licences and credits                ┘ sign-in (/auth/login)
 //   GET  /auth/…          login, callback, logout, me — Google sign-in for AhaSlides staff
 //   PUT  /<key>           upload (Authorization: Bearer <LIB_UPLOAD_TOKEN>)
 //   DELETE /<key>         remove (same auth)
@@ -19,6 +20,8 @@ import { originAllowed, verifyJwt, parseCookies, signSession, readSession, email
 
 const CACHE_CONTROL = 'public, max-age=86400, stale-while-revalidate=604800';
 const INDEX = new Set(['index.html', 'manifest.json', 'packs.json', 'llms.txt']);
+// manifest/<pack>.json is the same index one pack at a time, so it is gated the same way.
+const gatedKey = (key) => INDEX.has(key) || key.startsWith('manifest/');
 
 export default {
   async fetch(request, env, ctx) {
@@ -46,7 +49,7 @@ export default {
 
     if (method !== 'GET' && method !== 'HEAD') return new Response('method not allowed', { status: 405, headers: cors(request) });
 
-    const gated = INDEX.has(key);
+    const gated = gatedKey(key);
     if (gated && !readAuthorised(request, url, env) && !(await session(request, env))) {
       // a person in a browser is sent to Google; an agent gets the plain 401 and uses its token
       if (method === 'GET' && loginConfigured(env) && (request.headers.get('accept') || '').includes('text/html')) {

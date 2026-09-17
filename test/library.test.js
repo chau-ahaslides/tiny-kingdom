@@ -171,3 +171,45 @@ test('the staff session cookie: signed, scoped to our domains, expires', async (
   assert.equal(safeNext('/\\evil.com'), '/catalog');
   assert.equal(safeNext(undefined, '/'), '/');
 });
+
+test('Kenney atlases: parsed from the XML, named frames at the right rects', async () => {
+  const { parseKenneyAtlas } = await import('../library/lib.mjs');
+  const { Atlas } = await import('../library/aha-assets.js');
+  const xml = `<TextureAtlas imagePath="sprites.png">
+\t<SubTexture name="blue_button00" x="0" y="94" width="190" height="49"/>
+\t<SubTexture name="blue_boxTick.png" x="190" y="94" width="38" height="36" />
+\t<!-- a comment, and a line that is not a SubTexture -->
+</TextureAtlas>`;
+  const a = parseKenneyAtlas(xml);
+  assert.equal(a.image, 'sprites.png');
+  assert.deepEqual(Object.keys(a.frames), ['blue_button00', 'blue_boxTick.png']);
+  assert.deepEqual(a.frames.blue_button00, { x: 0, y: 94, w: 190, h: 49 });
+  assert.deepEqual(parseKenneyAtlas('').frames, {});
+  assert.deepEqual(parseKenneyAtlas(null).frames, {});
+
+  // the build writes these as a TexturePacker "JSON hash" file, which is what Atlas reads
+  const data = { frames: { blue_button00: { frame: { x: 0, y: 94, w: 190, h: 49 } }, blue_boxTick: { frame: { x: 190, y: 94, w: 38, h: 36 } } }, animations: { press: ['blue_button00', 'blue_boxTick'] }, meta: { size: { w: 512, h: 256 } } };
+  const atlas = new Atlas({ width: 512, height: 256 }, data);
+  assert.deepEqual(atlas.frame('blue_button00'), { sx: 0, sy: 94, sw: 190, sh: 49 });
+  assert.equal(atlas.has('blue_boxTick'), true);
+  assert.equal(atlas.has('nope'), false);
+  assert.throws(() => atlas.frame('nope'), /no frame "nope"/);
+  assert.deepEqual(atlas.find('button'), ['blue_button00']);
+  assert.deepEqual(atlas.find(/box/i), ['blue_boxTick']);
+  assert.deepEqual(atlas.names, ['blue_button00', 'blue_boxTick']);
+});
+
+test('sheets with a gap between cells (Kenney tile sheets)', async () => {
+  const { cellRect, Sheet } = await import('../library/aha-assets.js');
+  assert.deepEqual(cellRect(3, 2, 16, 16, [1, 1]), { sx: 51, sy: 34, sw: 16, sh: 16 });
+  assert.deepEqual(cellRect(0, 0, 16, 16, [1, 1], [2, 2]), { sx: 2, sy: 2, sw: 16, sh: 16 });
+  assert.deepEqual(cellRect(3, 2, 80, 64), { sx: 240, sy: 128, sw: 80, sh: 64 }, 'no gap: unchanged');
+
+  const spaced = new Sheet({ width: 832, height: 373 }, { cell: [16, 16], gap: [1, 1] });   // Kenney 1-Bit Pack
+  assert.equal(spaced.cols, 49);
+  assert.equal(spaced.rows, 22);
+  assert.deepEqual(spaced.frame(99), { sx: 17, sy: 34, sw: 16, sh: 16 }, 'index 99 wraps to row 2, column 1');
+  const packed = new Sheet({ width: 784, height: 352 }, { cell: [16, 16] });                // the same sheet, packed
+  assert.equal(packed.cols, 49);
+  assert.deepEqual(packed.frame(99), { sx: 16, sy: 32, sw: 16, sh: 16 });
+});

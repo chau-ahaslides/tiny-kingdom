@@ -256,3 +256,153 @@ const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
     placements,
   });
 }
+
+/* ---------------------------------------------------------------- Kenney Tiny Town: a village
+   The Kenney sheets are plain grids, so cells are the 1-based index straight off the sheet
+   (12 columns here): 1 is grass, 41 is the dirt road, 49-51 and 61-63 are a roof, 73-75 a wall. */
+{
+  const W = 30, H = 20;
+  const ground = grid(W, H, '1');
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) ground[y][x] = pick(['1', '1', '1', '1', '2', '3']);
+  const road = grid(W, H);
+  for (let x = 0; x < W; x++) { road[10][x] = pick(['41', '42']); road[11][x] = pick(['41', '42']); }   // the high street
+  for (let y = 0; y < H; y++) { road[y][14] = pick(['41', '42']); road[y][15] = pick(['41', '42']); }   // the lane to the fields
+  const build = grid(W, H);
+  const solid = grid(W, H);
+  // A house is two rows of roof over one row of wall, with the door in the middle.
+  const house = (x, y, roof, wall) => {
+    for (let i = 0; i < 3; i++) {
+      build[y][x + i] = String(roof[i]);
+      build[y + 1][x + i] = String(roof[i] + 12);
+      build[y + 2][x + i] = String(wall[i]);
+      for (let r = 0; r < 3; r++) solid[y + r][x + i] = '1';
+    }
+    solid[y + 2][x + 1] = '.';                       // you can walk in through the door
+  };
+  house(3, 5, [49, 50, 51], [73, 75, 74]);           // blue roof, brown walls
+  house(9, 4, [53, 54, 55], [77, 79, 78]);           // red roof, grey walls
+  house(20, 5, [49, 50, 51], [77, 79, 78]);
+  house(24, 13, [53, 54, 55], [73, 75, 74]);
+  house(4, 14, [49, 50, 51], [73, 75, 74]);
+  const nature = grid(W, H);
+  const tree = (x, y, autumn = false) => { nature[y][x] = String(autumn ? 23 : 20); nature[y + 1][x] = String(autumn ? 35 : 32); solid[y + 1][x] = '1'; };
+  for (const [x, y, a] of [[1, 2, false], [7, 2, true], [18, 2, false], [26, 3, true], [28, 8, false],
+                           [1, 12, true], [11, 13, false], [19, 15, true], [27, 17, false], [17, 8, false]]) tree(x, y, a);
+  for (const [x, y] of [[2, 9], [6, 12], [13, 3], [22, 10], [23, 17], [9, 18]]) nature[y][x] = pick(['6', '18', '30']);
+  const fence = grid(W, H);
+  for (let x = 17; x <= 22; x++) fence[13][x] = x === 17 ? '45' : x === 22 ? '47' : '46';   // the paddock
+  for (let y = 14; y <= 16; y++) { fence[y][17] = '48'; fence[y][22] = '48'; }
+  for (let x = 17; x <= 22; x++) fence[17][x] = x === 17 ? '45' : x === 22 ? '47' : '46';
+  for (let y = 13; y <= 17; y++) for (let x = 17; x <= 22; x++) if (fence[y][x] !== '.') solid[y][x] = '1';
+  fence[17][19] = '.'; solid[17][19] = '.';          // the gate
+  write('kenney-tiny-town/village.json', {
+    name: 'Village', basedOn: 'kenney-tiny-town',
+    description: 'A crossroads village on 16px Kenney tiles: five houses, a paddock with a gate, orchards and a dirt high street. The walls, tree trunks and fence are solid; the doorways are not.',
+    tileset: 'sprites/kenney/tiny-town/Tilemap/tilemap_packed.png',
+    size: [W, H], background: '#7fb069',
+    layers: [
+      { name: 'ground', rows: rows(ground) },
+      { name: 'road', rows: rows(road) },
+      { name: 'buildings', rows: rows(build) },
+      { name: 'nature', rows: rows(nature) },
+      { name: 'fence', rows: rows(fence) },
+      { name: 'collision', rows: rows(solid), visible: false, solid: true },
+    ],
+    objects: [
+      { type: 'spawn', x: 14, y: 19 },
+      { type: 'door', x: 4, y: 7, of: 'house-1' },
+      { type: 'door', x: 10, y: 6, of: 'house-2' },
+      { type: 'door', x: 21, y: 7, of: 'house-3' },
+      { type: 'door', x: 25, y: 15, of: 'house-4' },
+      { type: 'door', x: 5, y: 16, of: 'house-5' },
+      { type: 'sign', x: 13, y: 10, text: 'Market' },
+      { type: 'gate', x: 19, y: 17 },
+    ],
+  });
+}
+
+/* ---------------------------------------------------------------- Kenney Tiny Dungeon: a vault */
+{
+  const W = 24, H = 14;
+  const floorTiles = ['50', '50', '50', '51', '52', '53'];
+  const floor = grid(W, H);
+  const walls = grid(W, H);
+  const rooms = [[1, 1, 9, 6], [13, 1, 22, 5], [3, 8, 20, 12]];
+  const corridors = [[9, 3, 14, 4], [6, 6, 7, 9], [17, 5, 18, 9]];
+  for (const [x0, y0, x1, y1] of [...rooms, ...corridors]) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) floor[y][x] = pick(floorTiles);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (floor[y][x] !== '.') continue;
+    const open = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]].some(([dx, dy]) => floor[y + dy]?.[x + dx] && floor[y + dy][x + dx] !== '.');
+    if (open) walls[y][x] = floor[y + 1]?.[x] && floor[y + 1][x] !== '.' ? pick(['1', '1', '3', '13']) : pick(['1', '2', '4']);
+  }
+  const props = grid(W, H);
+  props[6][4] = '11';  props[1][17] = '30';  props[1][20] = '30';           // stair arch, two wall torches
+  props[8][9] = '67'; props[8][10] = '64'; props[11][19] = '67';            // barrel, crate, barrel
+  props[2][15] = '90'; props[11][4] = '92';                                 // two chests
+  props[4][2] = '73'; props[4][3] = '76'; props[2][8] = '75';               // chair, crate, anvil
+  write('kenney-tiny-dungeon/vault.json', {
+    name: 'Vault', basedOn: 'kenney-tiny-dungeon',
+    description: 'Three rooms and two corridors on 16px Kenney dungeon tiles: a guard room, a treasury and a long cellar. Everything that is not floor is solid; the props layer holds chests, barrels and torches.',
+    tileset: 'sprites/kenney/tiny-dungeon/Tilemap/tilemap_packed.png',
+    size: [W, H], background: '#150f14',
+    layers: [
+      { name: 'floor', rows: rows(floor) },
+      { name: 'walls', solid: true, rows: rows(walls) },
+      { name: 'props', rows: rows(props) },
+    ],
+    objects: [
+      { type: 'spawn', x: 4, y: 5, sprite: 'sprites/kenney/tiny-dungeon/Tilemap/tilemap_packed.png', frame: '97' },
+      { type: 'exit', x: 4, y: 6 },
+      { type: 'chest', x: 15, y: 2, loot: 'gold' },
+      { type: 'chest', x: 4, y: 11, loot: 'potion' },
+      { type: 'enemy', kind: 'goblin', x: 17, y: 3, sprite: 'sprites/kenney/tiny-dungeon/Tilemap/tilemap_packed.png', frame: '110' },
+      { type: 'enemy', kind: 'slime', x: 8, y: 10, sprite: 'sprites/kenney/tiny-dungeon/Tilemap/tilemap_packed.png', frame: '109' },
+      { type: 'enemy', kind: 'rat king', x: 19, y: 9, sprite: 'sprites/kenney/tiny-dungeon/Tilemap/tilemap_packed.png', frame: '121' },
+    ],
+  });
+}
+
+/* ---------------------------------------------------------------- Kenney Pixel Platformer: hills */
+{
+  const W = 48, H = 14;
+  const solidRow = 10;                                  // the ground surface
+  const ground = grid(W, H);
+  const pits = [[12, 15], [26, 28], [37, 38]];
+  const inPit = (x) => pits.some(([a, b]) => x >= a && x <= b);
+  for (let x = 0; x < W; x++) {
+    if (inPit(x)) continue;
+    const left = inPit(x - 1) || x === 0, right = inPit(x + 1) || x === W - 1;
+    ground[solidRow][x] = left ? '1' : right ? '4' : pick(['2', '3']);
+    for (let y = solidRow + 1; y < H; y++) ground[y][x] = pick(['121', '122', '123', '124']);
+  }
+  const ledge = (x, y, w) => { for (let i = 0; i < w; i++) ground[y][x + i] = String(i === 0 ? 48 : i === w - 1 ? 51 : 50); };
+  ledge(9, 7, 4); ledge(17, 6, 5); ledge(24, 8, 3); ledge(31, 5, 4); ledge(40, 7, 5);
+  const water = grid(W, H);
+  for (const [a, b] of pits) for (let x = a; x <= b; x++) { water[solidRow + 1][x] = x === a ? '54' : x === b ? '56' : '55'; for (let y = solidRow + 2; y < H; y++) water[y][x] = '35'; }
+  const props = grid(W, H);
+  for (const x of [3, 21, 34, 45]) props[solidRow - 1][x] = pick(['127', '128', '17']);      // trees and a cactus
+  for (const [x, y] of [[10, 6], [18, 5], [19, 5], [25, 7], [32, 4], [41, 6], [42, 6], [7, 9], [22, 9], [36, 9]]) props[y][x] = '152';   // coins
+  props[solidRow - 1][6] = '85';                        // signpost
+  props[solidRow - 1][46] = '112'; props[solidRow - 2][46] = '113';   // the flag at the end
+  for (let y = 6; y <= solidRow - 1; y++) props[y][17] = '52';        // a ladder up to the long ledge
+  const sky = grid(W, H);
+  for (const [x, y] of [[4, 2], [14, 1], [23, 3], [30, 1], [39, 2]]) { sky[y][x] = '154'; sky[y][x + 1] = '155'; sky[y][x + 2] = '156'; }
+  write('kenney-pixel-platformer/hills.json', {
+    name: 'Hills', basedOn: 'kenney-pixel-platformer',
+    description: 'A side-scrolling level on 18px Kenney tiles: grass ground with three water pits, five wooden ledges, a ladder, coins to collect and a flag at the far end. The ground and ledges are the solid layer; clouds sit on a parallax sky layer.',
+    tileset: 'sprites/kenney/pixel-platformer/Tilemap/tilemap_packed.png',
+    size: [W, H], background: '#63c5da',
+    layers: [
+      { name: 'sky', rows: rows(sky), parallax: [0.4, 1] },
+      { name: 'ground', solid: true, rows: rows(ground) },
+      { name: 'water', rows: rows(water) },
+      { name: 'props', rows: rows(props) },
+    ],
+    objects: [
+      { type: 'spawn', x: 2, y: 9 },
+      { type: 'exit', x: 46, y: 9 },
+      { type: 'checkpoint', x: 19, y: 5 },
+      { type: 'checkpoint', x: 32, y: 4 },
+    ],
+  });
+}

@@ -29,8 +29,8 @@ export function frameAt(t, n, fps, loop = true) {
 }
 
 /** Source rectangle of cell (col, row) in a grid of cw x ch cells. */
-export function cellRect(col, row, cw, ch) {
-  return { sx: col * cw, sy: row * ch, sw: cw, sh: ch };
+export function cellRect(col, row, cw, ch, gap = [0, 0], margin = [0, 0]) {
+  return { sx: margin[0] + col * (cw + gap[0]), sy: margin[1] + row * (ch + gap[1]), sw: cw, sh: ch };
 }
 
 export class AssetLibrary {
@@ -71,6 +71,17 @@ export class AssetLibrary {
   async sheet(path, override = {}) {
     const [img, meta] = await Promise.all([this.image(path), this.meta(path)]);
     return new Sheet(img, { ...(meta || {}), ...override });
+  }
+
+  /**
+   * A packed sheet with named frames: 'sprites/kenney/ui-pack/ui_sheet' loads the PNG and
+   * ui_sheet.atlas.json beside it. Use this for any sheet the manifest marks `atlas: true`.
+   */
+  async atlas(path, override = {}) {
+    const image = path.replace(/\.atlas\.json$/, '').replace(/(\.png)?$/, '.png');   // with or without the .png
+    const [img, data] = await Promise.all([this.image(image), this.meta(`${image}.atlas.json`)]);
+    if (!data) throw new Error(`no atlas at ${image}.atlas.json`);
+    return new Atlas(img, { ...data, ...override });
   }
 
   /** A per-frame animation: 'sprites/adventure-girl/Run' loads Run.json and every frame it lists. */
@@ -200,6 +211,7 @@ export class GameMap {
     this.images = spec.images || [];
     this.objects = (spec.objects || []).map((o) => ({ ...o }));
     this.legend = spec.legend || {};
+    this.background = spec.background || null;   // the colour behind the tiles, when the map names one
     this.solidLayers = new Set(spec.solid || []);
   }
 
@@ -280,7 +292,11 @@ export class GameMap {
   propRect(o) {
     const sheet = this.propSheets[o.sprite];
     let rect;
-    if (o.region) { const [c, r, w, h] = o.region; rect = { sx: (c - 1) * sheet.cell[0], sy: (r - 1) * sheet.cell[1], sw: w * sheet.cell[0], sh: h * sheet.cell[1] }; }
+    if (o.region) {
+      const [c, r, w, h] = o.region, [gx, gy] = sheet.gap || [0, 0];
+      const tl = sheet.frame(c - 1, r - 1);
+      rect = { sx: tl.sx, sy: tl.sy, sw: w * sheet.cell[0] + (w - 1) * gx, sh: h * sheet.cell[1] + (h - 1) * gy };
+    }
     else if (o.anim != null) { const a = sheet.animation(o.anim); rect = sheet.frame(a.col, a.row); }
     else if (o.frame != null) rect = sheet.frame(parseCell(o.frame, sheet.cols) - 1, 0);
     else rect = { sx: 0, sy: 0, sw: sheet.width, sh: sheet.height };
@@ -413,8 +429,12 @@ export class Sheet {
     this.height = img.naturalHeight || img.height;
     const [cw, ch] = meta.cell || [this.width, this.height];
     this.cell = [cw, ch];
-    this.cols = meta.cols || Math.max(1, Math.floor(this.width / cw));
-    this.rows = meta.rows || Math.max(1, Math.floor(this.height / ch));
+    // Many tile sheets leave a gap between cells (and sometimes a margin around them); both come from
+    // the sheet's sidecar, so a game never measures pixels itself.
+    this.gap = meta.gap || [0, 0];
+    this.margin = meta.margin || [0, 0];
+    this.cols = meta.cols || Math.max(1, Math.floor((this.width - this.margin[0] + this.gap[0]) / (cw + this.gap[0])));
+    this.rows = meta.rows || Math.max(1, Math.floor((this.height - this.margin[1] + this.gap[1]) / (ch + this.gap[1])));
     this.frames = meta.frames || this.cols;
     this.fps = meta.fps || 10;
     // A one-row strip is also an animation, under the sheet's own name or "play" (as in its atlas).
@@ -425,7 +445,7 @@ export class Sheet {
   /** Source rect of a cell by (col, row), or by a single index counted left to right, top to bottom. */
   frame(col, row = 0) {
     if (row === 0 && col >= this.cols) { row = Math.floor(col / this.cols); col %= this.cols; }
-    return cellRect(col, row, this.cell[0], this.cell[1]);
+    return cellRect(col, row, this.cell[0], this.cell[1], this.gap, this.margin);
   }
 
   /** { row, frames, fps, col } for a named animation, an ad-hoc { row, frames } object, or null for the first row as a strip. */
@@ -461,6 +481,77 @@ export class Sheet {
     const i = frameAt(t, a.frames, fps, loop);
     this.drawFrame(ctx, a.col + i, a.row, x, y, opts);
     return !loop && i >= a.frames - 1;
+  }
+}
+
+/**
+ * A packed sheet whose frames have names rather than grid positions (Kenney's packs ship one of
+ * these per sheet, as <sheet>.atlas.json). The library writes the atlas; a game only ever asks for a
+ * frame by the name the artist gave it:
+ *
+ *   const ui = await assets.atlas('sprites/kenney/ui-pack/ui_sheet');
+ *   ui.draw(ctx, 'button_rectangle_depth_flat', 40, 40, { scale: 2 });
+ *
+ * The same file is a TexturePacker "JSON hash" atlas, so PixiJS and Phaser load it directly.
+ */
+export class Atlas {
+  constructor(img, data = {}) {
+    this.img = img;
+    this.width = img.naturalWidth || img.width;
+    this.height = img.naturalHeight || img.height;
+    this.data = data;
+    this.frames = {};
+    for (const [name, f] of Object.entries(data.frames || {})) {
+      const r = f.frame || f;
+      this.frames[name] = { sx: r.x, sy: r.y, sw: r.w, sh: r.h };
+    }
+    this.names = Object.keys(this.frames);
+    this.animations = data.animations || {};
+    this.fps = data.meta?.fps || 10;
+  }
+
+  /** Source rect of a named frame. */
+  frame(name) {
+    const f = this.frames[name];
+    if (!f) throw new Error(`no frame "${name}" in this atlas (${this.names.length} frames, e.g. ${this.names.slice(0, 3).join(', ')})`);
+    return f;
+  }
+
+  has(name) { return name in this.frames; }
+
+  /** Frame names containing `text` (or matching a RegExp) — how a game finds "all the blue buttons". */
+  find(text) {
+    const re = text instanceof RegExp ? text : new RegExp(String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    return this.names.filter((n) => re.test(n));
+  }
+
+  /** Draw a named frame at (x, y). scale multiplies its own size; w/h override it outright. */
+  draw(ctx, name, x, y, { scale = 1, w = null, h = null, flip = false, smooth = false } = {}) {
+    const { sx, sy, sw, sh } = this.frame(name);
+    const dw = w ?? sw * scale, dh = h ?? sh * scale;
+    ctx.imageSmoothingEnabled = smooth;
+    if (flip) {
+      ctx.save(); ctx.translate(x + dw, y); ctx.scale(-1, 1);
+      ctx.drawImage(this.img, sx, sy, sw, sh, 0, 0, dw, dh);
+      ctx.restore();
+    } else ctx.drawImage(this.img, sx, sy, sw, sh, x, y, dw, dh);
+  }
+
+  /** Draw a named animation (frames listed in the atlas) at time t in ms. */
+  drawAnimation(ctx, name, t, x, y, opts = {}) {
+    const list = this.animations[name];
+    if (!list) throw new Error(`no animation "${name}" in this atlas (have: ${Object.keys(this.animations).join(', ') || 'none'})`);
+    const i = frameAt(t, list.length, opts.fps || this.fps, opts.loop !== false);
+    this.draw(ctx, list[i], x, y, opts);
+    return opts.loop === false && i >= list.length - 1;
+  }
+
+  /** One frame as its own canvas, for code that wants an image per sprite. */
+  toCanvas(name) {
+    const { sx, sy, sw, sh } = this.frame(name);
+    const c = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(sw, sh) : Object.assign(document.createElement('canvas'), { width: sw, height: sh });
+    c.getContext('2d').drawImage(this.img, sx, sy, sw, sh, 0, 0, sw, sh);
+    return c;
   }
 }
 

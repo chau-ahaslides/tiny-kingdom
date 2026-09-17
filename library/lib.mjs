@@ -152,6 +152,27 @@ export async function verifyJwt(token, { keys, aud, issuer, now = Date.now() / 1
   } catch { return null; }
 }
 
+/**
+ * Kenney's TextureAtlas XML (`<SubTexture name x y width height>`) as { image, frames }. Frames keep
+ * Kenney's own names, which is what makes an atlas nicer to use than a grid: `ui.draw(ctx, 'button_
+ * rectangle_depth_flat', x, y)` rather than a row and a column.
+ */
+export function parseKenneyAtlas(xml) {
+  const text = String(xml || '');
+  const image = /imagePath="([^"]+)"/.exec(text)?.[1] || null;
+  const frames = {};
+  const re = /<SubTexture\s+([^>]*?)\/?>/g;
+  const attr = (s, k) => { const m = new RegExp(`\\b${k}="([^"]*)"`).exec(s); return m ? m[1] : null; };
+  for (let m; (m = re.exec(text)); ) {
+    const a = m[1];
+    const name = attr(a, 'name');
+    const x = +attr(a, 'x'), y = +attr(a, 'y'), w = +attr(a, 'width'), h = +attr(a, 'height');
+    if (!name || [x, y, w, h].some((n) => !Number.isFinite(n))) continue;
+    frames[name] = { x, y, w, h };
+  }
+  return { image, frames };
+}
+
 /* --- The staff session: a signed cookie minted after Google sign-in (see library/worker/worker.js) --- */
 
 const B64 = {

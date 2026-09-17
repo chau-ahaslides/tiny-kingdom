@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cleanName, cleanPath, imageSize, mimeOf, parseEffectSheet, parsePixelCombat, PIXEL_COMBAT_CAT, routeDest, slug, wavDuration } from './lib.mjs';
+import { cleanName, cleanPath, imageSize, mimeOf, parseEffectSheet, parseKenneyAtlas, parsePixelCombat, PIXEL_COMBAT_CAT, routeDest, slug, wavDuration } from './lib.mjs';
 import { parseCell } from './aha-assets.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -111,20 +111,27 @@ function copyIfChanged(src, dst) {
 
 // ---------- audio ----------
 const HAS_AFCONVERT = which('afconvert');
-const HAS_FFMPEG = which('ffmpeg');
+// LIB_FFMPEG points at a binary off PATH; `npx --yes ffmpeg-static-bin` or Homebrew both do
+const FFMPEG = process.env.LIB_FFMPEG || 'ffmpeg';
+const HAS_FFMPEG = process.env.LIB_FFMPEG ? fs.existsSync(FFMPEG) : which('ffmpeg');
 if (!HAS_AFCONVERT && !HAS_FFMPEG) { console.error('need afconvert (macOS) or ffmpeg on PATH to convert .wav'); process.exit(1); }
 
 async function toM4a(src, dst) {
   if (upToDate(src, dst)) return false;
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   const tmp = `${dst}.tmp.m4a`;
-  if (HAS_AFCONVERT) await run('afconvert', ['-f', 'm4af', '-d', 'aac@44100', '-b', '128000', '-q', '127', '-s', '3', src, tmp]);
-  else await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-ar', '44100', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', tmp]);
+  // afconvert is macOS's own and much the fastest, but it cannot read Vorbis, so .ogg goes through ffmpeg
+  const vorbis = /\.ogg$/i.test(src);
+  if (HAS_AFCONVERT && !vorbis) await run('afconvert', ['-f', 'm4af', '-d', 'aac@44100', '-b', '128000', '-q', '127', '-s', '3', src, tmp]);
+  else await run(FFMPEG, ['-y', '-loglevel', 'error', '-i', src, '-ar', '44100', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', tmp]);
   fs.renameSync(tmp, dst);
   return true;
 }
 
 // ---------- per-file work items ----------
+// Packs a handler discovers rather than packs.json listing them (Kenney's 250); they join the
+// manifest's pack list on equal terms.
+const generated = [];
 // item: { src, dst (relative to OUT), pack, meta: { ...extra manifest fields }, convert: bool }
 const items = [];
 const seen = new Map();
@@ -202,6 +209,188 @@ function planPixelEffects(pack, root, rels) {
   }
 }
 
+/* ---------- Kenney's All-in-1 bundle ----------
+   250 packs in one folder, every one of them CC0. Each becomes a pack of its own (kenney-<slug>,
+   under sprites|models|sfx|music|fonts/kenney/<slug>/), because "Kenney" as a single pack would be
+   30,000 files in one heap. Only the web-ready form of each asset is hosted:
+
+     a sheet with an XML atlas   the PNG, plus a generated .atlas.json carrying Kenney's own frame
+                                 names; the loose frames the atlas already names are not hosted
+     a Tilemap / Tilesheet grid  the sheet (the per-tile PNGs beside it are the same pixels)
+     other PNGs                  as they are
+     Models/GLTF format/*.glb    the FBX, OBJ, DAE and STL copies of the same model are not hosted
+     Audio                       .ogg converted to .m4a, like every other sound here
+     fonts                       .ttf / .otf
+
+   Vector sources, per-model preview renders, Construct and Unity projects, and the Archive and
+   Goodies categories stay out; they are downloads, not things a game loads. */
+const KENNEY_CATEGORIES = new Set(['2D assets', '3D assets', 'Audio', 'UI assets', 'Icons', 'Early access', 'Other']);
+const KENNEY_ONLY_PACKS = { Other: new Set(['Fonts']) };            // the rest of "Other" is sample projects
+const KENNEY_KEEP = /\.(png|glb|gltf|bin|ogg|wav|mp3|ttf|otf)$/i;
+const KENNEY_SHEET_DIR = /(^|\/)(spritesheets?|tilesheets?|tilemap)(\/|$)/i;
+const KENNEY_TILE_DIR = /(^|\/)tiles?( \([^)]*\))?(\/|$)/i;
+const KENNEY_DROP_DIR = /(^|\/)(vector|previews?|sources?|construct|samples?|skins)(\/|$)/i;
+const KENNEY_MUSIC = /music|jingle|soundtrack/i;
+
+/**
+ * kenney.nl's page for a pack. library/kenney-urls.json maps every pack folder in the bundle to the
+ * page that actually exists (checked against kenney.nl's own list; some packs were renamed, and a
+ * few are bundle-only, which point at the catalogue). Anything not in the map falls back to the
+ * name lower-cased and hyphenated, which is the site's usual shape.
+ */
+const KENNEY_URLS = JSON.parse(fs.readFileSync(path.join(HERE, 'kenney-urls.json'), 'utf8'));
+const kenneyUrl = (name) => KENNEY_URLS[name] || `https://kenney.nl/assets/${name.toLowerCase().replace(/[()×]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`;
+
+/** tilewidth/tileheight/spacing/margin out of a Tiled .tsx or .tmx, which says it exactly. */
+function tiledGrid(xml) {
+  const n = (k) => { const m = new RegExp(`${k}="(\\d+)"`).exec(xml); return m ? +m[1] : null; };
+  const w = n('tilewidth'), h = n('tileheight');
+  return w && h ? { cell: [w, h], gap: n('spacing') || 0, margin: n('margin') || 0 } : null;
+}
+
+/**
+ * The grid of a tile sheet: the cell size is what one loose tile measures, and the gap is whatever
+ * makes that cell size divide the sheet exactly. Kenney draws most sheets with a 1px gap between
+ * tiles, which is the thing every agent otherwise has to work out by eye.
+ */
+function fitGrid(sheet, cell) {
+  if (!sheet || !cell) return null;
+  const [cw, ch] = cell;
+  if (cw > sheet.width || ch > sheet.height) return null;
+  for (const gap of [0, 1, 2]) {
+    for (const margin of [0, gap]) {
+      const fits = (total, size) => (total - 2 * margin + gap) % (size + gap) === 0 && (total - 2 * margin + gap) / (size + gap) >= 1;
+      if (fits(sheet.width, cw) && fits(sheet.height, ch)) {
+        return { cell: [cw, ch], ...(gap ? { gap: [gap, gap] } : {}), ...(margin ? { margin: [margin, margin] } : {}) };
+      }
+    }
+  }
+  return null;
+}
+
+/** The size most of these images share, which for a folder of tiles is the tile size. */
+function modalSize(paths, share = 0.3) {
+  const counts = new Map();
+  let n = 0;
+  for (const f of paths.slice(0, 40)) {
+    try {
+      const s = imageSize(fs.readFileSync(f));
+      if (!s) continue;
+      n++;
+      const k = `${s.width}x${s.height}`;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    } catch { /* unreadable: it simply does not vote */ }
+  }
+  const best = [...counts].sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= Math.max(2, n * share) ? best[0].split('x').map(Number) : null;
+}
+
+function planKenney(pack, root, rels) {
+  const groups = new Map();
+  for (const rel of rels) {
+    if (GLOBAL_SKIP.some((re) => re.test(rel))) continue;
+    const parts = rel.split('/');
+    if (parts.length < 3) continue;                                  // Overview.html, assets.json, the .url shortcuts
+    const [category, name] = parts;
+    if (!KENNEY_CATEGORIES.has(category)) continue;
+    if (KENNEY_ONLY_PACKS[category] && !KENNEY_ONLY_PACKS[category].has(name)) continue;
+    const key = `${category}/${name}`;
+    (groups.get(key) || groups.set(key, []).get(key)).push(parts.slice(2).join('/'));
+  }
+
+  for (const [key, files] of [...groups].sort()) {
+    const [category, name] = key.split('/');
+    const id = `kenney-${slug(name)}`;
+    const dir = `kenney/${slug(name)}`;
+    const audioDest = KENNEY_MUSIC.test(name) ? `music/${dir}` : `sfx/${dir}`;
+
+    // The atlases first: they decide which loose frames are worth hosting.
+    const atlases = [];
+    for (const rel of files) {
+      if (!/\.xml$/i.test(rel)) continue;
+      const parsed = parseKenneyAtlas(fs.readFileSync(path.join(root, key, rel), 'utf8'));
+      // The sheet is the PNG of the same name; older packs all claim imagePath="sprites.png", so that
+      // is only the fallback.
+      const dir2 = path.posix.dirname(rel);
+      const sameName = path.posix.join(dir2, path.basename(rel).replace(/\.xml$/i, '.png'));
+      const png = files.includes(sameName) ? sameName : path.posix.join(dir2, parsed.image || '');
+      if (!files.includes(png)) continue;                            // an atlas for a sheet that is not here
+      // Frame names lose the .png some packs carry, so every atlas here names frames the same way.
+      const frames = Object.fromEntries(Object.entries(parsed.frames).map(([n, f]) => [n.replace(/\.(png|jpg)$/i, ''), f]));
+      atlases.push({ rel, png, frames });
+    }
+    const covered = new Set(atlases.flatMap((a) => Object.keys(a.frames)));
+    const hasSheet = atlases.length > 0 || files.some((f) => KENNEY_SHEET_DIR.test(f) && /\.png$/i.test(f));
+
+    // The tile size: a Tiled file in the pack if there is one, otherwise what the loose tiles measure.
+    const tiled = files.filter((f) => /\.(tsx|tmx)$/i.test(f)).map((f) => tiledGrid(fs.readFileSync(path.join(root, key, f), 'utf8'))).find(Boolean);
+    const tilePngs = files.filter((f) => /\.png$/i.test(f) && KENNEY_TILE_DIR.test(f) && !KENNEY_SHEET_DIR.test(f)).map((f) => path.join(root, key, f));
+    const loosePngs = files.filter((f) => /\.png$/i.test(f) && !KENNEY_SHEET_DIR.test(f) && !KENNEY_DROP_DIR.test(f)).map((f) => path.join(root, key, f));
+    // A sheet's cell is what one of the pack's own sprites measures — its tiles if it has a tile
+    // folder, otherwise whatever size most of its loose sprites share (half of them, to be sure).
+    const tileCell = tiled?.cell || modalSize(tilePngs) || modalSize(loosePngs, 0.5);
+    // Some kits ship the same models twice, as .glb and as .gltf+.bin; one self-contained file wins.
+    const modelDir = files.some((f) => /(^|\/)glb format\//i.test(f)) ? /(^|\/)glb format\//i : /(^|\/)gltf format\//i;
+
+    let kept = 0;
+    for (const rel of files) {
+      if (!KENNEY_KEEP.test(rel)) continue;
+      if (KENNEY_DROP_DIR.test(rel)) continue;
+      if (/(^|\/)preview\.png$/i.test(rel)) continue;
+      const ext = path.extname(rel).toLowerCase();
+      const base = path.basename(rel, ext);
+
+      if (ext === '.glb' || ext === '.gltf' || ext === '.bin') {
+        if (!modelDir.test(rel)) continue;                           // Models/{FBX,OBJ,DAE,STL} format/ are the same models
+        add({ src: path.join(root, key, rel), dst: `models/${dir}/${cleanName(path.basename(rel))}`, pack: id, convert: false, meta: {} });
+        kept++; continue;
+      }
+      if (/(^|\/)models?(\/|$)/i.test(rel)) continue;                 // anything else under Models/ is a source format
+      if (ext === '.ogg' || ext === '.wav' || ext === '.mp3') {
+        // "Audio (Female)/1.ogg" and "Audio (Male)/1.ogg" are different sounds: keep the folder as a category
+        const sub = path.posix.dirname(rel).split('/').filter((d) => d && d !== '.' && !/^audio$/i.test(d)).map(slug).join('/');
+        add({ src: path.join(root, key, rel), dst: `${audioDest}/${sub ? sub + '/' : ''}${cleanName(base)}.m4a`, pack: id, convert: true, meta: sub ? { category: sub } : {} });
+        kept++; continue;
+      }
+      if (ext === '.ttf' || ext === '.otf') {
+        add({ src: path.join(root, key, rel), dst: `fonts/${dir}/${cleanName(path.basename(rel))}`, pack: id, convert: false, meta: {} });
+        kept++; continue;
+      }
+      // PNG: a sheet the atlas describes, a grid sheet, or a loose frame no sheet covers
+      const atlas = atlases.find((a) => a.png === rel);
+      if (!atlas) {
+        if (covered.has(base)) continue;                             // the atlas names this frame already
+        if (hasSheet && KENNEY_TILE_DIR.test(rel) && !KENNEY_SHEET_DIR.test(rel)) continue;   // the tilesheet holds these tiles
+      }
+      // A sheet arrives ready to use: named frames from its atlas, or a grid the library measured.
+      let meta = {};
+      if (atlas) meta = { atlas: true, frames: Object.keys(atlas.frames).length };
+      else if (KENNEY_SHEET_DIR.test(rel) && tileCell) {
+        const grid = fitGrid(imageSize(fs.readFileSync(path.join(root, key, rel))), tileCell);
+        if (grid) meta = grid;
+      }
+      add({
+        src: path.join(root, key, rel),
+        dst: `sprites/${dir}/${cleanPath(rel)}`,
+        pack: id, convert: false, meta,
+        atlas: atlas ? atlas.frames : undefined,
+      });
+      kept++;
+    }
+    if (!kept) continue;
+    generated.push({
+      id, title: `Kenney ${name}`, author: 'Kenney', authorUrl: 'https://kenney.nl',
+      url: kenneyUrl(name), source: 'kenney.nl', price: 'free (also in the $29.95 All-in-1 bundle)',
+      kind: category === '3D assets' ? 'models' : category === 'Audio' ? 'sfx' : 'sprites',
+      dest: { '': `sprites/${dir}`, 'models/': `models/${dir}`, 'sfx/': audioDest, 'fonts/': `fonts/${dir}` },
+      license: pack.license, commercial: pack.commercial, credit: pack.credit, licenseFile: pack.licenseFile,
+      description: `${name} from Kenney's All-in-1 bundle (${category}).`,
+      notes: KENNEY_URLS[name] === 'https://kenney.nl/assets' ? 'Only in the All-in-1 bundle: kenney.nl has no page of its own for this pack (renamed or retired).' : null,
+      bundle: pack.id, category,
+    });
+  }
+}
+
 function planMaps(pack, root, rels) {
   // library/maps/<pack>/<name>.json -> maps/<pack>/<name>.json; validated against the planned files below.
   for (const rel of rels) {
@@ -260,7 +449,7 @@ function cellOfPlanned(url) {
   return p.cell || null;
 }
 
-const HANDLERS = { 'sfx-folders': planSfxFolders, 'pixel-combat': planPixelCombat, 'pixel-effects': planPixelEffects, maps: planMaps };
+const HANDLERS = { 'sfx-folders': planSfxFolders, 'pixel-combat': planPixelCombat, 'pixel-effects': planPixelEffects, maps: planMaps, kenney: planKenney };
 
 // ---------- plan ----------
 console.log(`source: ${SRC}\nout:    ${OUT}\njobs:   ${JOBS}  (${HAS_AFCONVERT ? 'afconvert' : 'ffmpeg'})\n`);
@@ -277,6 +466,16 @@ for (const pack of packsFile.packs) {
   } else throw new Error(`pack ${pack.id}: unknown from`);
   (HANDLERS[pack.handler] || planGeneric)(pack, root, rels);
   for (const extra of from.extra || []) add({ src: findSource(extra), dst: `${from.extraDest || pack.dest}/${cleanName(extra)}`, pack: pack.id, convert: false, meta: {} });
+}
+
+if (process.argv.includes('--plan')) {
+  const byPack = {};
+  for (const it of items) (byPack[it.pack] ||= { files: 0, convert: 0 }).files++, (it.convert && byPack[it.pack].convert++);
+  const rows = Object.entries(byPack).sort((a, b) => b[1].files - a[1].files);
+  console.log(`planned ${items.length} files across ${rows.length} packs (${generated.length} discovered)\n`);
+  for (const [id, s] of rows.slice(0, 30)) console.log(`  ${id.padEnd(34)} ${String(s.files).padStart(6)} files${s.convert ? `  (${s.convert} to convert)` : ''}`);
+  if (rows.length > 30) console.log(`  … and ${rows.length - 30} more packs`);
+  process.exit(0);
 }
 
 // Maps are checked against everything planned above before anything is copied.
@@ -337,7 +536,7 @@ for (const it of items.sort((a, b) => a.dst.localeCompare(b.dst))) {
 // `animations`, and a sidecar <path>.json carrying the same so aha-assets.js can read it without the
 // (gated) manifest. Per-frame packs get <Animation>.json listing the frames; Pixel Combat sounds get
 // <stem>.json listing the variants.
-const packById = Object.fromEntries(packsFile.packs.map((p) => [p.id, p]));
+const packById = Object.fromEntries([...packsFile.packs, ...generated].map((p) => [p.id, p]));
 const relInPack = (e, p) => { const d = typeof p.dest === 'string' ? p.dest : Object.values(p.dest)[0]; return e.path.startsWith(`${d}/`) ? e.path.slice(d.length + 1) : e.path; };
 const cellFor = (e, p) => { const rel = relInPack(e, p); for (const [re, cell] of Object.entries(p.cells || {})) if (new RegExp(re).test(rel)) return cell; return p.cell || null; };
 const derived = [];
@@ -354,17 +553,19 @@ for (const e of files) {
   if (!e.cell) {
     const cell = cellFor(e, p);
     if (cell) {
-      if (e.width % cell[0] === 0 && e.height % cell[1] === 0) e.cell = cell;
+      const grid = fitGrid({ width: e.width, height: e.height }, cell);
+      if (grid) Object.assign(e, grid);
       else console.warn(`  ${e.path}: ${e.width}x${e.height} is not a grid of ${cell.join('x')} cells, no cell recorded`);
     }
   }
   if (!e.cell) continue;
-  e.cols = e.width / e.cell[0];
-  e.rows = e.height / e.cell[1];
+  const [gx, gy] = e.gap || [0, 0], [mx, my] = e.margin || [0, 0];
+  e.cols = Math.floor((e.width - 2 * mx + gx) / (e.cell[0] + gx));
+  e.rows = Math.floor((e.height - 2 * my + gy) / (e.cell[1] + gy));
   if (e.rows === 1 && !e.frames) e.frames = e.cols;
   if (p.fps) e.fps ??= p.fps;
   if (p.animations && e.rows > 1) e.animations = p.animations;
-  writeDerived(`${e.path}.json`, pick(e, ['path', 'width', 'height', 'cell', 'cols', 'rows', 'frames', 'fps', 'animations', 'animation']), e.pack);
+  writeDerived(`${e.path}.json`, pick(e, ['path', 'width', 'height', 'cell', 'gap', 'margin', 'cols', 'rows', 'frames', 'fps', 'animations', 'animation']), e.pack);
   writeDerived(`${e.path}.atlas.json`, atlasFor(e), e.pack);
 }
 
@@ -375,16 +576,31 @@ for (const e of files) {
  */
 function atlasFor(e) {
   const [w, h] = e.cell;
+  const [gx, gy] = e.gap || [0, 0];
+  const [mx, my] = e.margin || [0, 0];
   const frames = {};
   const name = (r, c) => `r${r}c${c}`;
   for (let r = 0; r < e.rows; r++) for (let c = 0; c < e.cols; c++) {
-    frames[name(r, c)] = { frame: { x: c * w, y: r * h, w, h }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w, h }, sourceSize: { w, h } };
+    const x = mx + c * (w + gx), y = my + r * (h + gy);
+    frames[name(r, c)] = { frame: { x, y, w, h }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w, h }, sourceSize: { w, h } };
   }
   const animations = {};
   if (e.animations) for (const [n, a] of Object.entries(e.animations)) animations[n] = Array.from({ length: a.frames }, (_, i) => name(a.row, (a.col || 0) + i));
   else if (e.rows === 1 && e.frames > 1) animations[e.animation || 'play'] = Array.from({ length: e.frames }, (_, i) => name(0, i));
   return { frames, animations, meta: { app: 'AhaSlides games asset library', version: '1', image: path.basename(e.path), format: 'RGBA8888', size: { w: e.width, h: e.height }, scale: '1', ...(e.fps ? { fps: e.fps } : {}) } };
 }
+// Packed sheets (Kenney's): the same TexturePacker "JSON hash" file as a grid sheet gets, but with the
+// artist's own frame names, plus a .json sidecar so `assets.image` users can see what is in there.
+for (const it of items.filter((i) => i.atlas)) {
+  const e = files.find((f) => f.path === it.dst);
+  const frames = {};
+  for (const [name, f] of Object.entries(it.atlas)) {
+    frames[name] = { frame: { x: f.x, y: f.y, w: f.w, h: f.h }, rotated: false, trimmed: false, spriteSourceSize: { x: 0, y: 0, w: f.w, h: f.h }, sourceSize: { w: f.w, h: f.h } };
+  }
+  writeDerived(`${it.dst}.atlas.json`, { frames, animations: {}, meta: { app: 'AhaSlides games asset library', version: '1', image: path.basename(it.dst), format: 'RGBA8888', size: { w: e?.width || 0, h: e?.height || 0 }, scale: '1' } }, it.pack);
+  writeDerived(`${it.dst}.json`, { path: it.dst, width: e?.width, height: e?.height, atlas: `${it.dst}.atlas.json`, frames: Object.keys(it.atlas) }, it.pack);
+}
+
 for (const p of packsFile.packs.filter((x) => x.sequences)) {
   const groups = {};
   for (const e of files) {
@@ -412,16 +628,32 @@ fs.copyFileSync(path.join(HERE, 'aha-assets.js'), path.join(OUT, 'aha-assets.js'
 
 // Remove stale output (files neither planned nor derived this run).
 const keep = new Set([...items.map((i) => i.dst), ...derived.map((d) => d.path), 'manifest.json', 'packs.json', 'index.html', 'llms.txt', 'aha-assets.js']);
-for (const rel of walk(OUT)) if (!keep.has(rel)) { fs.rmSync(path.join(OUT, rel)); console.log(`  removed stale ${rel}`); }
+for (const rel of walk(OUT)) if (!keep.has(rel) && !rel.startsWith('manifest/')) { fs.rmSync(path.join(OUT, rel)); console.log(`  removed stale ${rel}`); }
 
 const packs = {};
-for (const p of packsFile.packs) {
+for (const p of [...packsFile.packs, ...generated]) {
   const { from, skip, only, handler, cells, ...pub } = p;
+  if (p.expands && !packStats[p.id]) continue;          // the bundle itself hosts nothing; its packs do
   packs[p.id] = { ...pub, ...(packStats[p.id] || { files: 0, bytes: 0 }) };
 }
 const manifest = { version: 1, generated: new Date().toISOString(), files: files.length, bytes: files.reduce((a, f) => a + f.bytes, 0), packs, entries: files };
 fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1));
 fs.writeFileSync(path.join(OUT, 'packs.json'), JSON.stringify({ generated: manifest.generated, packs }, null, 2));
+
+// One manifest per pack as well. The whole manifest is large now that Kenney is in it, and almost
+// nobody wants all of it: pick a pack from packs.json, then read that pack's own entries.
+{
+  const perPack = {};
+  for (const e of files) (perPack[e.pack] ||= []).push(e);
+  fs.rmSync(path.join(OUT, 'manifest'), { recursive: true, force: true });
+  for (const [id, entries] of Object.entries(perPack)) {
+    const p = packs[id] || {};
+    const body = JSON.stringify({ version: 1, generated: manifest.generated, pack: id, title: p.title, license: p.license, credit: p.credit, url: p.url, files: entries.length, bytes: entries.reduce((a, e) => a + e.bytes, 0), entries }, null, 1);
+    fs.mkdirSync(path.join(OUT, 'manifest'), { recursive: true });
+    fs.writeFileSync(path.join(OUT, 'manifest', `${id}.json`), body);
+  }
+  console.log(`manifest/: ${Object.keys(perPack).length} per-pack slices`);
+}
 fs.copyFileSync(path.join(HERE, 'catalog.html'), path.join(OUT, 'index.html'));
 
 // The guide, served from the CDN itself as llms.txt (the whole of docs/asset-library.md, live base URL baked in,

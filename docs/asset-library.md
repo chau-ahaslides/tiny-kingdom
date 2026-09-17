@@ -12,8 +12,9 @@ LIB = https://games.ahaslides.io
 |---|---|
 | `LIB/<path>` | Any file: open to everyone, so games load them from any origin. |
 | `LIB/llms.txt` | This guide, served from the CDN. Start here. **Gated.** |
-| `LIB/manifest.json` | Every file (3,650 assets, 1,298 metadata) with `path`, `pack`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `cell`/`cols`/`rows`/`frames`/`fps`/`animations`, `duration`, `category`, `variant`, `tags`. **Gated.** |
-| `LIB/packs.json` | The 25 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, notes. **Gated.** |
+| `LIB/packs.json` | The 270 packs: title, author, page URL, licence, `commercial` (`yes`, or `credit` when attribution is required), the `credit` line to ship, description, file and byte counts. Small; start here. **Gated.** |
+| `LIB/manifest/<pack>.json` | One pack's files, with `path`, `bytes`, `sha1`, `type`, and per type: `width`/`height`, `cell`/`gap`/`cols`/`rows`/`frames`/`fps`/`animations`, `atlas`, `duration`, `category`, `variant`, `tags`. **This is the one to fetch.** **Gated.** |
+| `LIB/manifest.json` | The same for every pack at once: 32,000 entries, 8 MB. Only worth fetching to search across packs. **Gated.** |
 | `LIB/catalog` | The catalog: every pack, its licence, thumbnails, play buttons, the starter maps, a filter box. Sign in with your AhaSlides Google account. |
 | `LIB/` | The same catalog for agents and scripts: open it once as `LIB/?key=<token>`. |
 | `LIB/vendor/…` | three.js and PixiJS, pinned by version (see "Libraries on the CDN"). |
@@ -33,13 +34,19 @@ browser too, for twelve hours. Without either, a browser is sent to the Google s
 else answers 401; every asset file still answers. The gate is deliberate: most packs forbid redistribution as
 an asset pack, so the host must be an asset server for our games rather than a browsable library.
 
-Ask the manifest, not the file system: it is 1.3 MB of JSON, so fetch it once and filter.
+Ask the index, not the file system, and ask it pack by pack: `packs.json` is small and names all
+270 packs, and each pack's files are a separate small file. The whole manifest is 8 MB and is only
+worth fetching to search across packs.
 
 ```js
 const KEY = process.env.TINY_KINGDOM_LIB_READ_TOKEN;           // or whatever holds it where you run
-const m = await (await fetch(`${LIB}/manifest.json`, { headers: { authorization: `Bearer ${KEY}` } })).json();
-const explosions = m.entries.filter(e => e.pack === 'pixel-combat' && e.category === 'explosion');
-const strips     = m.entries.filter(e => e.pack === 'pixel-effects' && e.category === 'impacts');
+const get = async (p) => (await fetch(`${LIB}/${p}`, { headers: { authorization: `Bearer ${KEY}` } })).json();
+
+const { packs } = await get('packs.json');                     // 270 packs with licences and counts
+const town = await get('manifest/kenney-tiny-town.json');      // one pack: 9 files
+const sfx  = await get('manifest/pixel-combat.json');
+const explosions = sfx.entries.filter(e => e.category === 'explosion');
+const sheets = town.entries.filter(e => e.cell || e.atlas);    // the ready-split sheets
 ```
 
 ## Fastest path: aha-assets.js
@@ -80,14 +87,23 @@ run.draw(ctx, now, x, y, { scale: 0.25 });
 const mobs = await assets.sheet('sprites/32rogues/monsters.png');
 mobs.drawFrame(ctx, 1, 4, x, y, { scale: 2 });
 
+// A packed sheet (all the Kenney ones): frames have the artist's names, not grid positions.
+const ui = await assets.atlas('sprites/kenney/ui-pack/Spritesheet/blueSheet.png');
+ui.draw(ctx, 'blue_button00', 40, 40, { scale: 1.5 });
+ui.find('button');                                                    // every frame name containing "button"
+
+// A tile sheet with a 1px gap between cells: the gap is in its sidecar, so cells still count 1, 2, 3…
+const town = await assets.sheet('sprites/kenney/1-bit-pack/Tilesheet/colored.png');
+town.drawFrame(ctx, 99, 0, x, y, { scale: 2 });
+
 // Warm everything before the first frame.
 await assets.preload(['sfx/pixel-combat/hit/bit-kick', 'sprites/32rogues/tiles.png', 'sprites/ninja-girl/Jump']);
 ```
 
-The module reads a small JSON that sits next to each asset: `<image>.json` (cell size, columns,
-rows, frame count, fps, named animations), `<image>.atlas.json` (the same as a TexturePacker atlas,
-for Phaser and PixiJS, see below), `<Animation>.json` for per-frame packs (the ordered frame list),
-and `<sound>.json` for Pixel Combat (the variant list). Those files are open, so the
+The module reads a small JSON that sits next to each asset: `<image>.json` (cell size, gap,
+columns, rows, frame count, fps, named animations, or an atlas's frame names), `<image>.atlas.json`
+(the same as a TexturePacker atlas, for Phaser and PixiJS, see below), `<Animation>.json` for
+per-frame packs (the ordered frame list), and `<sound>.json` for Pixel Combat (the variant list). Those files are open, so the
 runtime never needs the token; the same fields are in the manifest for authoring. Where the library
 has no cell for an image (single pictures, previews, the large RPG Maker battler sheets), pass one:
 `assets.sheet(path, { cell: [150, 150] })`, or an ad-hoc animation:
@@ -111,6 +127,9 @@ catalog page:
 | `maps/mana-seed-forest-winter/clearing.json` | Mana Seed winter | top-down snow clearing with a tree, a cave, a frozen pond |
 | `maps/iso-village/hamlet.json` | Xilurus isometric | isometric square with cottages, a well, trees, a cart (props as objects) |
 | `maps/kaykit-forest/glade.json` | KayKit forest (3D) | a scene file: 78 glTF placements around a clearing |
+| `maps/kenney-tiny-town/village.json` | Kenney Tiny Town | 30x20 crossroads village: five houses, a fenced paddock with a gate, orchards, a separate collision layer |
+| `maps/kenney-tiny-dungeon/vault.json` | Kenney Tiny Dungeon | 24x14 three rooms and two corridors, chests, barrels, wall torches, enemies as objects |
+| `maps/kenney-pixel-platformer/hills.json` | Kenney Pixel Platformer | 48x14 side-scroller: water pits, wooden ledges, a ladder, coins, a flag, clouds on a parallax layer |
 
 The three steps for a new game: copy the closest starter into the game's folder, edit the data
 (rows, stamps, objects), and load it. The code stays generic.
@@ -260,10 +279,10 @@ to `library/packs.json` and rebuild; old versions stay so existing games keep wo
 ## Other engines
 
 `aha-assets.js` draws with the 2D canvas and Web Audio, which is what the tiny-kingdom games use.
-Every sheet with a known grid also has `<image>.atlas.json`, a TexturePacker-style JSON hash
-(frames named `r<row>c<col>`, plus `animations`), and every Pixel Combat sound has `<sound>.json`
-listing its variants, so engines load the library with their own loaders (PixiJS and three.js
-above):
+Every sheet also has `<image>.atlas.json`, a TexturePacker-style JSON hash that PixiJS and Phaser
+read directly — frames named `r<row>c<col>` for a grid sheet, the artist's own names for a Kenney
+packed sheet — and every Pixel Combat sound has `<sound>.json` listing its variants, so engines load
+the library with their own loaders (PixiJS and three.js above):
 
 ```js
 // Phaser 3
@@ -275,6 +294,13 @@ this.anims.create({ key: 'walk', frames: this.anims.generateFrameNames('guy', { 
 this.add.sprite(x, y, 'guy').play('walk');
 // or, without the atlas, straight from the numbers in <image>.json:
 this.load.spritesheet('boom', `${LIB}/sprites/pixel-effects/explosions/epic_explosion_001_small_orange.png`, { frameWidth: 64, frameHeight: 64 });
+
+// A Kenney packed sheet in Phaser or PixiJS: the frame names are the artist's own.
+this.load.atlas('ui', `${LIB}/sprites/kenney/ui-pack/Spritesheet/blueSheet.png`,
+                      `${LIB}/sprites/kenney/ui-pack/Spritesheet/blueSheet.png.atlas.json`);
+this.add.image(x, y, 'ui', 'blue_button00');
+// A Kenney tile sheet with a 1px gap, in Phaser's own loader (gap is `spacing`):
+this.load.spritesheet('town', `${LIB}/sprites/kenney/1-bit-pack/Tilesheet/colored.png`, { frameWidth: 16, frameHeight: 16, spacing: 1 });
 ```
 
 Godot, Unity and other native engines are not web-facing: download the files (a pack's paths are in
@@ -290,7 +316,15 @@ music/<pack>/<track>.mp3                        the one music track
 sprites/<pack>/<original path, cleaned>         PNG / GIF sheets and frames
 models/<pack>/…/<name>.gltf|.glb (+ .bin, textures beside them)
 fonts/<pack>/<name>.ttf
+maps/<pack>/<name>.json                         starter maps and scenes
+
+<image>.json                                    that image's grid or frame names (open, no token)
+<image>.atlas.json                              the same as a TexturePacker atlas (Phaser, PixiJS)
 ```
+
+Kenney's packs keep the same scheme one level deeper, because the bundle is 242 packs in itself:
+`sprites/kenney/<pack>/…`, `models/kenney/<pack>/…`, `sfx/kenney/<pack>/…`, `fonts/kenney/<pack>/…`,
+and their pack ids are `kenney-<pack>` (`kenney-tiny-town`, `kenney-ui-pack`, `kenney-furniture-kit`).
 
 Names are the pack's own names with spaces and punctuation turned into `_` (`Run (8).png` becomes
 `Run_8.png`); folders that are categories are lower-case slugs (`Card and Board` becomes
@@ -306,8 +340,9 @@ canvas readback and `import` of `aha-assets.js` all work; from anywhere else onl
 
 ## Sounds
 
-Two libraries cover most needs. Every sound is a short one-shot; decode once with Web Audio and
-play from the buffer (an `<audio>` element per hit is too slow for games).
+Two libraries cover most needs, with Kenney's 16 sound packs behind them. Every sound is a short
+one-shot; decode once with Web Audio and play from the buffer (an `<audio>` element per hit is too
+slow for games).
 
 **pixel-combat** (`sfx/pixel-combat/`) is Helton Yan's retro JRPG combat set: 350 sounds, each in
 six variations (`-01` … `-06`), in 12 categories:
@@ -359,6 +394,11 @@ await load('coin', [`${LIB}/sfx/brackeys-platformer/coin.m4a`]);
 
 Remember iOS: create or resume the `AudioContext` inside a user gesture.
 
+**Kenney's sound packs** (19) are at `sfx/kenney/<pack>/` (and `music/kenney/<pack>/` where
+the pack is music), converted from Kenney's .ogg to the same AAC .m4a as everything else: `casino-audio`, `desert-shooter-pack`, `digital-audio`, `foley-sounds`, `impact-sounds`, `interface-sounds`, `music-jingles`, `music-loops`, `new-platformer-pack`, `retro-sounds-1`, `retro-sounds-2`, `rpg-audio`, `sci-fi-sounds`, `synth-voice-1`, `synth-voice-2`, `ui-audio`, `ui-pack`, `voiceover-pack`, `voiceover-pack-fighter`.
+All CC0. Impact Sounds alone covers footsteps on eight surfaces; UI Audio and the Interface Sounds
+pack cover clicks, switches and errors; Voiceover Pack has spoken numbers and words.
+
 ## Sprites
 
 | pack | path | what | cell / frame size | licence |
@@ -382,8 +422,33 @@ Remember iOS: create or resume the `AudioContext` inside a user gesture.
 | `adventure-girl`, `ninja-girl` | `sprites/adventure-girl/<Anim>_<n>.png`, `sprites/ninja-girl/<Anim>_<nnn>.png` | cartoon side-scroller heroines as per-frame PNGs (about 640x540, 376x520); `<Anim>.json` lists each animation's frames | per frame | CC0 |
 | `dragons` | `sprites/dragons/dragons.png` | eleven pixel dragons on one 428x377 sheet | irregular | **credit Redshrike et al. (CC BY 3.0)** |
 
+### Kenney: 242 packs, all CC0
+
+The whole Kenney catalogue is here under `sprites/kenney/<pack>/`, `models/kenney/<pack>/`,
+`sfx/kenney/<pack>/` and `fonts/kenney/<pack>/` — pixel and vector 2D packs, 3D kits (GLB),
+UI packs, input-prompt icons, and sound packs. Public domain: use commercially, alter freely, no
+credit needed. Find a pack in `packs.json` (search `kenney-`), then read `manifest/<pack>.json`.
+
+Every sheet arrives already split, so no game measures pixels:
+
+- **Packed sheets** (a `Spritesheet/` or `Tilesheet/` PNG that came with Kenney's XML atlas) carry
+  `atlas: true` and `frames: <count>` in the manifest, and a `<sheet>.png.atlas.json` beside them
+  with the artist's own frame names (`blue_button00`, `elephant`, `controller_battery_full`). Load
+  with `assets.atlas(path)`, then `atlas.draw(ctx, name, x, y)`, `atlas.find('button')`,
+  `atlas.frame(name)`. The loose per-frame PNGs those atlases name are deliberately not hosted: one
+  request replaces hundreds, and nothing is lost.
+- **Grid sheets** (tilemaps) carry `cell`, `cols`, `rows` and, where Kenney leaves a line between
+  tiles, `gap: [1, 1]`. `assets.sheet(path)` reads all of it, so `drawFrame(ctx, i, 0, …)` and map
+  cells count 1, 2, 3… as usual. 198 sheets carry a grid; 411 carry an atlas.
+- Packs with neither (loose sprites only) are hosted file by file, as their own art.
+
+Not hosted from the bundle: vector sources (SVG/AI/SWF), the FBX, OBJ, DAE and STL copies of models
+that also ship as GLB, per-model preview renders, Construct and Unity sample projects, and the
+Archive and Goodies categories.
+
 Manifest entries for images carry `width`, `height` and, where the grid is known, `cell` `[w, h]`,
-`cols`, `rows`, `frames` (one-row strips), `fps` and `animations` (`{ name: { row, frames } }`).
+`gap`, `cols`, `rows`, `frames` (one-row strips), `fps` and `animations` (`{ name: { row, frames } }`);
+a packed sheet carries `atlas: true` instead.
 Without `aha-assets.js`, a strip animates by stepping a source rectangle across the sheet:
 
 ```js
@@ -402,7 +467,10 @@ Set `imageSmoothingEnabled = false` (or CSS `image-rendering: pixelated`) when s
 
 ## Models
 
-Two CC0 KayKit packs in glTF only (FBX and OBJ were dropped):
+Kenney's 3D kits (CC0) are the bulk: about 4,900 GLB models across 54 kits — furniture, city,
+nature, castle, racing, food, weapons, characters — at `models/kenney/<kit>/<model>.glb`. One
+self-contained file per model, nothing to resolve. Then two CC0 KayKit packs in glTF only (FBX and
+OBJ were dropped):
 
 - `models/kaykit-adventurers/Characters/gltf/{Barbarian,Knight,Mage,Ranger,Rogue}.glb`, rigged and
   textured; animations in `Animations/gltf/Rig_Medium/Rig_Medium_General.glb`; weapons and props in
@@ -416,7 +484,9 @@ resolve on the CDN.
 ## Licences and credits
 
 Every pack's page terms are in `packs.json` (`license`, `commercial`, `credit`). Everything in the
-library may be used in commercial games: packs whose free tier is personal-use only (ToffeeCraft's
+library may be used in commercial games. The 242 Kenney packs are **CC0 1.0** — public domain, no
+credit required, alteration fine — and so are the KayKit models, Brackeys' platformer pack and the
+two GameArt2D heroines; the rest keep their own terms below. packs whose free tier is personal-use only (ToffeeCraft's
 trees and environment sheet, LimeZu's Fantasy Battlers trial) and files whose origin could not be
 identified (a monster spritesheet zip, a weapon-icon sheet, Elthen's destructible objects) were
 downloaded but are deliberately not hosted. Keep it that way: a pack goes in only when its page
@@ -435,6 +505,7 @@ Dragons by Stephen 'Redshrike' Challener, MrBeast, Surt, Blarumyrran, Sharm, Zab
 32rogues by Seth Boyles (sethbb.itch.io)                        (appreciated, not required)
 AutoBattlers Crew by RafaelMatos (rafaelmatos.itch.io)          (appreciated, not required)
 3D models: KayKit by Kay Lousberg (kaylousberg.com), CC0        (appreciated, not required)
+Art and audio by Kenney (kenney.nl), CC0                        (appreciated, not required)
 ```
 
 Most of the other packs say "use in your games, do not redistribute as an asset pack". Hosting them
@@ -482,13 +553,24 @@ The sources (the original zips and the 8.6 GB of WAV) stay outside the repo, in
 
 ```
 library/packs.json      pack index + build rules (edit this)
-library/build.mjs       LIB_SRC -> library/out  (unzip, clean names, wav -> m4a, manifest, catalog)
+library/build.mjs       LIB_SRC -> library/out  (unzip, clean names, wav/ogg -> m4a, manifest, catalog)
 library/lib.mjs         pure helpers (tests in test/library.test.js)
 library/upload.mjs      library/out -> the worker (only changed files, by sha1)
 library/catalog.html    the page served at LIB/
-library/aha-assets.js   the runtime served at LIB/aha-assets.js (sheet, sequence, sound helpers)
+library/aha-assets.js   the runtime served at LIB/aha-assets.js (sheet, atlas, sequence, sound, map)
+library/maps/           the starter maps and make-starters.mjs, which writes them
 library/worker/         the CDN worker (R2 bucket `tiny-kingdom-lib`)
 ```
+
+`node library/build.mjs --plan` lists what a build would write, per pack, without writing anything.
+WAV conversion uses macOS's `afconvert`; Kenney's `.ogg` needs **ffmpeg**, on `PATH` or named by
+`LIB_FFMPEG=/path/to/ffmpeg` (`npm i --no-save ffmpeg-static` gives you one without touching the
+system). A build without ffmpeg simply fails on those files and converts everything else.
+
+A pack whose `handler` is a bundle (`kenney`) expands into many packs at build time: the handler
+walks the download, decides what is worth hosting, and registers one manifest pack per pack it finds
+(`kenney-<name>`), all inheriting the bundle's licence. `library/packs.json` holds one entry for the
+whole bundle.
 
 **Add a pack**
 

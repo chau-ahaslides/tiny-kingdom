@@ -6,17 +6,23 @@
 <meta name="robots" content="noindex">
 <title>AhaSlides games asset library</title>
 <style>
-  :root { color-scheme: light dark; --bg: #f6f5f2; --fg: #1d1d1b; --mute: #6b6a66; --line: #dedcd6; --card: #fff; --accent: #2f6fdb; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #17181a; --fg: #ececea; --mute: #9a9a95; --line: #2f3034; --card: #1f2023; --accent: #7aa7ff; } }
+  :root { color-scheme: light dark; --bg: #f6f5f2; --fg: #1d1d1b; --mute: #6b6a66; --line: #dedcd6; --card: #fff; --accent: #2a62c4; --btn-bg: #2f6fc4; --btn-fg: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17181a; --fg: #ececea; --mute: #9a9a95; --line: #2f3034; --card: #1f2023; --accent: #7aa7ff; --btn-bg: #7aa7ff; --btn-fg: #14161a; } }
+  /* AA: --accent 5.3:1 on --bg (light) / 7.4:1 (dark); --btn-fg on --btn-bg 5.0:1 / 7.6:1 */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
   header { padding: 20px 24px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: baseline; }
   h1 { font-size: 18px; margin: 0; } h1 small { color: var(--mute); font-weight: normal; margin-left: 8px; }
-  input[type=search] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); min-width: 260px; }
+  input[type=search] { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); min-width: min(260px, 100%); min-height: 44px; }
+  header .meta a { display: inline-flex; align-items: center; min-height: 44px; }
   main { padding: 12px 24px 60px; max-width: 1400px; }
   details { border: 1px solid var(--line); border-radius: 8px; background: var(--card); margin: 10px 0; }
-  summary { cursor: pointer; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; list-style: none; }
+  summary { cursor: pointer; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; min-height: 44px; list-style: none; }
   summary::-webkit-details-marker { display: none; }
+  summary::before { content: ''; flex: none; width: 7px; height: 7px; margin: 0 2px 0 1px; border: solid var(--mute); border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform .15s; }
+  details[open] > summary::before { transform: rotate(45deg); }
+  @media (prefers-reduced-motion: reduce) { summary::before { transition: none; } }
   summary b { font-size: 15px; } summary .meta { color: var(--mute); font-size: 12px; }
   summary code { background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
   .info { padding: 0 14px 10px; color: var(--mute); font-size: 13px; } .info a { color: var(--accent); }
@@ -24,13 +30,15 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 0 14px 14px; }
   .tile { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; font-size: 11px; overflow: hidden; }
   .tile img { display: block; width: 100%; height: 96px; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#8883 0 25%, transparent 0 50%) 0 0/12px 12px; }
+  .tile > a { display: block; }
   .tile .n { word-break: break-all; margin-top: 4px; } .tile .d { color: var(--mute); }
   .list { padding: 0 14px 14px; columns: 3 320px; column-gap: 20px; font-size: 12px; }
-  .list div { break-inside: avoid; padding: 2px 0; display: flex; gap: 6px; align-items: center; }
-  .list button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 4px; padding: 0 6px; cursor: pointer; }
+  .list div { break-inside: avoid; padding: 0; display: flex; gap: 8px; align-items: center; min-height: 44px; }
+  .list div > a { align-self: stretch; display: flex; align-items: center; min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
+  .list button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 6px; padding: 0 6px; min-width: 44px; min-height: 44px; flex: none; cursor: pointer; }
   .list button:hover { border-color: var(--accent); }
   .list .cat { font-weight: 600; margin-top: 8px; display: block; column-span: all; }
-  .more { margin: 0 14px 14px; font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; }
+  .more { margin: 0 14px 14px; font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0 4px; min-height: 44px; }
   .hidden { display: none; }
   pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; font-size: 12px; }
 </style>
@@ -38,16 +46,16 @@
 <body>
 <header>
   <h1>AhaSlides games asset library <small id="totals"></small></h1>
-  <input id="q" type="search" placeholder="filter by name or path (e.g. explosion, knight, 32x32)">
+  <input id="q" type="search" aria-label="Filter assets by name or path" placeholder="filter by name or path (e.g. explosion, knight, 32x32)">
   <span class="meta"><a id="l-guide" href="llms.txt">guide (llms.txt)</a> · <a id="l-manifest" href="manifest.json">manifest.json</a> · <a id="l-packs" href="packs.json">packs.json</a><span id="who"></span></span>
 </header>
 <main>
 <section id="games-home" style="margin:6px 0 22px">
   <h2 style="font-size:16px;margin:12px 0 2px">Games <small class="meta" style="font-weight:normal">built on this library, live at <a href="https://play.ahaslides.io" style="color:var(--accent)">play.ahaslides.io</a></small></h2>
-  <div id="games" style="--gh-fg:var(--fg);--gh-card:var(--card);--gh-tag:var(--bg);--gh-accent:var(--accent);--gh-line:var(--line)">Loading the games list…</div>
+  <div id="games" style="--gh-fg:var(--fg);--gh-card:var(--card);--gh-tag:var(--bg);--gh-accent:var(--accent);--gh-btn-bg:var(--btn-bg);--gh-btn-fg:var(--btn-fg);--gh-line:var(--line)">Loading the games list…</div>
 </section>
 <h2 style="font-size:16px;margin:18px 0 6px">Assets</h2>
-<pre id="how">Every file lives at <b id="base"></b>/&lt;path&gt;. Paths and metadata come from manifest.json:
+<pre id="how" tabindex="0" role="region" aria-label="Asset path layout">Every file lives at <b id="base"></b>/&lt;path&gt;. Paths and metadata come from manifest.json:
   sfx/&lt;pack&gt;/&lt;category&gt;/&lt;name&gt;-&lt;variant&gt;.m4a   sounds (AAC, 44.1 kHz; play with Web Audio or &lt;audio&gt;)
   sprites/&lt;pack&gt;/...                              PNG sheets and frames (width/height in the manifest)
   models/&lt;pack&gt;/...                               glTF / GLB with textures beside them
@@ -55,7 +63,7 @@
 <section id="maps" hidden>
   <h2 style="font-size:16px;margin:18px 0 6px">Starter maps</h2>
   <p class="meta" style="margin:0 0 10px">One ready-made level per tileset pack, drawn live by <code>aha-assets.js</code> from the same files a game would load. Drag to pan.</p>
-  <div id="maplist" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(440px,1fr));padding:0"></div>
+  <div id="maplist" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(440px,100%),1fr));padding:0"></div>
 </section>
 <div id="packs"></div>
 </main>
@@ -83,33 +91,61 @@ fetch('/auth/me', { credentials: 'same-origin' }).then((r) => r.json()).then((s)
     ? ' \u00b7 ' + s.email.replace(/[<&]/g, '') + ' <a href="/auth/logout">sign out</a>'
     : (s.login ? ' \u00b7 <a href="/auth/login?next=/catalog">sign in</a>' : '');
 }).catch(() => {});
-fetch('manifest.json', { headers: key ? { authorization: `Bearer ${key}` } : {}, credentials: 'same-origin' })
-  .then((r) => { if (r.status === 401) throw new Error('your sign-in has expired \u2014 reload this page, or open it as /?key=<library read token> (TINY_KINGDOM_LIB_READ_TOKEN)'); return r.json(); })
-  .then(render).catch((e) => { document.getElementById('packs').textContent = String(e.message || e); });
 
-function render(m) {
-  document.getElementById('totals').textContent = `${m.files.toLocaleString()} files · ${fmtMB(m.bytes)} · built ${m.generated.slice(0, 10)}`;
+// packs.json is small and names every pack; a pack's own files come from manifest/<pack>.json when
+// you open it, and the whole manifest only if you search across everything.
+const getJSON = (p) => fetch(p, { headers: key ? { authorization: `Bearer ${key}` } : {}, credentials: 'same-origin' })
+  .then((r) => {
+    if (r.status === 401) throw new Error('your sign-in has expired \u2014 reload this page, or open it as /?key=<library read token> (TINY_KINGDOM_LIB_READ_TOKEN)');
+    if (!r.ok) throw new Error(`${p}: ${r.status}`);
+    return r.json();
+  });
+const slices = new Map();
+const entriesOf = (id) => {
+  if (!slices.has(id)) slices.set(id, getJSON(`manifest/${id}.json`).then((m) => m.entries));
+  return slices.get(id);
+};
+let everything = null;
+const allEntries = () => (everything ||= getJSON('manifest.json').then((m) => {
   const byPack = {};
   for (const e of m.entries) (byPack[e.pack] ||= []).push(e);
+  for (const [id, list] of Object.entries(byPack)) slices.set(id, Promise.resolve(list));
+  return byPack;
+}));
+
+getJSON('packs.json').then(render).catch((e) => { document.getElementById('packs').textContent = String(e.message || e); });
+
+let PACKS = {};
+function render(m) {
+  PACKS = m.packs;
+  const all = Object.values(m.packs);
+  document.getElementById('totals').textContent =
+    `${all.reduce((a, p) => a + (p.files || 0), 0).toLocaleString()} files · ${fmtMB(all.reduce((a, p) => a + (p.bytes || 0), 0))} · ${all.length} packs · built ${m.generated.slice(0, 10)}`;
   const root = document.getElementById('packs');
-  const order = ['sfx', 'sprites', 'models', 'mixed', 'vendor'];
-  const packs = Object.values(m.packs).sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.title.localeCompare(b.title));
+  const order = ['sfx', 'sprites', 'models', 'maps', 'mixed', 'bundle', 'vendor'];
+  const packs = all.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.title.localeCompare(b.title));
   for (const p of packs) {
-    const entries = byPack[p.id] || [];
     const d = document.createElement('details');
     d.dataset.pack = p.id;
     const prefix = typeof p.dest === 'string' ? p.dest : Object.values(p.dest)[0];
-    d.innerHTML = `<summary><b>${esc(p.title)}</b> <code>${esc(prefix)}/</code> <span class="meta">${p.kind} · ${entries.length} files · ${fmtMB(p.bytes)}</span></summary>
+    d.innerHTML = `<summary><b>${esc(p.title)}</b> <code>${esc(prefix)}/</code> <span class="meta">${p.kind} · ${(p.files || 0).toLocaleString()} files · ${fmtMB(p.bytes || 0)}</span></summary>
       <div class="info">${p.author ? esc(p.author) + ' · ' : ''}${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.source || 'source')}</a> · ` : ''}${esc(p.description || '')}${p.notes ? ' <i>' + esc(p.notes) + '</i>' : ''}</div>
       <div class="lic">Licence: ${esc(p.license || 'not stated on the page (check before shipping)')}</div>`;
     const body = document.createElement('div');
     d.appendChild(body);
-    d.addEventListener('toggle', () => { if (d.open && !body.childElementCount) fill(body, p, entries); }, { once: false });
+    d.addEventListener('toggle', async () => {
+      if (!d.open || body.childElementCount) return;
+      body.textContent = 'loading…';
+      try { const entries = await entriesOf(p.id); body.textContent = ''; fill(body, p, entries); }
+      catch (e) { body.textContent = String(e.message || e); }
+    });
     root.appendChild(d);
   }
   const q = document.getElementById('q');
-  q.addEventListener('input', () => filter(q.value.trim().toLowerCase(), byPack, m.packs));
-  showMaps(m.entries.filter((e) => e.kind === 'map' || e.kind === 'scene'), m.generated);
+  let run = 0, typing = 0;
+  // debounced: filtering walks every pack, so wait for a pause in typing
+  q.addEventListener('input', () => { clearTimeout(typing); typing = setTimeout(() => { const mine = ++run; filter(q.value.trim().toLowerCase(), () => mine === run); }, 150); });
+  entriesOf('starter-maps').then((entries) => showMaps(entries.filter((e) => e.kind === 'map' || e.kind === 'scene'), m.generated)).catch(() => {});
 }
 
 async function showMaps(maps, version) {
@@ -140,12 +176,30 @@ async function showMap(assets, e, canvas) {
   canvas.addEventListener('pointermove', (ev) => { if (!drag) return; const k = canvas.width / canvas.clientWidth / scale; camera = [drag[2] - (ev.clientX - drag[0]) * k, drag[3] - (ev.clientY - drag[1]) * k]; });
   canvas.addEventListener('pointerup', () => { drag = null; });
   const t0 = performance.now();
-  (function frame(now) {
-    if (!canvas.isConnected) return;
+  animate(canvas, (now) => {
     ctx.fillStyle = map.spec.background || '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     map.draw(ctx, { camera, scale, t: now - t0, smooth: map.iso });
-    requestAnimationFrame(frame);
-  })(t0);
+  });
+}
+
+// Map and scene previews only animate while they are on screen and the tab is visible.
+const previews = new Map();
+const previewIO = 'IntersectionObserver' in window ? new IntersectionObserver((seen) => {
+  for (const x of seen) { const s = previews.get(x.target); if (s) { s.visible = x.isIntersecting; if (s.visible) wake(s); } }
+}, { rootMargin: '100px' }) : null;
+function wake(s) { if (s.visible && !document.hidden && !s.raf) s.raf = requestAnimationFrame(s.tick); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) for (const s of previews.values()) wake(s); });
+function animate(canvas, draw) {
+  const s = { visible: !previewIO, raf: 0 };
+  s.tick = (now) => {
+    s.raf = 0;
+    if (!canvas.isConnected) { previews.delete(canvas); previewIO?.unobserve(canvas); return; }
+    if (!s.visible || document.hidden) return;   // stops here; the observer or visibilitychange restarts it
+    draw(now);
+    wake(s);
+  };
+  previews.set(canvas, s);
+  if (previewIO) previewIO.observe(canvas); else wake(s);
 }
 
 async function showScene(assets, e, canvas) {
@@ -163,13 +217,11 @@ async function showScene(assets, e, canvas) {
   canvas.addEventListener('pointermove', (ev) => { if (drag) angle = drag[1] + (ev.clientX - drag[0]) * 0.01; });
   canvas.addEventListener('pointerup', () => { drag = null; });
   const r = Math.hypot(c.position[0], c.position[2]);
-  (function frame() {
-    if (!canvas.isConnected) return;
+  animate(canvas, () => {
     if (!drag) angle += 0.0025;
     cam.position.set(Math.sin(angle) * r, c.position[1], Math.cos(angle) * r); cam.lookAt(...c.lookAt);
     renderer.render(world, cam);
-    requestAnimationFrame(frame);
-  })();
+  });
 }
 
 function fill(body, p, entries) {
@@ -182,7 +234,7 @@ function fill(body, p, entries) {
     for (const e of audio) {
       if (e.category !== cat) { cat = e.category; const h = document.createElement('span'); h.className = 'cat'; h.textContent = cat || '(root)'; list.appendChild(h); }
       const row = document.createElement('div');
-      const b = document.createElement('button'); b.textContent = '▶'; b.onclick = () => play(e.path);
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = '▶'; b.setAttribute('aria-label', 'Play ' + e.path.split('/').pop()); b.onclick = () => play(e.path);
       const a = document.createElement('a'); a.href = e.path; a.textContent = e.path.split('/').pop(); a.title = e.path;
       row.append(b, a, document.createTextNode(e.duration ? ` ${e.duration}s` : ''));
       list.appendChild(row);
@@ -194,7 +246,8 @@ function fill(body, p, entries) {
     const LIMIT = 80;
     images.forEach((e, i) => {
       const t = document.createElement('div'); t.className = 'tile' + (i >= LIMIT ? ' hidden' : '');
-      t.innerHTML = `<a href="${esc(e.path)}" target="_blank"><img loading="lazy" src="${esc(e.path)}" alt=""></a><div class="n">${esc(e.path.replace(/^[^/]+\/[^/]+\//, ''))}</div><div class="d">${e.width}×${e.height}${e.frames ? ` · ${e.frames} frames of ${e.frameWidth}×${e.frameHeight}` : ''}</div>`;
+      const grid2 = e.cell ? ` · ${e.cols}×${e.rows} cells of ${e.cell[0]}×${e.cell[1]}${e.gap ? ' (gap ' + e.gap[0] + ')' : ''}` : e.atlas ? ` · atlas, ${e.frames} named frames` : '';
+      t.innerHTML = `<a href="${esc(e.path)}" target="_blank" aria-label="Open ${esc(e.path.replace(/^[^/]+\/[^/]+\//, ''))}"><img loading="lazy" src="${esc(e.path)}" alt=""></a><div class="n">${esc(e.path.replace(/^[^/]+\/[^/]+\//, ''))}</div><div class="d">${e.width}×${e.height}${grid2}</div>`;
       grid.appendChild(t);
     });
     body.appendChild(grid);
@@ -211,17 +264,22 @@ function fill(body, p, entries) {
   }
 }
 
-function filter(q, byPack, packs) {
-  for (const d of document.querySelectorAll('details')) {
-    const p = packs[d.dataset.pack];
+// Searching looks inside the files, so the first keystroke pulls the whole manifest in once.
+async function filter(q, current) {
+  const note = document.getElementById('totals');
+  if (q && !everything) { const was = note.textContent; note.textContent = 'searching every file…'; allEntries().then(() => { note.textContent = was; }); }
+  const byPack = q ? await allEntries() : {};
+  if (!current()) return;
+  for (const d of document.querySelectorAll('#packs > details')) {
+    const p = PACKS[d.dataset.pack];
     const entries = byPack[p.id] || [];
-    const hay = [p.title, p.description, p.author, p.kind].join(' ').toLowerCase();
+    const hay = [p.title, p.description, p.author, p.kind, p.id].join(' ').toLowerCase();
     const hit = !q || hay.includes(q) || entries.some((e) => e.path.toLowerCase().includes(q) || (e.name || '').toLowerCase().includes(q));
     d.style.display = hit ? '' : 'none';
     if (q && hit && !hay.includes(q)) {
       d.open = true;
       const body = d.lastElementChild;
-      if (!body.childElementCount) fill(body, p, entries);
+      if (!body.childElementCount || body.textContent === 'loading…') { body.textContent = ''; fill(body, p, entries); }
       for (const el of body.querySelectorAll('.tile, .list > div')) {
         const text = (el.querySelector('a')?.title || el.textContent).toLowerCase();
         el.classList.toggle('hidden', !text.includes(q));
