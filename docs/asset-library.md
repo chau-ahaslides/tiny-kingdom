@@ -204,9 +204,11 @@ Live rooms (a host on the big screen, phones joining by QR) are a separate servi
 
 ```
 https://play.ahaslides.io/js/aha-room.js     the room SDK (host(), join(), replicated state, presence)
+https://play.ahaslides.io/js/aha-physics.js  the physics room SDK: a Rapier world the server runs (below)
 https://play.ahaslides.io/sdk                its guide: messages, state document, worked examples
 POST https://play.ahaslides.io/api/room      mints a room code and join URL (CORS for AhaSlides origins and sandboxed iframes)
 https://play.ahaslides.io/j/<CODE>           the join link phones open; /ws/<CODE> the socket
+https://play.ahaslides.io/phys/<CODE>        the physics room socket (GET it for what is in the room)
 ```
 
 The backend is always `play.ahaslides.io`; the SDK talks to it from any page without being told.
@@ -230,6 +232,63 @@ URL. A sandboxed frame cannot, so there `joinUrl` is `null`: show `room.code` an
 it, or pass `host({ page: 'https://…/artifacts/<id>' })` to get a link. Details at
 `https://play.ahaslides.io/sdk#elsewhere`. This library only supplies the art, sound, maps and
 libraries; the room service is `play.ahaslides.io`.
+
+### A physics room: the server runs the world
+
+`vendor/rapier*/…` above puts physics in the *page*, which is right for a solo game. When several
+devices share one world, put it in the room instead: `play.ahaslides.io` runs Rapier server-side (the
+same engine, the same machinery the Marshmallow Challenge has always used) and hands every device
+the result. Nobody's browser is the source of truth, so a phone can shove something without asking
+the big screen, a reload rejoins mid-flight, and twenty people see one world rather than twenty
+slightly different ones.
+
+```html
+<script type="module">
+  import { AhaPhysics } from 'https://play.ahaslides.io/js/aha-physics.js';
+
+  // the big screen describes the world once; the server builds and runs it
+  const world = await AhaPhysics.host({
+    plane: 'xy',                                   // 2D: bodies keep z = 0 and spin only about z
+    gravity: [0, -9.81],
+    events: true,                                  // report collisions, for thud sounds
+    bodies: [
+      { id: 'ground', type: 'fixed', shape: { cuboid: [8, 0.2, 1] }, pos: [0, 0] },
+      { id: 'ball', tag: 'ball', shape: { ball: 0.6 }, pos: [-6, 6], restitution: 0.6 },
+    ],
+  });
+  show(world.code);                                // phones join with this, exactly like a normal room
+  world.on('hit', (e) => thud(e.speed));           // e.a, e.b, e.speed in m/s
+
+  (function frame(now) {
+    for (const b of world.step(now)) draw(b);      // b.x, b.y, b.z, b.angle (2D) or b.qx…b.qw (3D)
+    requestAnimationFrame(frame);
+  })(performance.now());
+</script>
+```
+
+```js
+// a phone, on the same code
+const me = await AhaPhysics.join({ code });        // or nothing at all: it reads ?join=CODE
+me.impulse('ball', [12, 2]);                       // shove it
+me.grab('crate'); me.drag([x, y]); me.release();   // or pick something up and carry it
+```
+
+The world spec, in full: `gravity`, `timestep` (1/240 to 1/20), `substeps`, `plane` (`'xy'`, `'xz'`
+or nothing for full 3D), `floor` (bodies below it are dropped and reported), `events` +
+`eventForce`, `sleep`, and `bodies`. A body is `{ id, type: 'dynamic' | 'fixed' | 'kinematic',
+shape, pos, rot, density, friction, restitution, linearDamping, angularDamping, ccd, sensor, lock,
+tag }`, with `shape` one of `{ ball: r }`, `{ cuboid: [hx, hy, hz] }`, `{ capsule: [halfHeight, r] }`
+or `{ cylinder: [halfHeight, r] }` — half-extents, so a 2 x 1 x 2 m crate is `{ cuboid: [1, 0.5, 1] }`.
+Commands are `add`, `remove`, `impulse`, `torque`, `velocity`, `place`, `gravity`, `grab`, `drag`,
+`release` and `reset`; each connection has one hand, so one phone cannot drop another's grip.
+
+Worth knowing: the room snapshots 20 times a second and `world.step(now)` interpolates between
+snapshots, so drawing is smooth at any frame rate — call it once per animation frame even if nothing
+of yours changed. Work in metres (a body should be roughly 0.1–10 m). A world where everything has
+settled stops being stepped at all until the next command, so an idle room costs nothing. Limits: 400
+bodies, 120 commands a second per connection, and the room is emptied 15 minutes after the last
+command. `GET https://play.ahaslides.io/phys/<CODE>` says what is in a room right now, which is the
+quickest way to see whether a game is doing what you think.
 
 ## Libraries on the CDN: three.js, PixiJS and Rapier
 

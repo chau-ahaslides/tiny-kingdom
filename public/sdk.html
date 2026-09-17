@@ -108,6 +108,7 @@
   <a href="#wire">Wire protocol</a>
   <a href="#rooms">Rooms and codes</a>
   <a href="#transports">Transports</a>
+  <a href="#physics">Physics rooms</a>
   <a href="#embed">Embedding</a>
   <a href="#rules">Rules for games</a>
   <a href="#migration">Migration</a>
@@ -553,6 +554,43 @@ room.report({ kind: <span class="s">'done'</span> });   <span class="c">// the s
 <pre><code>const room = await AhaRoom.host();          // big screen: show room.code (and room.joinUrl when there is one)
 const me   = AhaRoom.join({ code });        // phone: the code typed in, or left out to read ?join=CODE / #join=CODE from the URL</code></pre>
 <p><code>room.joinUrl</code> is <code>https://play.ahaslides.io/j/CODE</code> and redirects phones to the hosting page with <code>?join=CODE</code>, so an artifact's audience lands on the artifact itself. The SDK registers the page's own URL for that when it can read one (it must be on <code>*.ahaslides.com</code>, <code>.io</code> or <code>.ai</code>; anything else is refused with 400). A sandboxed frame has no readable address: then <code>joinUrl</code> is <code>null</code>, the audience joins by code, or the page passes what it knows, <code>host({ page: 'https://…/artifacts/&lt;id&gt;' })</code>, and gets a link. Sockets and the room API accept the <code>null</code> origin such a frame sends.</p>
+
+<h2 id="physics">Physics rooms: the world runs on the server</h2>
+<p>A room replicates <em>state</em>: whatever the host decides is true. Some games want something harder — a world with its own rules, that several devices push on at once. The Marshmallow Challenge has always done this, running Rapier inside its Durable Object so a phone's drag moves a real stick with no host browser in the loop. That machinery is now a service any game can rent, with the world described in JSON rather than compiled in.</p>
+<pre><code><span class="k">import</span> { AhaPhysics } <span class="k">from</span> <span class="s">'https://play.ahaslides.io/js/aha-physics.js'</span>;
+
+<span class="c">// the big screen: describe the world once, the server builds and runs it</span>
+<span class="k">const</span> world = <span class="k">await</span> AhaPhysics.host({
+  plane: <span class="s">'xy'</span>,                                  <span class="c">// 2D: z stays 0, bodies spin only about z</span>
+  gravity: [0, -9.81],
+  events: <span class="k">true</span>,                                 <span class="c">// tell me about collisions, for sounds</span>
+  bodies: [
+    { id: <span class="s">'ground'</span>, type: <span class="s">'fixed'</span>, shape: { cuboid: [8, 0.2, 1] }, pos: [0, 0] },
+    { id: <span class="s">'ball'</span>, shape: { ball: 0.6 }, pos: [-6, 6], restitution: 0.6 },
+  ],
+});
+show(world.code);                                <span class="c">// phones join with this, as with any room</span>
+world.on(<span class="s">'hit'</span>, (e) =&gt; thud(e.speed));           <span class="c">// e.a, e.b, e.speed in m/s</span>
+(<span class="k">function</span> frame(now) {
+  <span class="k">for</span> (<span class="k">const</span> b <span class="k">of</span> world.step(now)) draw(b);      <span class="c">// interpolated: b.x, b.y, b.angle (2D) or b.qx…b.qw</span>
+  requestAnimationFrame(frame);
+})(performance.now());
+
+<span class="c">// a phone, on the same code</span>
+<span class="k">const</span> me = <span class="k">await</span> AhaPhysics.join({ code });
+me.impulse(<span class="s">'ball'</span>, [12, 2]);
+me.grab(<span class="s">'crate'</span>); me.drag([x, y]); me.release();</code></pre>
+<p>Why put physics in the room rather than the page: there is one world rather than one per device, a phone acts on it directly instead of asking the big screen to act for it, a reload rejoins mid-flight, and nothing depends on whichever laptop happens to be presenting. The cost is a round trip, which is why the client interpolates: snapshots arrive 20 times a second and <code>world.step(now)</code> renders 120 ms behind them, so motion is smooth at any frame rate.</p>
+<div class="tbl"><table>
+  <tr><th>Piece</th><th>What</th></tr>
+  <tr><td><code>plane</code></td><td><code>'xy'</code> or <code>'xz'</code> makes the 3D engine behave as a 2D one (z locked, one rotation axis), so a 2D game never meets a quaternion: every body has <code>.angle</code>. Omit it for full 3D.</td></tr>
+  <tr><td>Bodies</td><td><code>{ id, type: 'dynamic' | 'fixed' | 'kinematic', shape, pos, rot, density, friction, restitution, linearDamping, angularDamping, ccd, sensor, lock, tag }</code>. Shapes: <code>{ ball: r }</code>, <code>{ cuboid: [hx, hy, hz] }</code>, <code>{ capsule: [h, r] }</code>, <code>{ cylinder: [h, r] }</code> — half-extents.</td></tr>
+  <tr><td>Commands</td><td><code>add</code>, <code>remove</code>, <code>impulse</code>, <code>torque</code>, <code>velocity</code>, <code>place</code>, <code>gravity</code>, <code>grab</code>/<code>drag</code>/<code>release</code>, <code>reset</code>. Each connection owns one hand, so a phone cannot drop another phone's grip.</td></tr>
+  <tr><td>Events</td><td><code>hit</code> (<code>a</code>, <code>b</code>, <code>speed</code> — the speed going in, so it scales a sound) and <code>fell</code> (a body left the world through <code>floor</code>). Both also arrive as <code>event</code>.</td></tr>
+  <tr><td>Cost</td><td>A settled world stops being stepped until the next command, so an idle room is free. Limits: 400 bodies, 120 commands a second per connection, emptied 15 minutes after the last command.</td></tr>
+  <tr><td>Looking in</td><td><code>GET https://play.ahaslides.io/phys/&lt;CODE&gt;</code> answers with what is in the room right now.</td></tr>
+</table></div>
+<p>The two SDKs are independent and compose: <code>aha-room.js</code> for who is playing, whose turn it is and what the score is; <code>aha-physics.js</code> for the world they are pushing on. A game that wants both mints two rooms, or passes the same code to both (<code>AhaPhysics.host(spec, { code: room.code })</code>).</p>
 
 <h2 id="embed">Embedding in the presenter and audience apps</h2>
 <p>The audience app already mounts a game per active slide and remounts on slide change; the presenter app already knows every participant's id and name. Embedding a room game means giving both apps an iframe and telling the SDK what it no longer has to do. Two steps, in this order.</p>
