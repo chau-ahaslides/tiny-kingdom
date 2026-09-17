@@ -48,12 +48,14 @@
     maxWaves: 10,          // hold all of these and the room wins outright
     quizTime: 15,          // seconds from the wave start to answer the quiz…
     placeTime: 5,          // …then this long to drag the gun into place (a gun not placed in time is lost)
-    towerHp: 10,           // attention points; every gremlin that gets through bites some off
-    spawnGap: 1.0,         // seconds between gremlins leaving the spawn…
-    spawnRoom: 11,         // …shrinking for rooms bigger than this, so a big room gets a denser wave rather than a longer one
-    countBase: 4, countPerWave: 2.5, countPerPlayer: 1.0,   // gremlins per wave
-    hpGrow: 0.65,          // enemy HP compounds by this share each wave
-    hpPerPlayer: 0,        // …and grows by this share for every player beyond six (off: the gremlin count already scales with the room)
+    towerHp: 4,            // attention points; every gremlin that gets through bites some off…
+    towerHpPer: 1.25,      // …plus this many per player, so a big room's tower can take a bigger horde
+    spawnGap: 1.0,         // seconds between gremlins leaving the spawn, at most…
+    spawnWindow: 18,       // …and the whole wave leaves within this many seconds, so a big wave is denser rather than longer
+    countBase: 0, countPerPlayer: 1.7, countGrow: 0.18, countPerWave: 0,   // gremlins per wave: (base + perPlayer × players) × (1 + grow × (wave − 1)) + perWave × (wave − 1)
+    ammoDecay: 0.25,       // share of a gun's load that rusts away at every wave end, so idle guns also clear off the board in a few waves
+    hpGrow: 0.45,          // enemy HP compounds by this share each wave
+    hpPerPlayer: 0.03,     // …and grows by this share for every player beyond six, since big rooms pack the road with guns
     botRight: 0.5,         // how often a bot answers right (the tuning target: half the room)
     botAnsMin: 3, botAnsMax: 10, botPlace: 2.5,
     between: 5,            // seconds to watch the field before the next quiz; the next horde starts marching then, whatever is left of this one
@@ -88,7 +90,7 @@
   // What marches in each wave: a list of kinds, in spawn order.
   function waveList(wave, players, R) {
     R = R || RULES;
-    const n = Math.round(R.countBase + R.countPerWave * (wave - 1) + R.countPerPlayer * players);
+    const n = Math.round((R.countBase + R.countPerPlayer * players) * (1 + (R.countGrow || 0) * (wave - 1)) + R.countPerWave * (wave - 1));
     const list = [];
     for (let i = 0; i < n; i++) {
       let kind = 'gremlin';
@@ -121,7 +123,7 @@
     return {
       rules, rand: (opts && opts.rand) || Math.random,
       phase: 'lobby', wave: 0, time: 0, cycleLeft: 0, quizLeft: 0, placeLeft: 0, quizPool: (opts && opts.quiz && opts.quiz.length) ? opts.quiz : QUIZ,
-      tower: { hp: rules.towerHp, max: rules.towerHp },
+      tower: { hp: rules.towerHp, max: rules.towerHp },   // sized to the room when the first wave starts
       players: new Map(), order: [], guns: [], enemies: [], queue: [], spawnT: 0, shots: [], quiz: null, events: [], seq: 0, eid: 0,
       won: null, survived: 0, lastQuiz: -1,
     };
@@ -154,9 +156,10 @@
   function startWave(S) {
     if (S.phase === 'over' || S.phase === 'final' || S.phase === 'wave' || S.wave >= S.rules.maxWaves) return false;   // waves advance on the clock (endWave), not by hand
     S.wave++; S.phase = 'wave'; S.quizLeft = S.rules.quizTime; S.placeLeft = 0; S.cycleLeft = S.rules.quizTime + S.rules.placeTime + S.rules.between;
-    if (S.wave === 1) { S.shots = []; S.enemies = []; S.queue = []; S.spawnT = 0; }        // the first gremlin leaves the spawn on the very first step
+    if (S.wave === 1) { S.shots = []; S.enemies = []; S.queue = []; S.spawnT = 0; const n = [...S.players.values()].filter(p => !p.gone).length; S.tower.max = S.tower.hp = Math.round(S.rules.towerHp + S.rules.towerHpPer * n); }   // the first gremlin leaves the spawn on the very first step
     const active = [...S.players.values()].filter(p => !p.gone).length;
-    S.queue.push(...waveList(S.wave, active, S.rules).map(kind => ({ kind, wave: S.wave })));
+    const list = waveList(S.wave, active, S.rules); S.waveSize = list.length;
+    S.queue.push(...list.map(kind => ({ kind, wave: S.wave })));
     const pool = S.quizPool; let qi; do { qi = Math.floor(S.rand() * pool.length); } while (pool.length > 1 && qi === S.lastQuiz);
     S.lastQuiz = qi; S.quiz = { i: qi, q: pool[qi][0], opts: pool[qi][1], answer: pool[qi][2] };
     for (const p of S.players.values()) {
@@ -173,6 +176,8 @@
     // A quiz nobody answered still counts against the streak; a gun that was never placed is lost.
     for (const p of S.players.values()) { if (!p.answered && !p.gone) { p.streak = 0; } p.pending = null; }
     S.events.push({ e: 'waveEnd', wave: S.wave });
+    // Guns rust a little every wave, so even one that never fired clears its tile eventually.
+    for (const g of S.guns) if (!g.dead) { g.ammo -= Math.ceil(g.max * S.rules.ammoDecay); if (g.ammo <= 0) { g.ammo = 0; g.dead = true; const o = S.players.get(g.owner); if (o) o.lost++; S.events.push({ e: 'gunDown', gun: g.i, owner: g.owner, x: g.x, z: g.z, worn: true }); } }
     if (S.wave >= S.rules.maxWaves) { S.phase = 'final'; S.quiz = null; S.cycleLeft = 0; }
     else { S.phase = 'between'; startWave(S); }
   }
@@ -250,7 +255,7 @@
       else if (p.pending) { p.bot_place -= dt; if (p.bot_place <= 0) { const s = botSpot(S, p.pending.level, LEVEL_GUN[p.pending.level]); if (s) place(S, p.id, s.x, s.z); else p.pending = null; } }
     }
     // Gremlins leave the spawn one at a time and march.
-    if (S.queue.length) { S.spawnT -= dt; if (S.spawnT <= 0) { S.spawnT = R.spawnGap * Math.min(1, R.spawnRoom / Math.max(1, S.players.size)); const q = S.queue.shift(); spawn(S, q.kind, q.wave); } }
+    if (S.queue.length) { S.spawnT -= dt; if (S.spawnT <= 0) { S.spawnT = Math.min(R.spawnGap, R.spawnWindow / Math.max(1, S.waveSize || 1)); const q = S.queue.shift(); spawn(S, q.kind, q.wave); } }
     for (const e of S.enemies) {
       if (e.state === 'run') {
         e.d += e.speed * dt;

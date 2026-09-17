@@ -56,7 +56,7 @@ test('a right answer earns a gun to place; a streak makes it bigger; a wrong ans
 
 test('waves run on a fixed clock: the next horde marches when the clock runs out, whatever is left of this one', () => {
   const S = TR.create({ rand: seeded(3), rules: { quizTime: 2, placeTime: 1, between: 1, towerHp: 999 } });
-  TR.addPlayer(S, 'a', 'Ann'); TR.startWave(S);
+  TR.addPlayer(S, 'a', 'Ann'); TR.setBots(S, 4); TR.startWave(S);
   assert.equal(TR.startWave(S), false, 'no starting waves by hand mid-wave'); TR.takeEvents(S);
   let t = 0, waves = [];
   while (t < 9) { TR.step(S, 1 / 30); t += 1 / 30; waves.push(...TR.takeEvents(S).filter(e => e.e === 'wave').map(e => e.wave)); }
@@ -75,7 +75,7 @@ test('the quiz closes after quizTime; an unanswered quiz breaks the streak too',
 });
 
 test('gremlins that reach the tower bite it; the game ends when it falls, counting waves survived', () => {
-  const S = TR.create({ rand: seeded(2), rules: { towerHp: 3 } });
+  const S = TR.create({ rand: seeded(2), rules: { towerHp: 3, towerHpPer: 0 } });
   TR.addPlayer(S, 'a', 'Ann'); TR.startWave(S);
   let reached = 0, t = 0;
   while (S.phase === 'wave' && t < 120) { TR.step(S, 1 / 30); t += 1 / 30; reached += TR.takeEvents(S).filter(e => e.e === 'reach').length; }
@@ -138,7 +138,7 @@ test('a wave step with 40 guns and a big wave is cheap', () => {
 });
 
 test('god mode: from streak six a right answer refills every gun instead of adding one', () => {
-  const S = TR.create({ rand: seeded(12), rules: { towerHp: 999 } });
+  const S = TR.create({ rand: seeded(12), rules: { towerHp: 999, ammoDecay: 0 } });
   TR.addPlayer(S, 'a', 'Ann');
   for (let w = 1; w <= 5; w++) { TR.startWave(S); TR.answer(S, 'a', S.quiz.answer); const spot = [[2, 2], [4, 4], [7, 3], [8, 4], [10, 3]][w - 1]; assert.equal(TR.place(S, 'a', spot[0], spot[1]), 'ok'); TR.endWave(S); }
   assert.deepEqual(S.guns.map(g => g.type), ['ballista', 'cannon', 'turret', 'catapult', 'crystal']);

@@ -67,4 +67,10 @@ Phone events: `ready`, `joined`, `welcome`, `quiz`, `answered`, `placedOwn`, `ov
 
 ## Balance
 
-`npm test` runs the rules in node. The scratch script `tune4.mjs` (see the session notes) plays whole games with bots at a given accuracy; the target is that a half-right room holds about 2 to 3 waves.
+`npm test` runs the rules in node. Balance is set so that room size barely matters:
+
+- Gremlins per wave scale with the room (1.7 per player, growing 18% per wave, all leaving the spawn within 18 s) and their health compounds 45% per wave, plus 3% per player beyond six.
+- The tower has 4 attention points plus 1.25 per player.
+- Guns rust a quarter of their load at every wave end, so idle guns clear their tile within four waves and the board never fills (57 free tiles; even a 16-player room that is always right keeps 30+ free).
+
+Measured with bots (8 games each, waves held on average, rooms of 4 / 6 / 10 / 16): half right 2.4 / 2.3 / 2.4 / 2.8; 70% right 3.5 / 4.6 / 5.1 / 4.5; always right 7.1 / 8.0 / 8.1 / 8.0.

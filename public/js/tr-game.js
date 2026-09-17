@@ -18,7 +18,7 @@ async function startHost() {
   const joinUrl = room.joinUrl || '';
   $('#code').textContent = host.code.split('').join(' '); $('#joinurl').textContent = joinUrl.replace(/^https?:\/\//, '');
   if (CONFIG.host.showQr) room.qr().then(d => { if (d) $('#qr').innerHTML = '<img src="' + d + '" width="176" height="176" alt="QR code to join">'; });
-  host.S = TR.create({ rules: CONFIG.rules, quiz: CONFIG.quiz }); TR.setBots(host.S, host.total); emit('room', { code: host.code, joinUrl }); $('#hpnote').textContent = TR.RULES.towerHp; $('#qtnote').textContent = TR.RULES.quizTime;
+  host.S = TR.create({ rules: CONFIG.rules, quiz: CONFIG.quiz }); TR.setBots(host.S, host.total); emit('room', { code: host.code, joinUrl }); $('#hpnote').textContent = TR.RULES.towerHp; $('#hpper').textContent = TR.RULES.towerHpPer; $('#qtnote').textContent = TR.RULES.quizTime;
   room.on('join', hostJoin); room.on('leave', hostLeave); room.on('players', hostPlayers); room.on('msg', hostReceive);
   room.on('status', s => { if (s === 'reconnecting') toast('Room link lost — reconnecting…'); });
   host.view = new View($('#gl'), { theta: 0.18, phi: 0.78, orbit: true, margins: { x: 0.64, y: 0.64, yBias: -0.12 } }); await host.view.buildMap();
@@ -135,7 +135,7 @@ function hostSim() {
       else if (ev.e === 'placed') { view.addGun(ev.gun); host.room.send({ t: 'gun', g: ev.gun }); SFX.play('place'); emit('placed', ev.gun); }
       else if (ev.e === 'placeEnd') { host.room.send({ t: 'placeEnd' }); }
       else if (ev.e === 'god') { const p = S.players.get(ev.id); godFeast(p ? p.name : '?', ev.streak, ev.refilled, ev.guns); host.room.send({ t: 'god', id: ev.id, name: p ? p.name : '?', streak: ev.streak, n: ev.refilled, guns: ev.guns }); emit('god', { id: ev.id, name: p ? p.name : '', streak: ev.streak, refilled: ev.refilled }); }
-      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); emit('gunDown', { gun: ev.gun, owner: ev.owner }); host.room.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) { toast('🪫 ' + p.name + "'s gun is out of ammo"); activity('🪫 ' + p.name + "'s gun ran dry", ev.owner); } }
+      else if (ev.e === 'gunDown') { view.removeGun(ev.gun); SFX.play('empty'); emit('gunDown', { gun: ev.gun, owner: ev.owner }); host.room.send({ t: 'gunDown', i: ev.gun, owner: ev.owner }); const p = S.players.get(ev.owner); if (p) { toast('🪫 ' + p.name + (ev.worn ? "'s gun rusted away" : "'s gun is out of ammo")); activity('🪫 ' + p.name + (ev.worn ? "'s gun rusted away" : "'s gun ran dry"), ev.owner); } }
       else if (ev.e === 'answer') { host.answers.set(ev.id, ev.i); renderQuiz(); SFX.play('answer', { pitch: 0.8 + Math.random() * 0.5 }); const p = S.players.get(ev.id); noteAnswer(p, ev.i === S.quiz.answer ? (p.streak >= S.rules.godStreak ? 'god' : 'right') : 'wrong'); }
       else if (ev.e === 'quizEnd') { renderQuiz(); SFX.play('tick'); host.room.send({ t: 'quizEnd', correct: S.quiz.answer }); const t = answerTally(); activity('⏰ Quiz over — ' + t.right + ' of ' + t.total + ' got a gun'); }
       else if (ev.e === 'waveEnd') { SFX.play('clear'); emit('waveEnd', { wave: ev.wave, hp: Math.max(0, S.tower.hp), max: S.tower.max, board: TR.roster(S) }); if (S.phase === 'final') { $('#h-quiz').classList.remove('on'); bigMsg('Last wave held — clear the road!', 2500); sendRoster(); } }
@@ -350,7 +350,7 @@ $('#b-place').onclick = () => { if (!player.sel || !player.pending) return; $('#
 // Onboarding: one idea per step, Next to move on, the last step confirms. Remembered per version, so a reworked guide shows once more.
 const ONBOARD_VERSION = 'v2';
 const ONBOARD_STEPS = () => [
-  { ic: '👹', h: 'The ' + T.enemies + ' are coming', p: 'They march down the road to the ' + T.tower + '. Every one that gets through takes a bite. When its 10 points are gone, the game is over.' },
+  { ic: '👹', h: 'The ' + T.enemies + ' are coming', p: 'They march down the road to the ' + T.tower + '. Every one that gets through takes a bite. When its attention points are gone, the game is over.' },
   { ic: '❓', h: 'Answer the quiz', p: 'Every wave opens with a quiz at the bottom of your screen. You have 15 seconds. Answer right and you earn a gun.' },
   { ic: '👆', h: 'Drag your gun onto the board', p: 'A see-through gun appears on the board. Drag it with one finger to a free green tile near the road, then tap Place. You get 5 seconds after the quiz closes.' },
   { ic: '🔥', h: 'Keep your streak', p: 'Right again next wave means a bigger gun. Wrong or too slow means no gun and the streak is gone.', ladder: '🏹 ballista → 💣 cannon → 🔩 turret → 🪨 catapult → 💎 crystal turret' },
